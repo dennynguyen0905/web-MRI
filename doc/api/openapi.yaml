@@ -1,0 +1,2110 @@
+openapi: 3.0.3
+info:
+  title: VR-RIS PACS — RIS core API
+  version: 0.1.0
+  description: |
+    **BẢN NHÁP v0.1, chờ nhóm xác nhận `02-erd.md`, `03-state-machine.md`, `04-his-ris-reconciliation.md`.**
+    Các tài liệu nguồn còn nhiều điểm ❓ (đề xuất, chưa được nhóm xác nhận); mọi điểm ❓ ở đó cũng là ❓ ở đây.
+    Spec này là bản viết tay trước, để đối chiếu với springdoc-openapi (IN-20) khi có backend.
+
+    ## Quy ước
+
+    - JSON dùng **snake_case**, đúng tên cột trong ERD (`date_of_birth`, `to_status`, …) ❓.
+    - Mã **trạng thái, vai trò, giới tính, `dob_precision`** dùng đúng mã trong ERD (`SCHEDULED / UNREAD / READING / READ / APPROVING / APPROVED / CANCELLED`; `ADMIN / CLINICIAN / TECHNICIAN / RADIOLOGIST / APPROVER`; `M / F / O / U`; `DAY / MONTH / YEAR`). Không dùng mã tiếng Việt (`CHO_THUC_HIEN`, …) như Frontend hiện tại.
+    - **Tuổi không phải dữ liệu nhập.** Request của `Patient` có `date_of_birth` + `dob_precision`, **không có `age`**. Response có `age` (chỉ đọc, tính từ ngày sinh) kèm cờ `age_approximate`; `age` là `null` khi chưa có ngày sinh (không bao giờ là 0 vì thiếu dữ liệu).
+    - Thời gian là `date-time` theo UTC (ERD 4.7); hiển thị quy đổi `Asia/Ho_Chi_Minh` ở client.
+    - **Không có endpoint nào lưu hoặc trả ảnh DICOM** (R-02). RIS chỉ trả `study_instance_uid` để client mở OHIF bằng deep-link. Ảnh lấy từ PACS qua DICOMweb, không qua API này.
+    - Không có `DELETE` cho dữ liệu nghiệp vụ (ERD 4.6): hủy ca bằng chuyển trạng thái `CANCELLED`.
+    - Phân trang: `page` (từ 1), `page_size`; sắp xếp: `sort=<field>,<asc|desc>`.
+
+    ## Mã lỗi
+
+    | Mã | Ý nghĩa |
+    |---|---|
+    | 400 | Request sai định dạng |
+    | 401 | Chưa đăng nhập hoặc token hết hạn |
+    | 403 | Sai vai trò (RBAC chặn ở tầng API, IN-14) |
+    | 404 | Không tìm thấy |
+    | 409 | Xung đột: chuyển trạng thái không hợp lệ, ca đang bị khóa, hoặc trùng mã |
+    | 422 | Thiếu điều kiện nghiệp vụ (ví dụ thiếu lý do, báo cáo thiếu kỹ thuật/kết luận) |
+    | 501 | Endpoint tag `future`, chưa làm trong 8 tuần |
+
+    ## Audit log
+
+    **Mọi endpoint ghi hoặc duyệt, và mọi endpoint đọc dữ liệu bệnh nhân, đều ghi `audit_log`** (IN-15). Mỗi operation có trường `x-audit` cho biết hành động ghi (`READ`, `CREATE`, `UPDATE`, `STATUS_CHANGE`, `LOGIN`, …). Backend ghi `actor_username` dạng snapshot (ERD 4.8), `patient_id` nếu có, `before_value`/`after_value` với thao tác ghi.
+
+    ## Bảng endpoint × vai trò
+
+    Chặn ở **tầng API**, không chỉ ẩn nút trên giao diện (IN-14). Mỗi operation có `x-allowed-roles`. Bảng quyền của 5 vai trò ở README Phần 5 vẫn ghi “dự kiến — cần chốt”, nên cột vai trò dưới đây là **đề xuất ❓**.
+
+    | Nhóm endpoint | ADMIN | CLINICIAN | TECHNICIAN | RADIOLOGIST | APPROVER |
+    |---|---|---|---|---|---|
+    | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` | ✔ | ✔ | ✔ | ✔ | ✔ |
+    | `GET /patients`, `GET /imaging-orders`, `GET /studies` và chi tiết | ✔ | ✔ (chỉ bệnh nhân mình chỉ định ❓) | ✔ | ✔ | ✔ |
+    | `POST/PATCH /patients`, `POST/PATCH /imaging-orders`, `POST …/studies` | ✔ | ✔ | ✔ | — | — |
+    | `PATCH /studies/{id}` | ✔ | ✔ (trừ `study_instance_uid`) | ✔ | — | — |
+    | `POST /studies/{id}/transitions` | Theo `to_status`, xem `03-state-machine.md` mục 2.5 | | | | |
+    | `PUT /studies/{id}/reports/current` | — | — | — | ✔ (người đang đọc) | — |
+    | `GET /studies/{id}/reports*` | ✔ | ✔ | ✔ | ✔ | ✔ |
+    | `GET /imaging-orders/{id}/clinical-snapshot` | ✔ | ✔ | ✔ | ✔ | ✔ |
+    | `GET/POST /identity-conflicts*` | ✔ | — | ✔ | — | — |
+    | `GET /audit-logs` | ✔ | — | — | — | — |
+    | `GET /departments`, `/devices`, `/service-items` | ✔ | ✔ | ✔ | ✔ | ✔ |
+
+    Dữ liệu ví dụ chỉ là dữ liệu giả (mã `TEST…`, tên có hậu tố “Giả”).
+  contact:
+    name: Nhóm VR-RIS PACS
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Docker Compose / k8s local (NodePort hoặc Ingress) ❓ cổng chưa chốt
+tags:
+  - name: auth
+    description: Đăng nhập, đăng xuất, người dùng hiện tại (IN-13)
+  - name: patients
+    description: Quản lý bệnh nhân (IN-01)
+  - name: imaging-orders
+    description: Chỉ định và thông tin lâm sàng (IN-02, IN-11)
+  - name: studies
+    description: Ca chụp, worklist, chuyển trạng thái (IN-03, IN-06, IN-07, IN-09)
+  - name: reports
+    description: Báo cáo kết quả có version (IN-10)
+  - name: identity-conflicts
+    description: Log lệch dữ liệu HIS ↔ RIS (IN-05)
+  - name: audit-logs
+    description: Nhật ký truy vết (IN-15)
+  - name: reference-data
+    description: Khoa, máy, danh mục dịch vụ
+  - name: future
+    description: Chỗ để cho tích hợp HIS/PACS, [HOÃN] (H-01, H-02, H-03). Chưa làm trong 8 tuần, trả 501
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Đăng nhập
+      security: []
+      x-allowed-roles: [public]
+      x-audit: LOGIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Đăng xuất
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: LOGIN
+      responses:
+        '204':
+          description: Đã đăng xuất
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentUser
+      summary: Người dùng và vai trò hiện tại
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      responses:
+        '200':
+          description: Người dùng hiện tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /patients:
+    get:
+      tags: [patients]
+      operationId: listPatients
+      summary: Tìm bệnh nhân
+      description: |
+        Tìm theo mã, họ tên hoặc BHXH. Ghi `audit_log` (`READ`) vì trả dữ liệu bệnh nhân.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      parameters:
+        - name: q
+          in: query
+          description: Chuỗi tìm tự do trên mã bệnh nhân, họ tên, BHXH
+          schema:
+            type: string
+        - name: patient_code
+          in: query
+          schema:
+            type: string
+        - name: full_name
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Danh sách bệnh nhân
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [patients]
+      operationId: createPatient
+      summary: Tạo bệnh nhân
+      description: |
+        Chặn trùng `patient_code` (IN-01). Không nhận `age`. Có đối chiếu với bệnh nhân đã có theo
+        `04-his-ris-reconciliation.md` mục 1.1 (trường hợp C, D, E).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN]
+      x-audit: CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientCreate'
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Trùng `patient_code`, hoặc nghi trùng người (BHXH khớp bệnh nhân khác)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /patients/{patientId}:
+    parameters:
+      - $ref: '#/components/parameters/PatientId'
+    get:
+      tags: [patients]
+      operationId: getPatient
+      summary: Chi tiết bệnh nhân
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      responses:
+        '200':
+          description: Bệnh nhân
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [patients]
+      operationId: updatePatient
+      summary: Sửa thông tin bệnh nhân
+      description: |
+        Sửa tay thông tin có thể đã đồng bộ từ HIS (`04-his-ris-reconciliation.md` mục 3): ghi `audit_log`
+        `UPDATE` với `before_value`/`after_value`; lần đồng bộ sau không ghi đè trường đã sửa tay.
+        Vai trò sửa tay trường định danh ❓ (đề xuất `TECHNICIAN`, `ADMIN`).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN]
+      x-audit: UPDATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientUpdate'
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /imaging-orders:
+    get:
+      tags: [imaging-orders]
+      operationId: listImagingOrders
+      summary: Danh sách chỉ định
+      description: |
+        Dùng cho bảng "phiếu cùng bệnh nhân" ở dưới worklist (IN-08): lọc `patient_id`. Ghi `audit_log` (`READ`).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      parameters:
+        - name: patient_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: order_code
+          in: query
+          schema:
+            type: string
+        - name: visit_code
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Danh sách chỉ định
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImagingOrderPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [imaging-orders]
+      operationId: createImagingOrder
+      summary: Tạo chỉ định (tạo tay)
+      description: |
+        Tạo `imaging_order` (`source = MANUAL`) và ít nhất một `study` trạng thái `SCHEDULED` kèm `accession_number` sinh tự động
+        (quy ước `YYYYMMDD` + 5 chữ số, ERD 4.3). Nếu bệnh nhân có `identity_conflict` ở trạng thái `PENDING`,
+        chỉ định bị chặn tạo `study` ❓ (`04-his-ris-reconciliation.md` mục 2.1).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN]
+      x-audit: CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImagingOrderCreate'
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImagingOrder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /imaging-orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [imaging-orders]
+      operationId: getImagingOrder
+      summary: Chi tiết chỉ định
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      responses:
+        '200':
+          description: Chỉ định kèm các ca chụp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImagingOrder'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [imaging-orders]
+      operationId: updateImagingOrder
+      summary: Sửa chỉ định
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN]
+      x-audit: UPDATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImagingOrderUpdate'
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImagingOrder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /imaging-orders/{orderId}/studies:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [imaging-orders]
+      operationId: addStudyToOrder
+      summary: Thêm ca chụp vào chỉ định
+      description: Một chỉ định có thể có nhiều ca chụp (IN-02). Ca mới ở trạng thái `SCHEDULED`.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN]
+      x-audit: CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudyCreate'
+      responses:
+        '201':
+          description: Đã tạo ca chụp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Study'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /imaging-orders/{orderId}/clinical-snapshot:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [imaging-orders]
+      operationId: getClinicalSnapshot
+      summary: Thông tin lâm sàng của chỉ định (JSON)
+      description: |
+        Trả bản snapshot `clinical_snapshot` (JSON, 5 tab, IN-11). Trong 8 tuần là dữ liệu giả (`source = SEED`).
+        Tab 3, 4, 5 chỉ có khung rỗng + ghi chú “chờ tích hợp HIS” (`01-scope.md` mục 3.3). Ghi `audit_log` (`READ`).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      responses:
+        '200':
+          description: Snapshot lâm sàng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClinicalSnapshot'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /studies:
+    get:
+      tags: [studies]
+      operationId: listStudies
+      summary: Worklist
+      description: |
+        Mỗi hàng là một **ca chụp** (không phải một chỉ định). Hai tab của giao diện tương ứng
+        `tab=PENDING` (chỉ `SCHEDULED`) và `tab=DONE` (các trạng thái còn lại).
+        Các khoảng thời gian có sẵn trên giao diện (Hôm nay, Hôm qua, −3, −7, −30 ngày) do client quy đổi thành `date_from`/`date_to`.
+        `time_field` chọn loại thời gian để lọc. Bộ lọc “quá hạn”, “đồng bộ HIS”, “BHYT” **không có** (hoãn, `01-scope.md` mục 3.2).
+        Ghi `audit_log` (`READ`).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      parameters:
+        - $ref: '#/components/parameters/WorklistTab'
+        - $ref: '#/components/parameters/TimeField'
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+        - name: status
+          in: query
+          description: Lọc theo một hoặc nhiều trạng thái
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/StudyStatus'
+        - name: department_id
+          in: query
+          description: Khoa hoặc nhóm trong cây khoa → nhóm → máy; gồm cả nhánh con
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int64
+        - name: device_id
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int64
+        - name: modality
+          in: query
+          schema:
+            $ref: '#/components/schemas/Modality'
+        - name: patient_class
+          in: query
+          schema:
+            $ref: '#/components/schemas/PatientClass'
+        - name: patient_code
+          in: query
+          schema:
+            type: string
+        - name: full_name
+          in: query
+          schema:
+            type: string
+        - name: visit_code
+          in: query
+          description: Mã LSVV
+          schema:
+            type: string
+        - name: order_code
+          in: query
+          description: Mã phiếu
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Một trang worklist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorklistPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /studies/status-counts:
+    get:
+      tags: [studies]
+      operationId: getStudyStatusCounts
+      summary: Đếm số ca theo nhóm trạng thái
+      description: |
+        Số đếm hiển thị ở tiêu đề và bộ lọc (IN-09). **Tính từ DB tại thời điểm gọi** theo cùng các điều kiện lọc
+        (trừ `status` và `tab`), **không phải hằng số**. Index `study(status, scheduled_at)` phục vụ truy vấn này.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      parameters:
+        - $ref: '#/components/parameters/TimeField'
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+        - name: department_id
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int64
+        - name: device_id
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int64
+        - name: modality
+          in: query
+          schema:
+            $ref: '#/components/schemas/Modality'
+        - name: patient_class
+          in: query
+          schema:
+            $ref: '#/components/schemas/PatientClass'
+        - name: patient_code
+          in: query
+          schema:
+            type: string
+        - name: full_name
+          in: query
+          schema:
+            type: string
+        - name: visit_code
+          in: query
+          schema:
+            type: string
+        - name: order_code
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Số đếm theo trạng thái
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusCounts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /studies/{studyId}:
+    parameters:
+      - $ref: '#/components/parameters/StudyId'
+    get:
+      tags: [studies]
+      operationId: getStudy
+      summary: Chi tiết một ca chụp
+      description: |
+        Gồm bệnh nhân, chỉ định, dịch vụ, máy, báo cáo hiện hành. Trả `study_instance_uid` để client mở OHIF bằng deep-link;
+        **không trả ảnh**. Ghi `audit_log` (`READ`).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      responses:
+        '200':
+          description: Chi tiết ca chụp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [studies]
+      operationId: updateStudy
+      summary: Sửa thông tin ca chụp
+      description: |
+        Sửa dịch vụ, máy, thời gian chụp, `study_instance_uid` (điền tay trong 8 tuần để deep-link OHIF, ERD 4.4).
+        **Không** đổi được `status` ở đây (dùng `/transitions`). Chỉ `TECHNICIAN` và `ADMIN` được đặt `study_instance_uid`.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN]
+      x-audit: UPDATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudyUpdate'
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Study'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /studies/{studyId}/transitions:
+    parameters:
+      - $ref: '#/components/parameters/StudyId'
+    post:
+      tags: [studies]
+      operationId: transitionStudy
+      summary: Chuyển trạng thái ca chụp
+      description: |
+        Thực hiện một chuyển T1–T10 trong `03-state-machine.md`. Backend kiểm lại **mọi** điều kiện (Frontend không phải lớp bảo vệ).
+        Mỗi chuyển thành công ghi một dòng `study_status_history` và một dòng `audit_log` (`STATUS_CHANGE`).
+
+        Vai trò được phép phụ thuộc `to_status` ❓ (đề xuất, xem `03-state-machine.md` mục 2.5):
+
+        | Chuyển | Vai trò |
+        |---|---|
+        | `SCHEDULED → UNREAD` | `TECHNICIAN`, `ADMIN` |
+        | `UNREAD → READING` | `RADIOLOGIST` |
+        | `READING → UNREAD` (bỏ dở) | người đang đọc, `ADMIN` |
+        | `READING → READ` | người đang đọc |
+        | `READ → APPROVING` | `APPROVER` |
+        | `APPROVING → APPROVED` | `APPROVER` (khác người đọc) |
+        | `APPROVING → READING` (trả lại) | `APPROVER` |
+        | `APPROVED → READING` (mở lại) | `ADMIN`, `APPROVER` |
+        | `SCHEDULED → CANCELLED` | `ADMIN`, `TECHNICIAN` |
+
+        `reason` **bắt buộc** với bỏ dở, trả lại, mở lại, hủy.
+      x-allowed-roles: [ADMIN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: STATUS_CHANGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionRequest'
+            examples:
+              openToRead:
+                summary: Bác sĩ mở ca để đọc
+                value:
+                  to_status: READING
+              returnForRevision:
+                summary: Người duyệt trả lại để sửa (cần lý do)
+                value:
+                  to_status: READING
+                  reason: Thiếu mô tả vùng tổn thương (dữ liệu giả)
+      responses:
+        '200':
+          description: Đã chuyển trạng thái
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Sai vai trò, hoặc không phải người đang giữ ca, hoặc người duyệt trùng người đọc
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Chuyển không hợp lệ từ trạng thái hiện tại, ca đang bị người khác khóa, hoặc yêu cầu đồng thời
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Thiếu điều kiện (ví dụ báo cáo thiếu `technique`/`conclusion`, thiếu `reason`, hủy khi đã có ảnh)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /studies/{studyId}/status-history:
+    parameters:
+      - $ref: '#/components/parameters/StudyId'
+    get:
+      tags: [studies]
+      operationId: getStudyStatusHistory
+      summary: Lịch sử chuyển trạng thái
+      description: Chỉ đọc, append-only. Không có API sửa hoặc xóa. Ghi `audit_log` (`READ`).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      responses:
+        '200':
+          description: Lịch sử, mới nhất trước
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatusHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /studies/{studyId}/reports:
+    parameters:
+      - $ref: '#/components/parameters/StudyId'
+    get:
+      tags: [reports]
+      operationId: listStudyReports
+      summary: Mọi version báo cáo của ca chụp
+      description: |
+        Mỗi version là một bản ghi riêng (`02-erd.md` 4.10); bản cũ không bị sửa hay ghi đè.
+        Ghi `audit_log` (`READ`).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      responses:
+        '200':
+          description: Danh sách báo cáo, version mới nhất trước
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Report'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /studies/{studyId}/reports/current:
+    parameters:
+      - $ref: '#/components/parameters/StudyId'
+    get:
+      tags: [reports]
+      operationId: getCurrentReport
+      summary: Báo cáo hiện hành
+      description: Bản có `version` lớn nhất. Ghi `audit_log` (`READ`).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: READ
+      responses:
+        '200':
+          description: Báo cáo hiện hành
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [reports]
+      operationId: saveCurrentReportDraft
+      summary: Lưu nháp báo cáo hiện hành
+      description: |
+        Chỉ sửa được khi ca đang `READING` **và** người gọi là người đang đọc (`reading_user_id`); báo cáo hiện hành ở `DRAFT`.
+        Version mới do backend tạo khi chuyển trạng thái (trả lại rồi chốt lại, hoặc mở lại ca đã duyệt), **không** tạo qua endpoint này.
+        Lưu nháp **không** bắt buộc đủ trường; điều kiện `technique` và `conclusion` chỉ kiểm khi chuyển `READING → READ`.
+      x-allowed-roles: [RADIOLOGIST]
+      x-audit: UPDATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportWrite'
+      responses:
+        '200':
+          description: Đã lưu nháp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Ca không ở trạng thái `READING` hoặc báo cáo không còn là `DRAFT`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /identity-conflicts:
+    get:
+      tags: [identity-conflicts]
+      operationId: listIdentityConflicts
+      summary: Danh sách lệch dữ liệu HIS ↔ RIS
+      description: |
+        Cho màn "Danh sách lệch dữ liệu" (`04-his-ris-reconciliation.md` mục 8). `ris_value`/`his_value` là dữ liệu bệnh nhân:
+        bảo vệ như bảng `patient`. Ghi `audit_log` (`READ`).
+      x-allowed-roles: [ADMIN, TECHNICIAN]
+      x-audit: READ
+      parameters:
+        - name: resolution
+          in: query
+          schema:
+            $ref: '#/components/schemas/ConflictResolution'
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [HIS, MANUAL]
+        - name: field_name
+          in: query
+          schema:
+            type: string
+        - name: patient_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: detected_from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: detected_to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Danh sách conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityConflictPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /identity-conflicts/{conflictId}:
+    parameters:
+      - $ref: '#/components/parameters/ConflictId'
+    get:
+      tags: [identity-conflicts]
+      operationId: getIdentityConflict
+      summary: Chi tiết một lệch dữ liệu
+      x-allowed-roles: [ADMIN, TECHNICIAN]
+      x-audit: READ
+      responses:
+        '200':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityConflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /identity-conflicts/{conflictId}/resolution:
+    parameters:
+      - $ref: '#/components/parameters/ConflictId'
+    post:
+      tags: [identity-conflicts]
+      operationId: resolveIdentityConflict
+      summary: Xử lý một lệch dữ liệu
+      description: |
+        Chọn `KEEP_RIS`, `TAKE_HIS` hoặc `MANUAL_EDIT` (`04-his-ris-reconciliation.md` mục 2). `TAKE_HIS` và `MANUAL_EDIT` đổi
+        dữ liệu `patient` và ghi `audit_log` với `before_value`/`after_value`. `manual_value` bắt buộc khi `MANUAL_EDIT`.
+        Chỉ xử lý được conflict đang `PENDING`. Vai trò xử lý ❓.
+      x-allowed-roles: [ADMIN, TECHNICIAN]
+      x-audit: UPDATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConflictResolutionRequest'
+      responses:
+        '200':
+          description: Đã xử lý
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityConflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict không còn ở trạng thái `PENDING`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /audit-logs:
+    get:
+      tags: [audit-logs]
+      operationId: listAuditLogs
+      summary: Xem nhật ký truy vết
+      description: |
+        Append-only, chỉ đọc; **chỉ `ADMIN`** (IN-15, kịch bản nghiệm thu bước 8). Truy vết theo bệnh nhân qua `patient_id`.
+        Việc xem audit log cũng ghi `audit_log` (`READ`).
+      x-allowed-roles: [ADMIN]
+      x-audit: READ
+      parameters:
+        - name: patient_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: actor_user_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: action
+          in: query
+          schema:
+            $ref: '#/components/schemas/AuditAction'
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+        - name: entity_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: occurred_from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: occurred_to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Một trang nhật ký, mới nhất trước
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /departments:
+    get:
+      tags: [reference-data]
+      operationId: listDepartments
+      summary: Cây khoa → nhóm
+      description: Dựng cây lọc khoa → nhóm → máy. Không phải dữ liệu bệnh nhân; dữ liệu seed.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      responses:
+        '200':
+          description: Danh sách khoa và nhóm
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Department'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /devices:
+    get:
+      tags: [reference-data]
+      operationId: listDevices
+      summary: Danh sách máy chụp
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      parameters:
+        - name: department_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: modality
+          in: query
+          schema:
+            $ref: '#/components/schemas/Modality'
+      responses:
+        '200':
+          description: Danh sách máy
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /service-items:
+    get:
+      tags: [reference-data]
+      operationId: listServiceItems
+      summary: Danh mục dịch vụ CĐHA
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      parameters:
+        - name: modality
+          in: query
+          schema:
+            $ref: '#/components/schemas/Modality'
+      responses:
+        '200':
+          description: Danh sách dịch vụ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /integration/his/orders:
+    post:
+      tags: [future]
+      operationId: receiveHisOrder
+      summary: "[HOÃN] Nhận chỉ định từ HIS (HL7 v2 ORM^O01)"
+      description: |
+        **Chưa làm trong 8 tuần (H-03).** Chỉ giữ chỗ. HL7 v2 đi qua MLLP (socket, không phải HTTP); endpoint này đại diện cho
+        cổng nội bộ của `HisGateway`. Trong 8 tuần, `HisGateway` đọc file JSON giả.
+      x-status: future
+      x-allowed-roles: [system]
+      responses:
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '501':
+          description: Chưa triển khai
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /integration/pacs/study-notifications:
+    post:
+      tags: [future]
+      operationId: receivePacsStudyNotification
+      summary: "[HOÃN] PACS báo đã nhận ảnh một study"
+      description: |
+        **Chưa làm trong 8 tuần (H-02).** Về sau PACS gọi vào đây để RIS tự chuyển `SCHEDULED → UNREAD`.
+        Trong 8 tuần chuyển này do `TECHNICIAN` làm tay. Không nhận ảnh DICOM (R-02).
+      x-status: future
+      x-allowed-roles: [system]
+      responses:
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '501':
+          description: Chưa triển khai
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    PatientId:
+      name: patientId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    StudyId:
+      name: studyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ConflictId:
+      name: conflictId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    Page:
+      name: page
+      in: query
+      description: Số trang, bắt đầu từ 1
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+    Sort:
+      name: sort
+      in: query
+      description: '`<trường>,<asc|desc>`, ví dụ `scheduled_at,desc`'
+      schema:
+        type: string
+    WorklistTab:
+      name: tab
+      in: query
+      description: '`PENDING` = tab Chờ (chỉ `SCHEDULED`); `DONE` = tab Đã thực hiện (các trạng thái còn lại)'
+      schema:
+        type: string
+        enum: [PENDING, DONE]
+    TimeField:
+      name: time_field
+      in: query
+      description: |
+        Loại thời gian để lọc `date_from`/`date_to`: `PERFORMED` (thời gian thực hiện), `ORDERED` (thời gian chỉ định),
+        `APPROVED` (thời gian duyệt). Danh sách đủ các lựa chọn của dropdown ở UI tham chiếu ❓ (README Phần 9 câu 4).
+      schema:
+        type: string
+        enum: [PERFORMED, ORDERED, APPROVED]
+        default: PERFORMED
+    DateFrom:
+      name: date_from
+      in: query
+      description: Từ ngày (theo múi giờ hiển thị Asia/Ho_Chi_Minh), gồm cả ngày này
+      schema:
+        type: string
+        format: date
+    DateTo:
+      name: date_to
+      in: query
+      description: Đến ngày, gồm cả ngày này
+      schema:
+        type: string
+        format: date
+  responses:
+    BadRequest:
+      description: Request sai định dạng
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Chưa đăng nhập hoặc token hết hạn
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Sai vai trò (chặn ở tầng API)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Không tìm thấy
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Xung đột (trùng mã, trạng thái không cho phép, hoặc yêu cầu đồng thời)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unprocessable:
+      description: Thiếu điều kiện nghiệp vụ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Mã lỗi máy đọc được
+          example: STUDY_INVALID_TRANSITION
+        message:
+          type: string
+          example: Không thể chuyển từ SCHEDULED sang READING
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              issue:
+                type: string
+    StudyStatus:
+      type: string
+      description: Mã trạng thái theo ERD (`02-erd.md` 4.5). `CANCELLED` là đề xuất ❓
+      enum: [SCHEDULED, UNREAD, READING, READ, APPROVING, APPROVED, CANCELLED]
+    RoleCode:
+      type: string
+      enum: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+    Gender:
+      type: string
+      enum: [M, F, O, U]
+    DobPrecision:
+      type: string
+      description: Độ chính xác của `date_of_birth`
+      enum: [DAY, MONTH, YEAR]
+    PatientClass:
+      type: string
+      enum: [INPATIENT, OUTPATIENT]
+    SyncStatus:
+      type: string
+      enum: [NOT_SYNCED, SYNCED, RESULT_SENT, FAILED]
+    OrderSource:
+      type: string
+      enum: [MANUAL, HIS]
+    Modality:
+      type: string
+      enum: [CT, MR, CR, DX, US]
+    ReportStatus:
+      type: string
+      enum: [DRAFT, FINAL, APPROVED, RETURNED]
+    ReportOrigin:
+      type: string
+      description: '`AI_DRAFT*` chỉ để chỗ cho giai đoạn AI (H-04); trong 8 tuần luôn là `MANUAL`'
+      enum: [MANUAL, AI_DRAFT, AI_DRAFT_EDITED]
+    ConflictResolution:
+      type: string
+      enum: [PENDING, KEEP_RIS, TAKE_HIS, MANUAL_EDIT]
+    AuditAction:
+      type: string
+      enum: [READ, CREATE, UPDATE, DELETE, STATUS_CHANGE, LOGIN, PRINT, EXPORT]
+    UserRef:
+      type: object
+      required: [id, full_name]
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        full_name:
+          type: string
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: bscdha
+        password:
+          type: string
+          format: password
+    LoginResponse:
+      type: object
+      required: [access_token, token_type, expires_in, user]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Số giây
+        user:
+          $ref: '#/components/schemas/CurrentUser'
+    CurrentUser:
+      type: object
+      required: [id, username, full_name, roles]
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        full_name:
+          type: string
+        email:
+          type: string
+        department_id:
+          type: integer
+          format: int64
+          nullable: true
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleCode'
+    Patient:
+      type: object
+      required: [id, patient_code, full_name, dob_precision, gender]
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        patient_code:
+          type: string
+          description: Khóa đối chiếu chính, ↔ PID-3 loại PI
+          example: TEST0001
+        his_patient_id:
+          type: string
+          nullable: true
+        full_name:
+          type: string
+          example: Nguyễn Văn Giả A
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+          description: Khi `dob_precision` là `YEAR` thì lưu `YYYY-01-01`, là `MONTH` thì lưu `YYYY-MM-01`
+          example: '1958-01-01'
+        dob_precision:
+          $ref: '#/components/schemas/DobPrecision'
+        age:
+          type: integer
+          nullable: true
+          readOnly: true
+          description: Chỉ đọc. Tính từ `date_of_birth` tại thời điểm gọi; `null` nếu chưa có ngày sinh
+          example: 68
+        age_approximate:
+          type: boolean
+          readOnly: true
+          description: '`true` khi `dob_precision` là `YEAR` hoặc `MONTH` (hiển thị dạng xấp xỉ, ví dụ "~68")'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        social_insurance_no:
+          type: string
+          nullable: true
+          example: GIA0000000001
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatientCreate:
+      type: object
+      description: Không có `age`
+      required: [patient_code, full_name, dob_precision, gender]
+      properties:
+        patient_code:
+          type: string
+          example: TEST0001
+        full_name:
+          type: string
+          example: Nguyễn Văn Giả A
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+        dob_precision:
+          $ref: '#/components/schemas/DobPrecision'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        social_insurance_no:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+    PatientUpdate:
+      type: object
+      description: Cập nhật từng phần. Không có `age`; không đổi được `patient_code`
+      properties:
+        full_name:
+          type: string
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+        dob_precision:
+          $ref: '#/components/schemas/DobPrecision'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        social_insurance_no:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+    PatientPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Patient'
+    PageMeta:
+      type: object
+      required: [page, page_size, total]
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+          format: int64
+    ImagingOrder:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        order_code:
+          type: string
+          description: Mã phiếu, ↔ ORC-3 (Filler Order Number, RIS đặt)
+          example: PH20261031001
+        patient_id:
+          type: integer
+          format: int64
+        visit_code:
+          type: string
+          nullable: true
+          description: Mã LSVV
+        source:
+          $ref: '#/components/schemas/OrderSource'
+        his_order_id:
+          type: string
+          nullable: true
+          description: ↔ ORC-2 (Placer Order Number, HIS đặt)
+        sync_status:
+          $ref: '#/components/schemas/SyncStatus'
+        ordering_department_id:
+          type: integer
+          format: int64
+        ordering_doctor_name:
+          type: string
+          description: Tên tự do trong 8 tuần (`02-erd.md` mục 9) ❓
+        patient_class:
+          $ref: '#/components/schemas/PatientClass'
+        room:
+          type: string
+          nullable: true
+        bed:
+          type: string
+          nullable: true
+        clinical_diagnosis:
+          type: string
+          nullable: true
+        ordered_at:
+          type: string
+          format: date-time
+        studies:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/Study'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    ImagingOrderCreate:
+      type: object
+      required: [patient_id, ordering_department_id, ordering_doctor_name, patient_class, studies]
+      properties:
+        patient_id:
+          type: integer
+          format: int64
+        visit_code:
+          type: string
+          nullable: true
+        ordering_department_id:
+          type: integer
+          format: int64
+        ordering_doctor_name:
+          type: string
+        patient_class:
+          $ref: '#/components/schemas/PatientClass'
+        room:
+          type: string
+          nullable: true
+        bed:
+          type: string
+          nullable: true
+        clinical_diagnosis:
+          type: string
+          nullable: true
+        ordered_at:
+          type: string
+          format: date-time
+          description: Mặc định là thời điểm tạo
+        studies:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/StudyCreate'
+    ImagingOrderUpdate:
+      type: object
+      properties:
+        visit_code:
+          type: string
+          nullable: true
+        ordering_department_id:
+          type: integer
+          format: int64
+        ordering_doctor_name:
+          type: string
+        patient_class:
+          $ref: '#/components/schemas/PatientClass'
+        room:
+          type: string
+          nullable: true
+        bed:
+          type: string
+          nullable: true
+        clinical_diagnosis:
+          type: string
+          nullable: true
+    ImagingOrderPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ImagingOrder'
+    Study:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        accession_number:
+          type: string
+          readOnly: true
+          description: Sinh tự động khi tạo ca (`YYYYMMDD` + 5 chữ số, ERD 4.3); ↔ OBR-18 và DICOM (0008,0050)
+          example: '2026103100001'
+        order_id:
+          type: integer
+          format: int64
+        service_item_id:
+          type: integer
+          format: int64
+        device_id:
+          type: integer
+          format: int64
+          nullable: true
+        status:
+          $ref: '#/components/schemas/StudyStatus'
+        study_instance_uid:
+          type: string
+          nullable: true
+          description: Để client mở OHIF bằng deep-link. API không trả ảnh
+          example: 1.2.826.0.1.3680043.8.498.10000001
+        scheduled_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Bắt đầu chụp
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Kết thúc chụp, đặt khi chuyển `SCHEDULED → UNREAD`
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Luôn `null` cho tới khi định nghĩa “quá hạn” được chốt (README Phần 9 câu 2)
+        performed_by:
+          allOf:
+            - $ref: '#/components/schemas/UserRef'
+          type: object
+          nullable: true
+        reading_user:
+          allOf:
+            - $ref: '#/components/schemas/UserRef'
+          type: object
+          nullable: true
+        approving_user:
+          allOf:
+            - $ref: '#/components/schemas/UserRef'
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    StudyCreate:
+      type: object
+      required: [service_item_id, scheduled_at]
+      properties:
+        service_item_id:
+          type: integer
+          format: int64
+        device_id:
+          type: integer
+          format: int64
+          nullable: true
+        scheduled_at:
+          type: string
+          format: date-time
+    StudyUpdate:
+      type: object
+      properties:
+        service_item_id:
+          type: integer
+          format: int64
+        device_id:
+          type: integer
+          format: int64
+          nullable: true
+        scheduled_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        study_instance_uid:
+          type: string
+          nullable: true
+          description: Chỉ `TECHNICIAN`, `ADMIN` được đặt
+    StudyDetail:
+      allOf:
+        - $ref: '#/components/schemas/Study'
+        - type: object
+          properties:
+            patient:
+              $ref: '#/components/schemas/Patient'
+            order:
+              $ref: '#/components/schemas/ImagingOrder'
+            service_item:
+              $ref: '#/components/schemas/ServiceItem'
+            device:
+              allOf:
+                - $ref: '#/components/schemas/Device'
+              type: object
+              nullable: true
+            current_report:
+              allOf:
+                - $ref: '#/components/schemas/Report'
+              type: object
+              nullable: true
+    WorklistRow:
+      type: object
+      description: Một hàng worklist, đã ghép sẵn các bảng liên quan
+      properties:
+        study:
+          $ref: '#/components/schemas/Study'
+        order:
+          $ref: '#/components/schemas/ImagingOrder'
+        patient:
+          $ref: '#/components/schemas/Patient'
+        service_item:
+          $ref: '#/components/schemas/ServiceItem'
+        device:
+          allOf:
+            - $ref: '#/components/schemas/Device'
+          type: object
+          nullable: true
+        department:
+          allOf:
+            - $ref: '#/components/schemas/Department'
+          type: object
+          nullable: true
+        report_summary:
+          type: object
+          nullable: true
+          description: Lấy từ báo cáo hiện hành; nguồn duy nhất của kỹ thuật và kết luận (`02-erd.md` mục 10)
+          properties:
+            version:
+              type: integer
+            status:
+              $ref: '#/components/schemas/ReportStatus'
+            technique:
+              type: string
+              nullable: true
+            conclusion:
+              type: string
+              nullable: true
+    WorklistPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/WorklistRow'
+    StatusCounts:
+      type: object
+      description: Số ca theo trạng thái, tính từ DB tại thời điểm gọi
+      required: [total, by_status]
+      properties:
+        total:
+          type: integer
+          format: int64
+        by_status:
+          type: object
+          description: Khóa là mã trạng thái; trạng thái không có ca thì trả 0
+          additionalProperties:
+            type: integer
+            format: int64
+          example:
+            SCHEDULED: 12
+            UNREAD: 5
+            READING: 2
+            READ: 3
+            APPROVING: 1
+            APPROVED: 40
+            CANCELLED: 1
+    TransitionRequest:
+      type: object
+      required: [to_status]
+      properties:
+        to_status:
+          $ref: '#/components/schemas/StudyStatus'
+        reason:
+          type: string
+          nullable: true
+          description: Bắt buộc khi bỏ dở, trả lại, mở lại, hủy; chuỗi chỉ có khoảng trắng bị từ chối
+        note:
+          type: string
+          nullable: true
+    TransitionResult:
+      type: object
+      required: [study, history_entry]
+      properties:
+        study:
+          $ref: '#/components/schemas/Study'
+        history_entry:
+          $ref: '#/components/schemas/StatusHistoryEntry'
+        report:
+          allOf:
+            - $ref: '#/components/schemas/Report'
+          type: object
+          nullable: true
+          description: Báo cáo hiện hành sau chuyển (có thể là bản mới khi trả lại rồi chốt lại, hoặc mở lại ca đã duyệt)
+    StatusHistoryEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        study_id:
+          type: integer
+          format: int64
+        from_status:
+          allOf:
+            - $ref: '#/components/schemas/StudyStatus'
+          type: string
+          nullable: true
+        to_status:
+          $ref: '#/components/schemas/StudyStatus'
+        changed_by:
+          $ref: '#/components/schemas/UserRef'
+        changed_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          nullable: true
+        note:
+          type: string
+          nullable: true
+    Report:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        study_id:
+          type: integer
+          format: int64
+        version:
+          type: integer
+          description: Mỗi version là một bản ghi riêng; `UK(study_id, version)`
+        status:
+          $ref: '#/components/schemas/ReportStatus'
+        origin:
+          $ref: '#/components/schemas/ReportOrigin'
+        technique:
+          type: string
+          nullable: true
+        findings:
+          type: string
+          nullable: true
+        diagnosis:
+          type: string
+          nullable: true
+        conclusion:
+          type: string
+          nullable: true
+        recommendation:
+          type: string
+          nullable: true
+        created_by:
+          $ref: '#/components/schemas/UserRef'
+        created_at:
+          type: string
+          format: date-time
+        approved_by:
+          allOf:
+            - $ref: '#/components/schemas/UserRef'
+          type: object
+          nullable: true
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+    ReportWrite:
+      type: object
+      description: Nội dung báo cáo (5 trường, IN-10). Lưu nháp không bắt buộc đủ trường
+      properties:
+        technique:
+          type: string
+          nullable: true
+        findings:
+          type: string
+          nullable: true
+        diagnosis:
+          type: string
+          nullable: true
+        conclusion:
+          type: string
+          nullable: true
+        recommendation:
+          type: string
+          nullable: true
+    IdentityConflict:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        patient_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: '`null` nếu chưa khớp được bệnh nhân'
+        order_id:
+          type: integer
+          format: int64
+          nullable: true
+        source:
+          type: string
+          enum: [HIS, MANUAL]
+        field_name:
+          type: string
+          example: date_of_birth
+        ris_value:
+          type: string
+          nullable: true
+          example: '1958'
+        his_value:
+          type: string
+          nullable: true
+          example: '1952'
+        detected_at:
+          type: string
+          format: date-time
+        resolution:
+          $ref: '#/components/schemas/ConflictResolution'
+        resolved_by:
+          allOf:
+            - $ref: '#/components/schemas/UserRef'
+          type: object
+          nullable: true
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+    IdentityConflictPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/IdentityConflict'
+    ConflictResolutionRequest:
+      type: object
+      required: [resolution]
+      properties:
+        resolution:
+          type: string
+          enum: [KEEP_RIS, TAKE_HIS, MANUAL_EDIT]
+        manual_value:
+          type: string
+          nullable: true
+          description: Bắt buộc khi `MANUAL_EDIT`
+        note:
+          type: string
+          nullable: true
+    ClinicalSnapshot:
+      type: object
+      properties:
+        order_id:
+          type: integer
+          format: int64
+        source:
+          type: string
+          enum: [SEED, HIS]
+        fetched_at:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          description: JSON 5 tab lâm sàng. Cấu trúc do snapshot quyết định, không mô hình hóa thành bảng (`02-erd.md` mục 5)
+          additionalProperties: true
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        actor_user_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: '`null` khi do hệ thống thực hiện'
+        actor_username:
+          type: string
+          description: Snapshot, không phụ thuộc join (ERD 4.8)
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        entity_type:
+          type: string
+          example: study
+        entity_id:
+          type: integer
+          format: int64
+          nullable: true
+        patient_id:
+          type: integer
+          format: int64
+          nullable: true
+        before_value:
+          type: object
+          nullable: true
+          additionalProperties: true
+        after_value:
+          type: object
+          nullable: true
+          additionalProperties: true
+        ip_address:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+    AuditLogPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditLog'
+    Department:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        parent_id:
+          type: integer
+          format: int64
+          nullable: true
+        type:
+          type: string
+          enum: [KHOA, NHOM]
+        sort_order:
+          type: integer
+    Device:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        modality:
+          $ref: '#/components/schemas/Modality'
+        department_id:
+          type: integer
+          format: int64
+        ae_title:
+          type: string
+          nullable: true
+          description: Để trống trong 8 tuần, dùng khi làm MWL (H-01)
+    ServiceItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        modality:
+          $ref: '#/components/schemas/Modality'
+        body_part:
+          type: string
