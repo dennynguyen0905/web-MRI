@@ -63,7 +63,7 @@ erDiagram
         bigint order_id FK
         bigint service_item_id FK
         bigint device_id FK "nullable"
-        varchar status "6 trang thai"
+        varchar status "6 trang thai + CANCELLED cho xac nhan"
         varchar study_instance_uid UK "nullable - lap khi co anh"
         datetime scheduled_at "thoi gian chup du kien"
         datetime started_at "nullable"
@@ -90,7 +90,7 @@ erDiagram
     REPORT {
         bigint id PK
         bigint study_id FK
-        int version
+        int version "UK(study_id, version) - tang khi tra lai hoac mo lai"
         varchar status "DRAFT|FINAL|APPROVED|RETURNED"
         varchar origin "MANUAL|AI_DRAFT|AI_DRAFT_EDITED"
         text technique "ky thuat"

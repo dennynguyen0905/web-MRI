@@ -2,11 +2,14 @@
 
 Tài liệu con của README.md, mục 6C: [T1] ERD rút gọn. Phạm vi bảng bám đúng README: Bệnh nhân, Chỉ định, Ca chụp, Lịch sử trạng thái, Máy/Modality, Khoa, User/Role, Audit log — cộng thêm 4 bảng bắt buộc vì nguyên tắc dự án (xem mục 3).
 
-| Phiên bản | 0.2 (nháp) |
+| Phiên bản | 0.9 (nháp — còn ❓ ở mục 9, chưa nâng lên v1.0) |
 |---|---|
-| Ngày | 2026-10-17 |
+| Ngày | 2026-10-31 (v0.2: 2026-10-17) |
 | DB | MySQL 8, InnoDB, utf8mb4_0900_ai_ci |
 | Migration | Flyway, V{n}__{mo_ta}.sql |
+| Điều kiện lên v1.0 | Nhóm xác nhận 5 ô ở mục 9 (gồm `facility_id`, phụ thuộc câu 8 ở `01-scope.md`) |
+
+> Thay đổi so với v0.2: thêm trạng thái `CANCELLED` (❓), bảng ánh xạ mã trạng thái DB/API/UI/Frontend (4.5), quy tắc version báo cáo (4.10), tuổi xấp xỉ khi chỉ biết năm sinh (4.2), mục 10 "Cần Frontend sửa". Mọi điểm gắn ❓ là **đề xuất, chờ nhóm xác nhận**, chưa phải quyết định.
 
 ## 1. Sơ đồ
 
@@ -78,7 +81,7 @@ erDiagram
         bigint order_id FK
         bigint service_item_id FK
         bigint device_id FK "nullable"
-        varchar status "6 trang thai"
+        varchar status "6 trang thai + CANCELLED cho xac nhan"
         varchar study_instance_uid UK "nullable - lap khi co anh"
         datetime scheduled_at "thoi gian chup du kien"
         datetime started_at "nullable"
@@ -105,7 +108,7 @@ erDiagram
     REPORT {
         bigint id PK
         bigint study_id FK
-        int version
+        int version "UK(study_id, version) - tang khi tra lai hoac mo lai"
         varchar status "DRAFT|FINAL|APPROVED|RETURNED"
         varchar origin "MANUAL|AI_DRAFT|AI_DRAFT_EDITED"
         text technique "ky thuat"
@@ -238,23 +241,23 @@ erDiagram
 
 4.1. Không lưu cột tuổi. age luôn tính từ date_of_birth tại thời điểm hiển thị. Đây là nguyên nhân trực tiếp của lỗi “Tuổi 0” ở README 2.5.
 
-4.2. Ngày sinh thiếu chính xác. HIS tuyến dưới thường chỉ có năm sinh. date_of_birth lưu 1958-01-01 + dob_precision = 'YEAR'; UI hiển thị “1958”, tuổi hiển thị dạng xấp xỉ. Nếu chỉ lưu DATE thì năm sau không phân biệt được “sinh 01/01” với “chỉ biết năm”.
+4.2. Ngày sinh thiếu chính xác. HIS tuyến dưới thường chỉ có năm sinh. date_of_birth lưu 1958-01-01 + dob_precision = 'YEAR'; UI hiển thị “1958”, tuổi hiển thị dạng xấp xỉ (ví dụ “~68”, vì không biết đã qua sinh nhật hay chưa; API trả thêm cờ `age_approximate`). Frontend hiện hiển thị như tuổi chính xác — xem mục 10. Nếu chỉ lưu DATE thì năm sau không phân biệt được “sinh 01/01” với “chỉ biết năm”.
 
 4.3. accession_number là khóa nối RIS ↔ DICOM. Sinh ngay khi tạo study, kể cả khi chưa có ảnh, vì MWL (H-01) sẽ cần. Quy ước đề xuất: YYYYMMDD + số tăng dần 5 chữ số.
 
 4.4. study_instance_uid nullable và UNIQUE. Trong 8 tuần điền bằng tay hoặc seed để deep-link sang OHIF. Sau này do máy chụp sinh. MySQL cho phép nhiều NULL trong cột UNIQUE nên không vướng.
 
-4.5. Trạng thái lưu bằng VARCHAR(20), không dùng ENUM của MySQL. ENUM khó thêm giá trị bằng migration. Hằng số:
+4.5. Trạng thái lưu bằng VARCHAR(20), không dùng ENUM của MySQL. ENUM khó thêm giá trị bằng migration. Giá trị trong DB và trong API theo cột **DB / API** dưới đây là chuẩn; **Frontend phải đổi mã theo ERD**, không đổi ERD cho khớp Frontend.
 
-| DB | UI |
-|---|---|
-| SCHEDULED | Chờ thực hiện |
-| UNREAD | Chưa đọc |
-| READING | Đang đọc |
-| READ | Đọc xong |
-| APPROVING | Đang duyệt |
-| APPROVED | Duyệt xong |
-| CANCELLED ❓ | Đã hủy — chờ xác nhận, README Phần 4 đang đánh dấu (?) |
+| DB / API (chuẩn) | UI (tiếng Việt) | Mã trong Frontend hiện tại (`Frontend/src/lib/types.ts`) |
+|---|---|---|
+| SCHEDULED | Chờ thực hiện | CHO_THUC_HIEN |
+| UNREAD | Chưa đọc | CHUA_DOC |
+| READING | Đang đọc | DANG_DOC |
+| READ | Đọc xong | DOC_XONG |
+| APPROVING | Đang duyệt | DANG_DUYET |
+| APPROVED | Duyệt xong | DUYET_XONG |
+| CANCELLED ❓ | Đã hủy | *(chưa có)* — đề xuất giữ, chờ xác nhận, README Phần 4 đang đánh dấu (?) |
 
 4.6. Không xóa cứng dữ liệu nghiệp vụ. patient, imaging_order, study dùng is_deleted + deleted_at khi có nhu cầu; hiện chỉ cho phép hủy bằng trạng thái.
 
@@ -280,6 +283,14 @@ erDiagram
 
 Hai điều này không làm bây giờ nhưng đã biết trước: his_message_log (lưu MSH-10, raw message, ACK, số lần retry) sẽ thêm ở H-03; và PID-5 ghép họ tên là nguồn lệch dữ liệu được dự đoán trước, phải có test case riêng theo yêu cầu README 2.5.
 
+4.10. Version báo cáo (❓ đề xuất, chờ nhóm xác nhận).
+
+- `DRAFT → FINAL → APPROVED` của một lượt đọc dùng **cùng một bản ghi** `report`, cùng `version`.
+- Báo cáo bị trả lại (`APPROVING → READING`): bản hiện tại đổi sang `RETURNED` và **giữ nguyên làm lịch sử**. Khi bác sĩ chốt lại (`READING → READ`), tạo bản ghi **mới** với `version + 1`, trạng thái `FINAL`.
+- Mở lại ca đã duyệt (`APPROVED → READING`): tạo bản ghi `report` **mới** (`version + 1`, trạng thái `DRAFT`). Bản `APPROVED` cũ **giữ nguyên, không sửa, không ghi đè**. Bản mới **không kế thừa** `approved_by_user_id` / `approved_at` — phải được duyệt lại. Nội dung bản mới có thể sao chép từ bản `APPROVED` làm điểm xuất phát.
+- Bản hiện hành của một `study` là bản có `version` lớn nhất; chỉ bản `APPROVED` mới được gửi về HIS (ORU^R01).
+- Ràng buộc: `UK(study_id, version)`.
+
 ## 5. Vì sao thông tin lâm sàng là JSON chứ không phải 15 bảng
 
 5 tab ở README 3.3 (sinh hiệu, xét nghiệm, chẩn đoán chức năng, đơn thuốc/vật tư, phẫu thuật thủ thuật) là dữ liệu của HIS, RIS chỉ đọc và hiển thị. Mô hình hóa đầy đủ sẽ tốn khoảng 15 bảng, không bảng nào RIS được quyền ghi, và gần như chắc chắn sai so với cấu trúc HIS thật.
@@ -294,7 +305,7 @@ Trong 8 tuần: lưu nguyên payload JSON theo order_id, render theo từng tab.
 | imaging_order | UK(order_code), IDX(patient_id), IDX(visit_code), IDX(ordered_at) |
 | study | UK(accession_number), UK(study_instance_uid), IDX(status, scheduled_at), IDX(device_id, scheduled_at), IDX(order_id) |
 | study_status_history | IDX(study_id, changed_at) |
-| report | IDX(study_id, version) |
+| report | UK(study_id, version) |
 | audit_log | IDX(patient_id, occurred_at), IDX(actor_user_id, occurred_at), IDX(entity_type, entity_id) |
 | identity_conflict | IDX(resolution, detected_at) |
 
@@ -318,8 +329,26 @@ Theo README 6C mục [HOÃN]: đoàn khám, mã lưu trữ, mã bệnh phẩm, B
 
 ## 9. Cần xác nhận
 
-- [ ] Có trạng thái CANCELLED không, và ai được hủy (liên quan README Phần 4 câu hỏi 1)
-- [ ] due_at tính theo quy tắc nào (Phần 9 câu 2) — chưa có thì để NULL, chưa dùng
-- [ ] Một imaging_order có nhiều study — đúng với nghiệp vụ không, hay UI tham chiếu là 1–1
-- [ ] “Bác sĩ chỉ định” lưu tên tự do hay phải là app_user (ảnh hưởng vai trò Bác sĩ lâm sàng ở README mục 5)
-- [ ] Có cần cột facility_id không — phụ thuộc câu hỏi 8 ở 01-scope.md
+Cột "Đề xuất" là trả lời của tài liệu; cột "Trạng thái" cho biết nhóm đã xác nhận hay chưa. **Chưa ô nào được nhóm xác nhận**, nên ERD giữ ở v0.9.
+
+| Câu hỏi | Đề xuất | Trạng thái |
+|---|---|---|
+| Có trạng thái `CANCELLED` không, ai được hủy | **Có.** Chỉ hủy khi ca đang `SCHEDULED` (chưa có ảnh). Vai trò hủy: `ADMIN`, `TECHNICIAN`. Bắt buộc ghi lý do vào `study_status_history.reason`. `CANCELLED` là trạng thái cuối (liên quan README Phần 4, Phần 9 câu 1) | ❓ đề xuất, chờ nhóm xác nhận |
+| `due_at` tính theo quy tắc nào | **Để NULL, chưa dùng**, cho đến khi định nghĩa "quá hạn" được chốt (README Phần 9 câu 2) | ❓ đề xuất, chờ nhóm xác nhận |
+| Một `imaging_order` có nhiều `study` | **Giữ quan hệ 1–n** (khớp IN-02 trong scope doc). Cần đối chiếu với nghiệp vụ thật ở UI tham chiếu | ❓ đề xuất, chờ nhóm xác nhận |
+| "Bác sĩ chỉ định" lưu tên tự do hay là `app_user` | **Tên tự do** (`ordering_doctor_name`) trong 8 tuần; ghi vào nợ kỹ thuật tuần 8. Vai trò Bác sĩ lâm sàng (README mục 5) là người dùng đăng nhập nhưng chưa gắn khóa ngoại vào chỉ định | ❓ đề xuất, chờ nhóm xác nhận |
+| Có cần `facility_id` không | **Không thêm** (một bệnh viện, nhiều khoa). Phụ thuộc câu 8 ở `01-scope.md`, câu này **chưa được xác nhận** nên ô này cũng chưa chốt | ❓ đề xuất, chờ nhóm xác nhận |
+
+## 10. Cần Frontend sửa
+
+Đối chiếu `Frontend/src/lib/types.ts`, `status.ts`, `format.ts` và `data/mock.ts` (đọc ngày 2026-10-31) với ERD. Khi nối API thật, các điểm sau lệch. **Ghi nhận ở đây, chưa sửa code Frontend.**
+
+- **Mã trạng thái**: Frontend dùng `CHO_THUC_HIEN / CHUA_DOC / DANG_DOC / DOC_XONG / DANG_DUYET / DUYET_XONG`; phải đổi theo bảng ở 4.5. Chưa có `CANCELLED`.
+- **`Study.technique`, `Study.conclusion`** không có trong ERD; nguồn duy nhất của hai nội dung này là bảng `report` (bản hiện hành, xem 4.10). Worklist lấy qua join, không nhân bản lên `study`.
+- **`Study.bhytViolation`, `Patient.healthCheckCode`** chưa có trong ERD vì thuộc nhóm [HOÃN] (BHYT chi tiết, đoàn khám). **Không thêm vào ERD.** Frontend nên bỏ hoặc coi là dữ liệu tạm cho tới khi có quy tắc.
+- **Người thực hiện bằng tên, không bằng id**: Frontend lưu `performedByName`, `readingUserName`, `approvingUserName`, `createdByName`, `approvedByName`, `changedByName`. ERD lưu khóa ngoại (`performed_by_user_id`, `reading_user_id`, `approving_user_id`, `created_by_user_id`, `approved_by_user_id`, `changed_by_user_id`). API trả id kèm tên hiển thị.
+- **Thiếu `ImagingOrder.hisOrderId`** (`his_order_id`, ORC-2) trong kiểu dữ liệu Frontend.
+- **Seed `accession_number`**: mock dùng `90000001…` (số tăng dần), ERD 4.3 quy ước `YYYYMMDD` + 5 chữ số (ví dụ `2026103100001`).
+- **Tuổi xấp xỉ**: `calcAge` trong `format.ts` trả tuổi như số chính xác kể cả khi `dob_precision = 'YEAR'`; theo 4.2 phải hiển thị xấp xỉ (ví dụ "~68").
+- **Version báo cáo**: `useWorklistStore.ts` tăng `version` ngay trên cùng một đối tượng khi báo cáo bị trả lại rồi chốt lại, và mock lấy `report.id = studyId`. ERD 4.10 yêu cầu bản ghi mới cho mỗi version.
+- **Snapshot lâm sàng**: `CLINICAL_SNAPSHOT` có dữ liệu ở tab 3 và 4; scope 3.3 yêu cầu bảng rỗng + ghi chú "chờ tích hợp HIS" (xem bảng thay đổi phạm vi ở `01-scope.md`).
