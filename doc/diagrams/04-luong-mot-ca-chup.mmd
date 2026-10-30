@@ -1,0 +1,23 @@
+sequenceDiagram
+    autonumber
+    participant HIS
+    participant RIS
+    participant MAY as Máy chụp
+    participant PACS
+    participant AI as AI Backend
+    participant OHIF as OHIF + AI Panel
+    actor BS as Bác sĩ CĐHA
+
+    HIS->>RIS: Gửi chỉ định (bệnh nhân + dịch vụ)
+    RIS->>RIS: Đối chiếu dữ liệu bệnh nhân (xem 2.5)
+    RIS->>MAY: Đẩy Modality Worklist
+    MAY->>PACS: Gửi ảnh DICOM (không qua RIS)
+    PACS->>RIS: Thông báo đã nhận ảnh → trạng thái "Chưa đọc"
+    PACS->>AI: Thông báo study mới
+    AI->>PACS: Trả DICOM SEG + đặc trưng + report nháp
+    BS->>OHIF: Mở ca chụp → trạng thái "Đang đọc"
+    OHIF->>PACS: Lấy ảnh gốc + mask AI
+    BS->>OHIF: Sửa / xác nhận report
+    OHIF->>RIS: Gửi report chính thức → "Đọc xong"
+    RIS->>RIS: Bác sĩ duyệt → "Duyệt xong"
+    RIS->>HIS: Trả kết quả

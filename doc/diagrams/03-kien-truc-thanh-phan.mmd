@@ -1,0 +1,18 @@
+flowchart LR
+    HIS[HIS<br/>Hệ thống bệnh viện]
+    RIS[RIS<br/>Nghiệp vụ & worklist]
+    MOD[Máy chụp<br/>CT / MR / CR / US]
+    PACS[(PACS<br/>Lưu trữ DICOM)]
+    AI[AI Backend<br/>Pipeline phân tích]
+    OHIF[OHIF Viewer<br/>+ AI Panel]
+    BS((Bác sĩ CĐHA))
+
+    HIS -- "chỉ định" --> RIS
+    RIS -- "kết quả" --> HIS
+    RIS -- "Modality Worklist" --> MOD
+    MOD -- "ảnh DICOM (C-STORE)" --> PACS
+    PACS -- "báo study mới" --> AI
+    AI -- "DICOM SEG + report nháp" --> PACS
+    PACS -- "DICOMweb" --> OHIF
+    BS -- "xem, sửa, xác nhận" --> OHIF
+    OHIF -- "report chính thức" --> RIS

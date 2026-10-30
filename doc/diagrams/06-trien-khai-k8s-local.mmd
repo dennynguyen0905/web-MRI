@@ -1,0 +1,15 @@
+flowchart TB
+    U((Trình duyệt)) --> ING[Ingress / NodePort]
+
+    subgraph K8S["Cụm Kubernetes local — namespace vr-ris"]
+        ING --> FE[ris-frontend<br/>React build + nginx<br/>Deployment]
+        ING --> BE[ris-backend<br/>Spring Boot<br/>Deployment]
+        ING -.-> OHIF[ohif-viewer<br/>Deployment]
+        FE --> BE
+        BE --> DB[(mysql<br/>StatefulSet + PVC)]
+        BE -.-> HIS[mock-his<br/>Deployment]
+        BE -.-> PACS[(orthanc<br/>PACS + DICOMweb<br/>StatefulSet + PVC)]
+        OHIF -.-> PACS
+    end
+
+    MOD[Giả lập máy chụp<br/>dcm4che CLI] -.->|DICOM C-STORE / MWL| PACS

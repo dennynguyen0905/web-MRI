@@ -1,0 +1,31 @@
+gantt
+    title VR-RIS PACS — 8 tuần
+    dateFormat  YYYY-MM-DD
+    axisFormat  %d/%m
+
+    section Thiết kế nền tảng
+    Scope doc + câu hỏi mở           :a1, 2026-10-19, 5d
+    ERD rút gọn                      :a2, 2026-10-19, 5d
+    State machine + quy tắc HIS/RIS  :a3, 2026-10-19, 5d
+    Sơ đồ luồng ngoại lệ             :a4, 2026-10-21, 3d
+    Stack + kiến trúc                :b1, after a1, 5d
+    API contract RIS core            :b2, after a2, 5d
+
+    section Figma
+    Design system từ UI cũ           :f1, after a3, 5d
+    Wireframe AI Panel               :f2, after a3, 10d
+    Review với bác sĩ                :f3, after f2, 2d
+
+    section Code RIS core
+    Setup Spring Boot/React/MySQL, Docker, k8s, auth :c1, after b2, 5d
+    Bệnh nhân + chỉ định + worklist  :c2, after c1, 10d
+    State machine + bộ lọc           :c3, after c1, 10d
+    Giao diện worklist + lâm sàng    :c4, after c1, 15d
+
+    section Chuẩn bị Phase PACS
+    Đặc tả DICOM + mapping tag       :d1, 2026-11-09, 10d
+    POC Orthanc/dcm4chee + OHIF      :d2, after d1, 5d
+
+    section Chốt
+    Deploy toàn bộ lên k8s local     :e0, 2026-12-03, 4d
+    Kiểm thử + demo nội bộ           :e1, 2026-12-07, 5d

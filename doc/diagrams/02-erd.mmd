@@ -1,0 +1,193 @@
+erDiagram
+    DEPARTMENT ||--o{ DEPARTMENT : "khoa -> nhom"
+    DEPARTMENT ||--o{ DEVICE : "so huu"
+    DEPARTMENT ||--o{ IMAGING_ORDER : "khoa chi dinh"
+
+    PATIENT ||--o{ IMAGING_ORDER : "co"
+    PATIENT ||--o{ IDENTITY_CONFLICT : "ghi nhan lech"
+
+    IMAGING_ORDER ||--o{ STUDY : "gom"
+    IMAGING_ORDER ||--o| CLINICAL_SNAPSHOT : "snapshot HIS"
+
+    SERVICE_ITEM ||--o{ STUDY : "dich vu"
+    DEVICE ||--o{ STUDY : "thuc hien tren"
+
+    STUDY ||--o{ STUDY_STATUS_HISTORY : "lich su"
+    STUDY ||--o{ REPORT : "bao cao"
+
+    APP_USER ||--o{ USER_ROLE : "duoc gan"
+    ROLE ||--o{ USER_ROLE : "gan cho"
+    APP_USER ||--o{ STUDY_STATUS_HISTORY : "nguoi chuyen"
+    APP_USER ||--o{ REPORT : "nguoi viet"
+    APP_USER ||--o{ AUDIT_LOG : "actor"
+
+    PATIENT {
+        bigint id PK
+        varchar patient_code UK "ma benh nhan - khoa doi chieu chinh"
+        varchar his_patient_id "nullable"
+        varchar full_name
+        date date_of_birth "nullable"
+        varchar dob_precision "DAY|MONTH|YEAR"
+        varchar gender "M|F|O|U"
+        varchar social_insurance_no "BHXH, nullable"
+        varchar phone
+        varchar address
+        datetime created_at
+        datetime updated_at
+        varchar created_by
+        varchar updated_by
+    }
+
+    IMAGING_ORDER {
+        bigint id PK
+        varchar order_code UK "ma phieu = Filler Order Number ORC-3"
+        bigint patient_id FK
+        varchar visit_code "ma LSVV, nullable"
+        varchar source "MANUAL|HIS"
+        varchar his_order_id "Placer Order Number ORC-2, nullable"
+        varchar sync_status "NOT_SYNCED|SYNCED|RESULT_SENT|FAILED"
+        bigint ordering_department_id FK
+        varchar ordering_doctor_name
+        varchar patient_class "INPATIENT|OUTPATIENT"
+        varchar room "buong"
+        varchar bed "giuong"
+        text clinical_diagnosis "chan doan ban dau"
+        datetime ordered_at
+        datetime created_at
+        datetime updated_at
+    }
+
+    STUDY {
+        bigint id PK
+        varchar accession_number UK "khoa noi RIS - DICOM"
+        bigint order_id FK
+        bigint service_item_id FK
+        bigint device_id FK "nullable"
+        varchar status "6 trang thai"
+        varchar study_instance_uid UK "nullable - lap khi co anh"
+        datetime scheduled_at "thoi gian chup du kien"
+        datetime started_at "nullable"
+        datetime completed_at "nullable"
+        datetime due_at "nullable - qua han, chua chot"
+        bigint performed_by_user_id FK "KTV, nullable"
+        bigint reading_user_id FK "nullable"
+        bigint approving_user_id FK "nullable"
+        datetime created_at
+        datetime updated_at
+    }
+
+    STUDY_STATUS_HISTORY {
+        bigint id PK
+        bigint study_id FK
+        varchar from_status "nullable khi khoi tao"
+        varchar to_status
+        bigint changed_by_user_id FK
+        datetime changed_at
+        varchar reason "nullable"
+        text note "nullable"
+    }
+
+    REPORT {
+        bigint id PK
+        bigint study_id FK
+        int version
+        varchar status "DRAFT|FINAL|APPROVED|RETURNED"
+        varchar origin "MANUAL|AI_DRAFT|AI_DRAFT_EDITED"
+        text technique "ky thuat"
+        text findings "mo ta"
+        text diagnosis "chan doan"
+        text conclusion "ket luan"
+        text recommendation "khuyen nghi"
+        bigint created_by_user_id FK
+        datetime created_at
+        bigint approved_by_user_id FK "nullable"
+        datetime approved_at "nullable"
+    }
+
+    SERVICE_ITEM {
+        bigint id PK
+        varchar code UK
+        varchar name "ten chi dinh"
+        varchar modality "CT|MR|CR|DX|US"
+        varchar body_part "bo phan chup"
+        boolean is_active
+    }
+
+    DEVICE {
+        bigint id PK
+        varchar code UK
+        varchar name "ten may"
+        varchar modality
+        bigint department_id FK
+        varchar ae_title "nullable - cho MWL sau nay"
+        varchar station_name "nullable"
+        boolean is_active
+    }
+
+    DEPARTMENT {
+        bigint id PK
+        varchar code UK
+        varchar name
+        bigint parent_id FK "nullable - cay khoa/nhom"
+        varchar type "KHOA|NHOM"
+        int sort_order
+        boolean is_active
+    }
+
+    IDENTITY_CONFLICT {
+        bigint id PK
+        bigint patient_id FK "nullable neu chua khop duoc"
+        bigint order_id FK "nullable"
+        varchar source "HIS|MANUAL"
+        varchar field_name
+        varchar ris_value
+        varchar his_value
+        datetime detected_at
+        varchar resolution "PENDING|KEEP_RIS|TAKE_HIS|MANUAL_EDIT"
+        bigint resolved_by_user_id FK "nullable"
+        datetime resolved_at "nullable"
+    }
+
+    CLINICAL_SNAPSHOT {
+        bigint id PK
+        bigint order_id FK
+        json payload "5 tab lam sang"
+        datetime fetched_at
+        varchar source "SEED|HIS"
+    }
+
+    APP_USER {
+        bigint id PK
+        varchar username UK
+        varchar password_hash
+        varchar full_name
+        varchar email
+        bigint department_id FK "nullable"
+        boolean is_active
+        datetime created_at
+    }
+
+    ROLE {
+        bigint id PK
+        varchar code UK "ADMIN|CLINICIAN|TECHNICIAN|RADIOLOGIST|APPROVER"
+        varchar name
+    }
+
+    USER_ROLE {
+        bigint user_id FK
+        bigint role_id FK
+    }
+
+    AUDIT_LOG {
+        bigint id PK
+        bigint actor_user_id FK "nullable - he thong"
+        varchar actor_username "snapshot, khong join"
+        varchar action "READ|CREATE|UPDATE|DELETE|STATUS_CHANGE|LOGIN|PRINT|EXPORT"
+        varchar entity_type
+        bigint entity_id "nullable"
+        bigint patient_id "nullable - truy vet theo benh nhan"
+        json before_value "nullable"
+        json after_value "nullable"
+        varchar ip_address
+        datetime occurred_at
+    }
