@@ -10,11 +10,11 @@
 | **Loại** | Hệ thống RIS tích hợp PACS + AI hỗ trợ đọc phim cho bệnh viện |
 | **Bối cảnh** | **Đồ án môn học** — không triển khai lâm sàng thật |
 | **Stack** | React · Java Spring Boot · MySQL · Docker + Kubernetes (local) |
-| **Trạng thái** | Giai đoạn thiết kế — **chưa bắt đầu coding** |
+| **Trạng thái** | Giai đoạn thiết kế. Frontend prototype (dữ liệu giả) đã có; **Backend chưa bắt đầu** — xem 7.2 |
 | **Thời gian** | **8 tuần** (xem lịch chi tiết ở Phần 7) |
 | **Mục tiêu hết 8 tuần** | RIS core chạy được với dữ liệu nhập tay + thiết kế xong (chưa code) phần tích hợp PACS |
 | **Ngôn ngữ tài liệu** | Tiếng Việt |
-| **Cập nhật lần cuối** | 2026-10-17 |
+| **Cập nhật lần cuối** | 2026-10-31 |
  
 ### Cấu trúc repo
 
@@ -22,9 +22,13 @@
 .
 ├── README.md              # file này — tài liệu gốc của dự án
 ├── Frontend/              # React 19 + Vite (prototype chạy bằng dữ liệu giả); xem Frontend/README.md
-├── doc/                   # tài liệu thiết kế
-│   ├── 01-scope.md        #   scope doc
-│   ├── 02-erd.md          #   ERD rút gọn
+├── doc/                   # tài liệu thiết kế (tất cả là bản nháp chờ nhóm xác nhận)
+│   ├── 01-scope.md        #   scope doc (v0.9)
+│   ├── 02-erd.md          #   ERD rút gọn (v0.9)
+│   ├── 03-state-machine.md          #   đặc tả state machine (README 6A)
+│   ├── 04-his-ris-reconciliation.md #   quy tắc đối chiếu HIS ↔ RIS (README 2.5)
+│   ├── 05-luong-ngoai-le.md         #   sơ đồ luồng ngoại lệ (README 6E)
+│   ├── api/openapi.yaml   #   API contract RIS core, nháp v0.1 (README 6B)
 │   ├── diagrams/          #   nguồn Mermaid (.mmd) + ảnh xuất từ draw.io (.png) cùng tên
 │   └── archive/           #   bản .docx cũ của 01-scope và 02-erd (giữ để đối chiếu)
 ├── backend/               # (dự kiến) Spring Boot — chưa có
@@ -163,6 +167,8 @@ sequenceDiagram
 - [ ] Mọi lần phát hiện lệch phải ghi log riêng để rà soát định kỳ
 - [ ] Tuổi phải được **tính từ ngày sinh**, không lưu cứng (tránh lỗi "Tuổi 0")
 **Yêu cầu kiểm thử:** có test case riêng cho các trường hợp lệch họ tên, lệch ngày sinh, thiếu ngày sinh, trùng mã bệnh nhân.
+
+> Bản nháp trả lời 5 checkbox trên và danh sách test case nằm ở `doc/04-his-ris-reconciliation.md` (**nháp, chờ nhóm xác nhận** — vì vậy các checkbox vẫn để trống).
  
 ### 2.6. Triển khai local (Docker + Kubernetes)
  
@@ -262,6 +268,8 @@ stateDiagram-v2
  
 > Các mũi tên có dấu **(?)** là **giả định**, chưa được xác nhận. Luồng chính (thẳng hàng) khớp với các trạng thái thấy trên giao diện hiện tại.
 > Trạng thái "Đang duyệt" có thể chỉ tồn tại ở một số khoa — cần hỏi lại.
+>
+> Bản nháp đặc tả (vai trò, điều kiện chuyển, đề xuất giữ/bỏ từng mũi tên (?), thêm trạng thái `CANCELLED` ❓) nằm ở `doc/03-state-machine.md` — **nháp, chờ nhóm xác nhận**; sơ đồ nguồn ở `doc/diagrams/05-state-machine.mmd`.
  
 Cần đặc tả rõ (**chưa có — xem Phần 9**):
 - Ai (vai trò nào) được chuyển trạng thái nào
@@ -292,15 +300,15 @@ Mỗi hạng mục được gắn nhãn thời điểm làm:
 - **[HOÃN]** = để ngoài phạm vi 8 tuần, không làm lúc này
 - **[NGOÀI PHẠM VI]** = không làm trong đồ án
 ### A. Nghiệp vụ
-- [ ] **[T1] Scope doc** — trả lời các câu hỏi ở Phần 9 nhóm "Phạm vi" và "Tích hợp". **Không có file này thì mọi quyết định sau đều có thể sai.**
-- [ ] **[T1] Đặc tả state machine** trạng thái ca chụp (Phần 4) — xác nhận hoặc gạch bỏ các mũi tên (?)
-- [ ] **[T1] Quy tắc đối chiếu dữ liệu HIS ↔ RIS** (Phần 2.5)
+- [ ] **[T1] Scope doc** — trả lời các câu hỏi ở Phần 9 nhóm "Phạm vi" và "Tích hợp". **Không có file này thì mọi quyết định sau đều có thể sai.** *(nháp v0.9 ở `doc/01-scope.md`, chờ nhóm xác nhận)*
+- [ ] **[T1] Đặc tả state machine** trạng thái ca chụp (Phần 4) — xác nhận hoặc gạch bỏ các mũi tên (?) *(nháp ở `doc/03-state-machine.md`, chờ nhóm xác nhận)*
+- [ ] **[T1] Quy tắc đối chiếu dữ liệu HIS ↔ RIS** (Phần 2.5) *(nháp ở `doc/04-his-ris-reconciliation.md`, chờ nhóm xác nhận)*
 - [ ] **[//] Ma trận phân quyền RBAC** (vai trò × chức năng × dữ liệu) — viết lúc code phần auth
 - [ ] **[//] Use case / User story** theo vai trò — chỉ cho các chức năng đang code
 - [ ] **[HOÃN] SRS đầy đủ** — trong 8 tuần, README + scope doc + user story thay thế SRS
 ### B. Kiến trúc & tích hợp
 - [ ] **[T2] Quyết định stack + sơ đồ kiến trúc** (Phần 8) — chốt nhanh, không để mở quá tuần 2
-- [ ] **[T2] API contract (OpenAPI)** cho RIS core: bệnh nhân, chỉ định, worklist, trạng thái — sinh từ springdoc-openapi hoặc viết tay trước rồi đối chiếu
+- [ ] **[T2] API contract (OpenAPI)** cho RIS core: bệnh nhân, chỉ định, worklist, trạng thái — sinh từ springdoc-openapi hoặc viết tay trước rồi đối chiếu *(nháp v0.1 ở `doc/api/openapi.yaml`, chờ nhóm xác nhận)*
 - [ ] **[T2] Sơ đồ triển khai local** (Phần 2.6) + quy ước đặt tên image, namespace, biến môi trường
 - [ ] **[T3] Dockerfile cho frontend/backend + manifest k8s** (Deployment, Service, StatefulSet MySQL, ConfigMap, Secret)
 - [ ] **[T4–T5] Đặc tả tích hợp DICOM** — MWL, C-STORE, DICOMweb, AE Title
@@ -308,7 +316,7 @@ Mỗi hạng mục được gắn nhãn thời điểm làm:
 - [ ] **[HOÃN] API contract PACS ↔ AI, đặc tả output AI** (mask format, feature schema)
 - [ ] **[HOÃN] Host lên web / cloud** — tính sau khi chạy ổn trên local
 ### C. Dữ liệu
-- [ ] **[T1] ERD rút gọn** — chỉ: Bệnh nhân, Chỉ định, Ca chụp, Lịch sử trạng thái, Máy/Modality, Khoa, User/Role, Audit log
+- [ ] **[T1] ERD rút gọn** — chỉ: Bệnh nhân, Chỉ định, Ca chụp, Lịch sử trạng thái, Máy/Modality, Khoa, User/Role, Audit log *(nháp v0.9 ở `doc/02-erd.md`, chờ nhóm xác nhận)*
 - [ ] **[//] Data dictionary** — viết dần theo từng bảng khi code
 - [ ] **[T4–T5] Mapping DICOM tag ↔ trường RIS**
 - [ ] **[HOÃN] Bảng phụ**: đoàn khám, mã lưu trữ, mã bệnh phẩm, BHYT chi tiết
@@ -319,8 +327,8 @@ Mỗi hạng mục được gắn nhãn thời điểm làm:
 - [ ] **[//] Dữ liệu mẫu (seed data)** — sinh dữ liệu giả, tuyệt đối không dùng tên/mã bệnh nhân thật
 - [ ] **[NGOÀI PHẠM VI] Pháp lý VN về hồ sơ bệnh án điện tử, kiểm định phần mềm thiết bị y tế** — đồ án không triển khai lâm sàng; chỉ nêu trong báo cáo như hướng phát triển
 ### E. Thiết kế trực quan (sơ đồ, Figma)
-- [x] **[T1] Sơ đồ Mermaid**: kiến trúc (2.2), luồng một ca chụp (2.3), state machine (4) — **đã có bản nháp trong file này**, cần xác nhận
-- [ ] **[T1] Sơ đồ luồng ngoại lệ** (Mermaid): chụp lại, hủy chỉ định, sai thông tin bệnh nhân, mất kết nối HIS
+- [x] **[T1] Sơ đồ Mermaid**: kiến trúc (2.2), luồng một ca chụp (2.3), state machine (4) — **đã có bản nháp trong file này**, cần xác nhận. Nguồn `.mmd` tách riêng ở `doc/diagrams/`
+- [ ] **[T1] Sơ đồ luồng ngoại lệ** (Mermaid): chụp lại, hủy chỉ định, sai thông tin bệnh nhân, mất kết nối HIS *(nháp ở `doc/05-luong-ngoai-le.md`, chờ nhóm xác nhận)*
 - [ ] **[T2] Design system trong Figma** — trích từ UI hiện tại: màu, typography, spacing, component bảng / bộ lọc / modal / badge trạng thái. **Không vẽ lại màn hình đã có**, chỉ chuẩn hóa.
 - [ ] **[T2–T3] Wireframe AI Panel trong OHIF** — màn hình duy nhất chưa có tiền lệ: overlay mask, panel kết quả, report nháp, nút xác nhận/sửa của bác sĩ. Đáng đầu tư kỹ.
 - [ ] **[T3] Review wireframe AI Panel với bác sĩ CĐHA** (nếu sắp xếp được)
@@ -390,6 +398,8 @@ gantt
 | **7** | — | — | Thêm Orthanc + OHIF vào cụm k8s; gửi ảnh mẫu bằng dcm4che; hoàn thiện UI | Mở được ảnh DICOM mẫu từ worklist |
 | **8** | Cập nhật README, báo cáo đồ án, ghi lại nợ kỹ thuật | — | Deploy toàn bộ lên k8s local, sửa lỗi, kiểm thử | Demo end-to-end từ một lệnh deploy, dữ liệu giả |
  
+> **Trạng thái thực tế ngày 2026-10-31 (tuần 3):** Frontend đã đi trước kế hoạch — có prototype React chạy bằng dữ liệu giả (worklist, bộ lọc, modal, báo cáo, state machine phía giao diện), chưa nối API. **Backend chưa bắt đầu** (không có Spring Boot, MySQL, Flyway, Docker, k8s trong repo). Bộ tài liệu thiết kế tuần 1–2 đã có bản nháp nhưng **chưa được nhóm xác nhận**; wireframe AI Panel và Design system trong Figma chưa có trong repo.
+
 ### 7.3. Ngoài phạm vi 8 tuần (giai đoạn sau)
  
 Theo thứ tự phụ thuộc:
@@ -431,18 +441,24 @@ Theo thứ tự phụ thuộc:
 | Hạng mục | Gợi ý | Lý do | Trạng thái |
 |---|---|---|---|
 | PACS server | Orthanc | Có image Docker chính thức, nhẹ, có plugin DICOMweb và Modality Worklist, OHIF kết nối được | 💡 |
-| Phiên bản | Java 21, Spring Boot 3.x, MySQL 8, React 18 | Bản LTS / ổn định hiện hành | 💡 |
+| Phiên bản | Java 21, Spring Boot 3.x, MySQL 8, React 18 | Bản LTS / ổn định hiện hành | ❓ (Frontend đang dùng React 19 — xem 8.3) |
 | Build tool backend | Maven | Phổ biến trong môn học, tài liệu nhiều | 💡 |
 | Build tool frontend | Vite | Nhanh, cấu hình ít | 💡 |
-| UI library | Ant Design | Bảng dữ liệu, bộ lọc, tree, modal sẵn có — sát với UI tham chiếu | 💡 |
-| Gọi API / state server | TanStack Query + Axios | Cache, refetch worklist tiện | 💡 |
+| UI library | Ant Design | Bảng dữ liệu, bộ lọc, tree, modal sẵn có — sát với UI tham chiếu | ❓ (Frontend thực tế **không** dùng Ant Design — xem 8.3) |
+| Gọi API / state server | TanStack Query + Axios | Cache, refetch worklist tiện | ❓ (Frontend thực tế **không** dùng — xem 8.3) |
 | Migration DB | Flyway | Schema được version cùng code, chạy tự động khi backend khởi động | 💡 |
 | Xác thực | Spring Security + JWT | Đủ cho đồ án, không cần SSO/LDAP | 💡 |
 | Tài liệu API | springdoc-openapi (Swagger UI) | Sinh OpenAPI từ code, khớp Phần 6 mục B | 💡 |
 | K8s local | Docker Desktop Kubernetes / minikube / kind | Tùy máy của nhóm | ❓ |
 | Dev loop | Docker Compose song song với k8s | Xem 2.6 | 💡 |
-| Mock HIS | Một module Spring Boot nhỏ hoặc JSON server | Giả lập API chỉ định | ❓ |
+| Mock HIS | **HL7 v2** — `ORM^O01` (chỉ định), `ORU^R01` (kết quả) qua MLLP. Code Mock HIS là [HOÃN] (H-03); trong 8 tuần chỉ có interface `HisGateway` + bản giả lập đọc file JSON. *(trước đây gợi ý: "Một module Spring Boot nhỏ hoặc JSON server")* | HL7 v2 định nghĩa sẵn khóa đối chiếu (PID-3, ORC-2/3); xem `doc/01-scope.md` mục 4.1 | ✅ |
 | Message queue | — | Chỉ cần khi có AI pipeline / retry HIS | ⏸ |
+
+### 8.3. Frontend đã triển khai khác gợi ý ban đầu
+
+Đối chiếu `Frontend/package.json` (2026-10-31): Frontend hiện có là **React 19.2, TypeScript 5.9, Vite 7.1, Tailwind CSS 4.1**, **không** dùng Ant Design, TanStack Query hay Axios — mọi control (nút, ô nhập, select, modal, popover, bảng) đều tự viết. Điều này **đã triển khai khác gợi ý ban đầu** ở 8.2 (React 18, Ant Design, TanStack Query + Axios).
+
+Mục 8.1 ("Frontend ✅ React") vẫn đúng. **Giữ hay đổi** (React 18 hay 19, tự viết control hay dùng Ant Design, `fetch` hay TanStack Query + Axios) là quyết định của nhóm — các ô liên quan để ❓.
  
 ---
  
@@ -451,17 +467,17 @@ Theo thứ tự phụ thuộc:
 > Agent gặp câu hỏi ở đây mà chưa có câu trả lời: **hỏi người dùng, không tự quyết**.
  
 **Nghiệp vụ**
-1. Ai được phép chuyển từng trạng thái ca chụp? Có cho quay lui không?
-2. "Ca chụp quá hạn" định nghĩa thế nào (quá hạn so với mốc nào, bao lâu)?
+1. Ai được phép chuyển từng trạng thái ca chụp? Có cho quay lui không? *(đề xuất ❓ ở `doc/03-state-machine.md`, chờ nhóm xác nhận)*
+2. "Ca chụp quá hạn" định nghĩa thế nào (quá hạn so với mốc nào, bao lâu)? *(chưa định nghĩa; `study.due_at` để NULL — `doc/02-erd.md`)*
 3. "Vi phạm BHYT" được xác định bằng quy tắc gì? Do RIS tính hay HIS trả về?
 4. Dropdown "Thời gian thực hiện" có những lựa chọn nào khác?
 5. ~~Lệch năm sinh HIS/RIS là lỗi hay đúng?~~ → **Đã xác nhận là lỗi.** Quy tắc xử lý cần chốt: xem Phần 2.5.
 6. Mã đoàn khám / khám sức khỏe theo đoàn là luồng riêng hay dùng chung worklist?
  
 **Tích hợp**
-7. ~~HIS là sản phẩm nào?~~ → **Đồ án: không có HIS thật, dùng Mock HIS.** Còn mở: Mock HIS mô phỏng theo HL7 v2, FHIR hay REST đơn giản?
-8. Một bệnh viện hay nhiều bệnh viện? → **Mặc định một bệnh viện** (đồ án), cần xác nhận.
-9. ~~Máy chụp thật?~~ → **Giả lập bằng dcm4che CLI.** Còn mở: demo những modality nào (CT, CR, US…)?
+7. ~~HIS là sản phẩm nào?~~ → **Đồ án: không có HIS thật, dùng Mock HIS.** ~~Còn mở: Mock HIS mô phỏng theo HL7 v2, FHIR hay REST đơn giản?~~ → ✅ **Đã chốt: HL7 v2** (`ORM^O01` / `ORU^R01` qua MLLP), xem `doc/01-scope.md` mục 4.1 và mục 8.
+8. Một bệnh viện hay nhiều bệnh viện? → **Mặc định một bệnh viện** (đồ án), cần xác nhận. *(2026-10-31: nhóm chưa xác nhận — vẫn là mặc định)*
+9. ~~Máy chụp thật?~~ → **Giả lập bằng dcm4che CLI.** Còn mở: demo những modality nào (CT, CR, US…)? Đề xuất CR + CT ở `doc/01-scope.md` mục 8, **chưa được nhóm xác nhận** ❓.
 10. ~~PACS có sẵn?~~ → **Dùng PACS mã nguồn mở** (gợi ý Orthanc, xem 8.2).
  
 **AI**
@@ -475,9 +491,9 @@ Theo thứ tự phụ thuộc:
 16. ~~Deadline?~~ → **8 tuần.**
  
 **Đồ án**
-17. Nhóm có bao nhiêu người, chia vai trò thế nào (FE / BE / DevOps / tài liệu)?
+17. ~~Nhóm có bao nhiêu người, chia vai trò thế nào (FE / BE / DevOps / tài liệu)?~~ → ✅ **3–4 người**; bốn vai A–D ở `doc/01-scope.md` mục 7. Tên người trong từng vai **chưa điền** ❓.
 18. Tiêu chí chấm điểm của môn ưu tiên gì (tài liệu thiết kế, demo, độ hoàn thiện code, kiến trúc, DevOps)?
-19. Phần AI có **bắt buộc** trong phạm vi môn không, hay chỉ cần thiết kế/trình bày?
+19. ~~Phần AI có **bắt buộc** trong phạm vi môn không, hay chỉ cần thiết kế/trình bày?~~ → ✅ **Chỉ cần thiết kế + trình bày**, không code AI (`doc/01-scope.md` mục 8; deliverable IN-21, IN-22). Câu 11–13 chỉ cần nêu như câu hỏi mở trong báo cáo.
  
 ---
  
@@ -515,3 +531,4 @@ Theo thứ tự phụ thuộc:
 | 2026-10-17 | Khởi tạo tài liệu từ phân tích ảnh chụp màn hình hệ thống hiện tại | Claude |
 | 2026-10-17 | Thêm lịch 8 tuần, sơ đồ Mermaid (kiến trúc, sequence, state machine, gantt), known issue lệch dữ liệu HIS/RIS, nhánh thiết kế Figma | Claude |
 | 2026-10-17 | Chốt stack (React, Spring Boot, MySQL, Docker + K8s local); bối cảnh đồ án môn học; sơ đồ triển khai local; cập nhật câu hỏi mở và lịch tuần | Claude |
+| 2026-10-31 | Đưa README vào gốc repo (kèm mục "Cấu trúc repo"). **Ẩn tên và mã bệnh nhân thật ở mục 2.5** (thay bằng ghi chú), theo nguyên tắc không dùng dữ liệu bệnh nhân thật ở bất kỳ đâu. Chuyển scope doc và ERD sang Markdown, tách 7 sơ đồ Mermaid ra `doc/diagrams/`. Thêm bản nháp `doc/03-state-machine.md`, `04-his-ris-reconciliation.md`, `05-luong-ngoai-le.md`, `api/openapi.yaml`; nâng ERD và scope doc lên v0.9. Cập nhật Phần 7.2 (trạng thái thực tế), 8.2 + 8.3 (Frontend thực tế khác gợi ý; Mock HIS ✅ HL7 v2), Phần 9 (đánh dấu câu 7, 17, 19). Không tick checkbox Phần 6 cho tài liệu nháp chưa được nhóm xác nhận | Claude/agent |
