@@ -1,20 +1,22 @@
 stateDiagram-v2
-    state "Chờ thực hiện" as CHO
-    state "Chưa đọc" as CHUA_DOC
-    state "Đang đọc" as DANG_DOC
-    state "Đọc xong" as DOC_XONG
-    state "Đang duyệt" as DANG_DUYET
-    state "Duyệt xong" as DUYET_XONG
+    state "Chờ thực hiện (SCHEDULED)" as SCHEDULED
+    state "Chưa đọc (UNREAD)" as UNREAD
+    state "Đang đọc (READING)" as READING
+    state "Đọc xong (READ)" as READ
+    state "Đang duyệt (APPROVING)" as APPROVING
+    state "Duyệt xong (APPROVED)" as APPROVED
+    state "Đã hủy (CANCELLED)" as CANCELLED
 
-    [*] --> CHO: Nhận chỉ định từ HIS / thêm tay
-    CHO --> CHUA_DOC: PACS nhận đủ ảnh
-    CHUA_DOC --> DANG_DOC: Bác sĩ mở ca
-    DANG_DOC --> DOC_XONG: Bác sĩ lưu report
-    DOC_XONG --> DANG_DUYET: Bác sĩ duyệt mở ca
-    DANG_DUYET --> DUYET_XONG: Duyệt
-    DUYET_XONG --> [*]: Gửi kết quả về HIS
+    [*] --> SCHEDULED: Nhận chỉ định từ HIS / thêm tay
+    SCHEDULED --> UNREAD: PACS nhận đủ ảnh (8 tuần, KTV xác nhận tay)
+    UNREAD --> READING: Bác sĩ mở ca
+    READING --> READ: Bác sĩ lưu report
+    READ --> APPROVING: Bác sĩ duyệt mở ca
+    APPROVING --> APPROVED: Duyệt
+    APPROVED --> [*]: Gửi kết quả về HIS
 
-    DANG_DOC --> CHUA_DOC: Bỏ dở (?)
-    DANG_DUYET --> DANG_DOC: Trả lại để sửa (?)
-    DUYET_XONG --> DANG_DOC: Mở lại khi phát hiện sai (?)
-    CHO --> [*]: Hủy chỉ định (?)
+    READING --> UNREAD: Bỏ dở (?)
+    APPROVING --> READING: Trả lại để sửa (?)
+    APPROVED --> READING: Mở lại khi phát hiện sai (?)
+    SCHEDULED --> CANCELLED: Hủy chỉ định (?)
+    CANCELLED --> [*]
