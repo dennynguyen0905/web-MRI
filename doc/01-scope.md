@@ -1,8 +1,13 @@
 # VR-RIS PACS Scope doc
 
+| Phiên bản | 0.9 (nháp — đối chiếu lại ngày 2026-10-31, chưa nâng lên v1.0) |
+|---|---|
+| Điều kiện lên v1.0 | (1) Nhóm xác nhận câu 8 và câu 9 ở mục 8; (2) nhóm quyết định các dòng ❓ ở bảng thay đổi phạm vi (mục 9); (3) điền tên người vào bảng phân công (mục 7) |
+| Tài liệu liên quan | `02-erd.md` (ERD v0.9), `03-state-machine.md`, `04-his-ris-reconciliation.md`, `05-luong-ngoai-le.md`, `api/openapi.yaml` — tất cả là bản nháp chờ nhóm xác nhận |
+
 ## 1. Định nghĩa thành công
 
-Hết tuần 8, dự án được coi là **đạt** khi cả ba điều sau đúng:
+Hết tuần 8, dự án được coi là **đạt** khi cả bốn điều sau đúng:
 
 - **Một lệnh deploy** dựng được toàn bộ hệ thống trên cụm Kubernetes local (RIS frontend + RIS backend + MySQL + Orthanc + OHIF).
 - **Chạy được kịch bản demo end-to-end** ở mục 6 bằng dữ liệu giả, không cần thao tác ngoài giao diện (trừ bước giả lập máy chụp bằng `storescu`).
@@ -187,6 +192,20 @@ Bước 9 và 10 là bắt buộc: đó là known issue duy nhất đã quan sá
 - G-04 — Không có bác sĩ CĐHA duyệt nghiệp vụ; mọi quy tắc nghiệp vụ là suy luận từ UI tham chiếu và phải ghi rõ là suy luận.
 - G-05 — Nhóm 3–4 người, làm song song theo phân công dưới đây. Nếu rút xuống 2 người làm thật thì lịch 7.2 README không còn khả thi và phải cắt IN-11, IN-12.
 
+**Phân công đề xuất (4 người, vai A–D).** Tên người để trống vì **chưa được nhóm xác nhận** (❓).
+
+| Vai | Trách nhiệm chính | Người | Tuần nặng nhất |
+|---|---|---|---|
+| **A — Backend lõi** | Bệnh nhân, chỉ định, ca chụp, quy tắc đối chiếu HIS ↔ RIS, ERD/Flyway | (chưa điền) | 4–6 |
+| **B — Backend luồng việc** | Spring Security + JWT, RBAC, audit log, state machine, báo cáo, API worklist | (chưa điền) | 3–6 |
+| **C — Frontend** | Nối API, form thật, bộ lọc, modal lâm sàng, kiểm thử | (chưa điền) | 5–7 |
+| **D — DevOps + tài liệu + AI** | Docker/k8s, Orthanc/OHIF, đặc tả DICOM + HL7, báo cáo, wireframe AI Panel (Figma) | (chưa điền) | 2–3 (Figma) và 7–8 |
+
+Phân công khi nhóm chỉ có 3 người chưa chốt ❓. Bản cũ (ghép Figma vào Frontend) giữ ở phần lịch sử bên dưới.
+
+<details>
+<summary>Lịch sử: bảng phân công cũ (trước 2026-10-31)</summary>
+
 **Phân công đề xuất (3–4 người):**
 
 | Vai | Trách nhiệm chính | Tuần nặng nhất |
@@ -197,6 +216,8 @@ Bước 9 và 10 là bắt buộc: đó là known issue duy nhất đã quan sá
 | Người thứ 4 (nếu có) | Figma design system + wireframe AI Panel, sau đó hỗ trợ frontend | 2–3 |
 
 Nếu chỉ có 3 người: việc Figma ghép vào vai Frontend, và tuần 2–3 frontend chưa code nên không xung đột.
+
+</details>
 
 **Ràng buộc:**
 
@@ -221,6 +242,8 @@ Nếu chỉ có 3 người: việc Figma ghép vào vai Frontend, và tuần 2�
 | 8 | Một hay nhiều bệnh viện? | ❓ **Mặc định áp dụng: một bệnh viện, nhiều khoa.** Không thêm `facility_id` vào schema. Nói nếu sai |
 | 9 | Demo modality nào? | ❓ **Mặc định áp dụng: CR (X-quang ngực) + CT.** CR nhẹ, mở nhanh trong OHIF; CT chứng minh viewer xử lý được series nhiều lát. Chốt muộn nhất tuần 4 khi tải bộ DICOM mẫu |
 
+Ngày 2026-10-31: **câu 8 và câu 9 chưa được nhóm xác nhận**, nên giữ nguyên là mặc định (❓).
+
 **Các câu còn lại (1–6, 11–13, 18) không thuộc scope doc** — xem README Phần 9, giải quyết ở đặc tả state machine và giai đoạn AI.
 
 ## 9. Quy trình thay đổi phạm vi
@@ -229,15 +252,34 @@ Nếu chỉ có 3 người: việc Figma ghép vào vai Frontend, và tuần 2�
 - Muốn thêm một hạng mục vào IN → phải chỉ ra hạng mục IN khác bị đẩy sang HOÃN để bù thời gian.
 - Thay đổi được ghi vào bảng dưới và cập nhật checkbox Phần 6 README.
 
-| Ngày | Thay đổi | Đổi lấy gì | Người quyết |
-|---|---|---|---|
-|  |  |  |  |
+Cột "Quyết định" lấy từ nhóm; **trống hoặc ❓ nghĩa là nhóm chưa quyết định**. Cột "Đổi lấy gì" để trống cho nhóm điền (theo nguyên tắc: thêm một mục vào IN thì phải chỉ ra mục IN khác bị đẩy sang HOÃN). Các dòng dưới đây ghi lại chỗ Frontend hiện có **lệch** scope (đối chiếu code ngày 2026-10-31).
+
+| Ngày | Thay đổi | Đổi lấy gì | Quyết định | Người quyết |
+|---|---|---|---|---|
+| 2026-10-31 | **Frontend làm thừa so với scope.** Bộ lọc “Trạng thái đồng bộ HIS” và “Vi phạm BHYT” (mục 3.2 để HOÃN) | | ❓ giữ hay cắt | |
+| 2026-10-31 | **Thừa.** Nút “Danh sách ca chụp quá hạn” (mục 3.2 HOÃN, chưa định nghĩa “quá hạn”) | | ❓ giữ hay cắt | |
+| 2026-10-31 | **Thừa.** Nút “Duyệt toàn bộ danh sách” (H-05); ngoài ra có nút “In danh sách”, “Tải danh sách” chưa có chức năng | | ❓ giữ hay cắt | |
+| 2026-10-31 | **Thừa.** Tab lâm sàng 3 và 4 hiển thị dữ liệu giả; mục 3.3 yêu cầu bảng rỗng + ghi chú “chờ tích hợp HIS” | | ❓ giữ hay cắt | |
+| 2026-10-31 | **Thừa.** Cột mã đoàn khám, tên đoàn khám, mã hồ sơ, mã bệnh phẩm, mã lưu trữ nằm trong tập cột mặc định (mục 3.2 HOÃN) | | ❓ giữ hay cắt | |
+| 2026-10-31 | **Thừa.** Popover “Cấu hình hệ thống” (README 3.5) không thuộc danh mục IN | | ❓ giữ hay cắt | |
+| 2026-10-31 | **Thiếu so với IN-12.** Khoảng thời gian chưa có “−30 ngày” (có Hôm nay, Hôm qua, −3, −7, Tất cả); ô tìm kiếm chưa có “mã phiếu” (chỉ lọc theo cột) | | — không phải đổi phạm vi, là việc còn thiếu | |
+| 2026-10-31 | **Thiếu so với IN-12.** Khoảng thời gian, loại thời gian lọc và cây máy có trên giao diện nhưng trang worklist chưa áp dụng vào lọc dữ liệu | | — không phải đổi phạm vi, là việc còn thiếu | |
 
 ## 10. Việc tiếp theo
 
+Trạng thái ngày 2026-10-31: scope doc ở **v0.9**. Các bản nháp mới đã có trong repo nhưng **chưa được nhóm xác nhận**, nên các ô dưới đây vẫn để trống.
+
 - [ ] Xác nhận 2 mặc định còn lại ở mục 8 (câu 8, 9) → nâng scope doc lên v1.0
-- [ ] Xác nhận `02-erd.md`
-- [ ] Cập nhật README: mục 8.2 dòng “Mock HIS” từ ❓ sang ✅ HL7 v2; Phần 9 câu 7, 17, 19 đánh dấu đã chốt
-- [ ] Đặc tả state machine (README 6A) — phụ thuộc câu hỏi 1, 2 Phần 9
-- [ ] Quy tắc đối chiếu HIS ↔ RIS (README 2.5) — 5 checkbox chưa tick
-- [ ] Sơ đồ luồng ngoại lệ (README 6E)
+- [ ] Xác nhận `02-erd.md` (hiện v0.9, còn 5 ô ❓ ở mục 9 của file đó)
+- [ ] Cập nhật README: mục 8.2 dòng “Mock HIS” từ ❓ sang ✅ HL7 v2; Phần 9 câu 7, 17, 19 đánh dấu đã chốt — *(đã cập nhật bản nháp 2026-10-31, chờ nhóm xác nhận)*
+- [ ] Đặc tả state machine (README 6A) — phụ thuộc câu hỏi 1, 2 Phần 9 — *(bản nháp `03-state-machine.md`, chờ nhóm xác nhận)*
+- [ ] Quy tắc đối chiếu HIS ↔ RIS (README 2.5) — 5 checkbox chưa tick — *(bản nháp `04-his-ris-reconciliation.md` trả lời cả 5, chờ nhóm xác nhận)*
+- [ ] Sơ đồ luồng ngoại lệ (README 6E) — *(bản nháp `05-luong-ngoai-le.md`, chờ nhóm xác nhận)*
+- [ ] Quyết định các dòng ❓ ở bảng thay đổi phạm vi (mục 9) và điền tên phân công (mục 7)
+
+## 11. Ghi chú về Frontend hiện có
+
+- Frontend (`Frontend/`) là **prototype dùng dữ liệu giả** (`src/data/mock.ts`), chưa nối API. Mọi dữ liệu bệnh nhân là dữ liệu giả (R-03).
+- **Mã trạng thái trong Frontend sẽ được đồng bộ theo ERD** (`SCHEDULED / UNREAD / READING / READ / APPROVING / APPROVED`, xem `02-erd.md` 4.5), không đổi ERD cho khớp Frontend. Các chỗ lệch khác giữa Frontend và ERD ở `02-erd.md` mục 10.
+- Frontend chưa có: nối API, deep-link OHIF (IN-19), màn xem audit log, màn danh sách lệch dữ liệu HIS ↔ RIS (`04-his-ris-reconciliation.md` mục 8), `Dockerfile`/`nginx.conf`.
+- Frontend **không phải lớp bảo vệ** quyền và điều kiện chuyển trạng thái (IN-14): backend phải kiểm tra lại (`03-state-machine.md` mục 2.4).
