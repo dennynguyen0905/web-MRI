@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* Nền & khung */
+  --color-app: #eef1f6;
+  --color-surface: #ffffff;
+  --color-line: #e3e8ef;
+  --color-line-soft: #eef1f6;
+
+  /* Màu thương hiệu */
+  --color-brand-50: #eff5ff;
+  --color-brand-100: #dbe8fe;
+  --color-brand-200: #c3d9fd;
+  --color-brand-300: #a4c5fc;
+  --color-brand-500: #3f83f8;
+  --color-brand-600: #1c64f2;
+  --color-brand-700: #1a56db;
+  --color-brand-800: #1e429f;
+
+  /* Chữ */
+  --color-ink: #111928;
+  --color-ink-2: #374151;
+  --color-ink-3: #6b7280;
+  --color-ink-4: #9aa4b2;
+
+  /* Trạng thái ca chụp */
+  --color-st-cho: #6b7280;
+  --color-st-chuadoc: #e02424;
+  --color-st-dangdoc: #1c64f2;
+  --color-st-docxong: #0891b2;
+  --color-st-dangduyet: #d97706;
+  --color-st-duyetxong: #057a55;
+
+  --color-danger: #e02424;
+  --color-success: #0e9f6e;
+  --color-warning: #d97706;
+}
+
+@layer base {
+  * { border-color: var(--color-line); }
+  html, body, #root { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--color-app);
+    color: var(--color-ink-2);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  input, select, button, textarea { font: inherit; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  ::-webkit-scrollbar-track { background: transparent; }
+}
+
+@layer utilities {
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+  }
+  .section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--color-ink-4);
+  }
+  .focus-ring:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-brand-100);
+    border-color: var(--color-brand-500);
+  }
+}
