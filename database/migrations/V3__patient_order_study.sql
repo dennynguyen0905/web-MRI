@@ -1,0 +1,87 @@
+-- V3: patient, imaging_order, study.
+-- Không có cột tuổi: tuổi luôn tính từ date_of_birth + dob_precision (ERD 4.1, 4.2).
+-- Trạng thái lưu VARCHAR(20), không dùng ENUM (ERD 4.5). Mã chuẩn:
+--   SCHEDULED | UNREAD | READING | READ | APPROVING | APPROVED | CANCELLED (CANCELLED đang ❓ chờ nhóm xác nhận)
+
+CREATE TABLE patient (
+    id                   BIGINT       NOT NULL AUTO_INCREMENT,
+    patient_code         VARCHAR(50)  NOT NULL COMMENT 'mã bệnh nhân, khóa đối chiếu chính (PID-3 loại PI)',
+    his_patient_id       VARCHAR(50)  NULL,
+    full_name            VARCHAR(255) NOT NULL,
+    date_of_birth        DATE         NULL COMMENT 'YEAR -> YYYY-01-01, MONTH -> YYYY-MM-01',
+    dob_precision        VARCHAR(10)  NOT NULL DEFAULT 'DAY' COMMENT 'DAY|MONTH|YEAR',
+    gender               VARCHAR(1)   NOT NULL DEFAULT 'U' COMMENT 'M|F|O|U',
+    social_insurance_no  VARCHAR(30)  NULL COMMENT 'BHXH',
+    phone                VARCHAR(30)  NULL,
+    address              VARCHAR(500) NULL,
+    created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by           VARCHAR(100) NULL,
+    updated_by           VARCHAR(100) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_patient_code (patient_code),
+    KEY idx_patient_full_name (full_name),
+    KEY idx_patient_social_insurance_no (social_insurance_no)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE imaging_order (
+    id                      BIGINT       NOT NULL AUTO_INCREMENT,
+    order_code              VARCHAR(50)  NOT NULL COMMENT 'mã phiếu = Filler Order Number (ORC-3)',
+    patient_id              BIGINT       NOT NULL,
+    visit_code              VARCHAR(50)  NULL COMMENT 'mã LSVV',
+    source                  VARCHAR(10)  NOT NULL DEFAULT 'MANUAL' COMMENT 'MANUAL|HIS',
+    his_order_id            VARCHAR(50)  NULL COMMENT 'Placer Order Number (ORC-2)',
+    sync_status             VARCHAR(20)  NOT NULL DEFAULT 'NOT_SYNCED' COMMENT 'NOT_SYNCED|SYNCED|RESULT_SENT|FAILED',
+    ordering_department_id  BIGINT       NOT NULL,
+    ordering_doctor_name    VARCHAR(255) NULL COMMENT 'tên tự do trong 8 tuần',
+    patient_class           VARCHAR(20)  NOT NULL DEFAULT 'OUTPATIENT' COMMENT 'INPATIENT|OUTPATIENT (PV1-2)',
+    room                    VARCHAR(50)  NULL COMMENT 'buồng',
+    bed                     VARCHAR(50)  NULL COMMENT 'giường',
+    clinical_diagnosis      TEXT         NULL COMMENT 'chẩn đoán ban đầu',
+    ordered_at              DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at              DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at              DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_imaging_order_code (order_code),
+    KEY idx_imaging_order_patient (patient_id),
+    KEY idx_imaging_order_visit_code (visit_code),
+    KEY idx_imaging_order_ordered_at (ordered_at),
+    KEY idx_imaging_order_department (ordering_department_id),
+    CONSTRAINT fk_imaging_order_patient FOREIGN KEY (patient_id) REFERENCES patient (id),
+    CONSTRAINT fk_imaging_order_department FOREIGN KEY (ordering_department_id) REFERENCES department (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE study (
+    id                    BIGINT      NOT NULL AUTO_INCREMENT,
+    accession_number      VARCHAR(16) NOT NULL COMMENT 'khóa nối RIS - DICOM (0008,0050); quy ước YYYYMMDD + 5 chữ số',
+    order_id              BIGINT      NOT NULL,
+    service_item_id       BIGINT      NOT NULL,
+    device_id             BIGINT      NULL,
+    status                VARCHAR(20) NOT NULL DEFAULT 'SCHEDULED',
+    study_instance_uid    VARCHAR(64) NULL COMMENT 'lập khi có ảnh; UNIQUE, MySQL cho phép nhiều NULL',
+    scheduled_at          DATETIME    NOT NULL COMMENT 'thời gian chụp dự kiến',
+    started_at            DATETIME    NULL COMMENT 'bắt đầu chụp',
+    completed_at          DATETIME    NULL COMMENT 'kết thúc chụp',
+    due_at                DATETIME    NULL COMMENT 'quá hạn — chưa chốt định nghĩa, để NULL',
+    performed_by_user_id  BIGINT      NULL COMMENT 'KTV',
+    reading_user_id       BIGINT      NULL,
+    approving_user_id     BIGINT      NULL,
+    created_at            DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_study_accession_number (accession_number),
+    UNIQUE KEY uk_study_instance_uid (study_instance_uid),
+    KEY idx_study_status_scheduled (status, scheduled_at),
+    KEY idx_study_device_scheduled (device_id, scheduled_at),
+    KEY idx_study_order (order_id),
+    KEY idx_study_service_item (service_item_id),
+    KEY idx_study_performed_by (performed_by_user_id),
+    KEY idx_study_reading_user (reading_user_id),
+    KEY idx_study_approving_user (approving_user_id),
+    CONSTRAINT fk_study_order FOREIGN KEY (order_id) REFERENCES imaging_order (id),
+    CONSTRAINT fk_study_service_item FOREIGN KEY (service_item_id) REFERENCES service_item (id),
+    CONSTRAINT fk_study_device FOREIGN KEY (device_id) REFERENCES device (id),
+    CONSTRAINT fk_study_performed_by FOREIGN KEY (performed_by_user_id) REFERENCES app_user (id),
+    CONSTRAINT fk_study_reading_user FOREIGN KEY (reading_user_id) REFERENCES app_user (id),
+    CONSTRAINT fk_study_approving_user FOREIGN KEY (approving_user_id) REFERENCES app_user (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;

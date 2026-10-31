@@ -1,0 +1,4 @@
+# Migration và cấu hình phải giống hệt nhau trên mọi máy (Windows/Mac/Linux), tránh Flyway báo lệch checksum vì xuống dòng.
+*.sql  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf

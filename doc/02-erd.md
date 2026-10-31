@@ -313,6 +313,8 @@ Index (status, scheduled_at) trên study là quan trọng nhất: worklist, bộ
 
 ## 7. Thứ tự migration
 
+Các file này đã được viết thật ở `database/migrations/` (chạy bằng `database/docker-compose.yml`, xem `database/README.md`). Nếu ERD đổi, thêm file migration mới (V8, V9, …), **không sửa** file V1–V7 đã vào `main`.
+
 | File | Nội dung |
 |---|---|
 | V1__ref_data.sql | department, service_item, device |
