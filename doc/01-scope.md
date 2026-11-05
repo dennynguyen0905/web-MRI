@@ -72,6 +72,7 @@ flowchart TB
 | IN-09 | Đếm số lượng theo nhóm trạng thái trên tiêu đề và trong bộ lọc | Đầy đủ | 6 |
 | IN-10 | Báo cáo kết quả: kỹ thuật, mô tả, chẩn đoán, kết luận, khuyến nghị; nháp → chính thức → duyệt | Đầy đủ | 5–6 |
 | IN-11 | Modal thông tin lâm sàng | **Rút gọn** — xem 3.3 | 6 |
+| IN-24 | Kiến trúc phân tầng backend + ArchUnit + Testcontainers + test theo tầng (R-05, `03-architecture.md` → `15-kien-truc-backend.md`) | Áp dụng xuyên suốt, không phải một màn hình riêng | 2–3 |
 
 ### 3.2. Bộ lọc — cắt gọn có chủ ý
 
@@ -85,12 +86,12 @@ README mục 3.2 liệt kê ~15 nhóm lọc. Trong 8 tuần chỉ làm nhóm có
 - Khoảng thời gian: Hôm nay, Hôm qua, −3, −7, −30 ngày, Tất cả, chọn ngày tùy ý
 - Trạng thái ca chụp (6 trạng thái + Tất cả, kèm số đếm)
 - Loại bệnh nhân: Nội trú / Ngoại trú
-- Tùy chỉnh cột hiển thị (tập cột cơ bản)
 
 **Hoãn (lý do kèm theo):**
 
 | Bộ lọc | Lý do hoãn |
 |---|---|
+| Tùy chỉnh cột hiển thị | **HOÃN** (2026-11-05). Trước đây nằm trong IN-12 ("Làm"); đẩy sang đây để đổi lấy IN-24 (kiến trúc phân tầng backend) — xem bảng thay đổi phạm vi (mục 9) |
 | Trạng thái đồng bộ HIS, Đã/Chưa gửi kết quả | Không có HIS trong 8 tuần → lọc luôn rỗng |
 | Vi phạm BHYT | Quy tắc chưa xác định (Phần 9 câu 3) |
 | Danh sách ca chụp quá hạn | Định nghĩa “quá hạn” chưa chốt (Phần 9 câu 2) |
@@ -209,7 +210,7 @@ Bước 9 và 10 là bắt buộc: đó là known issue duy nhất đã quan sá
 - G-02 — Máy của mọi thành viên chạy được Docker và một bản Kubernetes local.
 - G-03 — Tải được bộ DICOM công khai đã ẩn danh (TCIA hoặc tương đương) trong tuần 4–5.
 - G-04 — Không có bác sĩ CĐHA duyệt nghiệp vụ; mọi quy tắc nghiệp vụ là suy luận từ UI tham chiếu và phải ghi rõ là suy luận.
-- G-05 — Nhóm 3–4 người, làm song song theo phân công dưới đây. Nếu rút xuống 2 người làm thật thì lịch 7.2 README không còn khả thi và phải cắt IN-11, IN-12.
+- G-05 — Nhóm 3–4 người, làm song song theo phân công dưới đây. Nếu rút xuống 2 người làm thật thì lịch 7.2 README không còn khả thi và phải cắt IN-11, IN-12. **IN-24 (kiến trúc phân tầng, R-05) không nằm trong danh sách có thể cắt** — đây là cách viết mọi tính năng backend, không phải một tính năng riêng, nên cắt nó nghĩa là bỏ luôn ràng buộc R-05 (❓ cần nhóm xác nhận nếu muốn cắt khi chỉ còn 2 người).
 
 **Phân công đề xuất (4 người, vai A–D).** Tên người để trống vì **chưa được nhóm xác nhận** (❓).
 
@@ -244,6 +245,7 @@ Nếu chỉ có 3 người: việc Figma ghép vào vai Frontend, và tuần 2�
 - R-02 — RIS không lưu ảnh DICOM, kể cả thumbnail.
 - R-03 — Không dữ liệu thật ở bất kỳ đâu.
 - R-04 — Mọi sơ đồ bằng Mermaid trong repo; Figma chỉ cho UI.
+- R-05 — Backend theo kiến trúc phân tầng (package-by-layer), hướng phụ thuộc một chiều, kiểm tra tự động bằng ArchUnit; vi phạm làm build đỏ. Mỗi tính năng làm theo lát dọc (rest → service → dao → model → DB). Chi tiết: `15-kien-truc-backend.md`.
 
 ## 8. Trả lời Phần 9 README (nhóm Phạm vi & Tích hợp)
 
@@ -283,6 +285,7 @@ Cột "Quyết định" lấy từ nhóm; **trống hoặc ❓ nghĩa là nhóm 
 | 2026-10-31 | **Thừa.** Popover “Cấu hình hệ thống” (README 3.5) không thuộc danh mục IN | | ❓ giữ hay cắt | |
 | 2026-10-31 | **Thiếu so với IN-12.** Khoảng thời gian chưa có “−30 ngày” (có Hôm nay, Hôm qua, −3, −7, Tất cả); ô tìm kiếm chưa có “mã phiếu” (chỉ lọc theo cột) | | — không phải đổi phạm vi, là việc còn thiếu | |
 | 2026-10-31 | **Thiếu so với IN-12.** Khoảng thời gian, loại thời gian lọc và cây máy có trên giao diện nhưng trang worklist chưa áp dụng vào lọc dữ liệu | | — không phải đổi phạm vi, là việc còn thiếu | |
+| 2026-11-05 | **Thêm vào IN: IN-24** — kiến trúc phân tầng backend (R-05): package-by-layer, ArchUnit, Testcontainers, test theo tầng. Áp dụng xuyên suốt từ tuần 2 | **Đẩy sang HOÃN:** bộ lọc "Tùy chỉnh cột hiển thị" (mục 3.2, trước đây nằm trong IN-12) | ❓ chờ nhóm xác nhận | |
 | 2026-11-05 | **Thêm vào IN: IN-23** — nút “Xem ảnh” mở OHIF bằng `study_instance_uid` ở hàng worklist và ở tab 3 modal lâm sàng; ẩn/disable khi study chưa có `study_instance_uid` (tuần 6–7). Kéo theo: mục 3.3 tab 3 đổi từ “bảng rỗng” sang hiển thị tên dịch vụ + kết luận từ dữ liệu RIS | **Chuyển hẳn sang HOÃN:** bộ lọc “Lọc theo Bác sĩ chỉ định / Chỉ định / Bộ phận chụp / Kết luận” (mục 3.2) — trước đây là “làm nếu tuần 6 còn thời gian”, giờ **không làm trong 8 tuần** | ❓ chờ nhóm xác nhận | |
 
 ## 10. Việc tiếp theo
@@ -291,6 +294,7 @@ Trạng thái ngày 2026-11-05: scope doc vẫn ở **v0.9**. Các bản nháp m
 
 - [ ] Xác nhận 2 mặc định còn lại ở mục 8 (câu 8, 9) → nâng scope doc lên v1.0 — **danh sách đầy đủ điều kiện và file phụ thuộc ở mục 10.1**
 - [ ] Xác nhận `02-erd.md` (hiện v0.9, còn 7 ô ❓ ở mục 9 của file đó — thêm 2 ô ngày 2026-11-05)
+- [ ] **Xác nhận `15-kien-truc-backend.md`** (R-05, nháp v0.1, thêm 2026-11-05) — gồm cả **kế hoạch refactor `Backend/` hiện có** (chưa commit, đang package-by-feature + Spring Data JPA) sang kiến trúc phân tầng, trước khi động vào code ở Pha 2
 - [x] Cập nhật README: mục 8.2 dòng “Mock HIS” từ ❓ sang ✅ HL7 v2; Phần 9 câu 7, 17, 19 đánh dấu đã chốt — **đã làm** (bản nháp 2026-10-31, đối chiếu lại 2026-11-05). Việc *nhóm xác nhận nội dung đã chốt* là dòng “Xác nhận …” riêng bên dưới
 - [ ] Nhóm xác nhận các kết luận ở README Phần 9 câu 7, 17, 19 và mục 8.2 (đã viết là ✅ nhưng là ✅ do tài liệu đề xuất, chưa có biên bản nhóm)
 - [ ] **Viết `07-pacs-dicom.md`** (README 6B, tuần 4–5) — *(khung v0.1 đã có trong repo ngày 2026-11-05: 10 mục, phần lớn còn ❓; cần điền AE Title, port, quy tắc khi header DICOM lệch dữ liệu RIS)*

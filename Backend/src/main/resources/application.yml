@@ -1,0 +1,47 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: ris-backend
+  datasource:
+    # Khop voi database/README.md: MySQL chay bang docker compose, cong 3307, db vr_ris.
+    url: jdbc:mysql://localhost:3307/vr_ris?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+    username: ris
+    password: ris_dev_pw
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Schema da duoc Flyway (database/migrations) tao san - backend KHONG tu sinh/sua DDL.
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    # Migration chay o database/docker-compose.yml (xem database/README.md). Khong de backend chay Flyway trung.
+    enabled: false
+  jackson:
+    # API contract (doc/api/openapi.yaml) dung snake_case cho JSON, dung ten cot trong ERD.
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  cors:
+    # Frontend dev (Frontend/vite.config.ts) chay port 5173, khong co proxy -> can mo CORS.
+    allowed-origins: http://localhost:5173
+  security:
+    jwt:
+      # CHI DUNG CHO DEV/DEMO trong repo. Truoc khi dung ngoai moi truong dev phai chuyen vao
+      # Kubernetes Secret (IN-17), khong de lai trong application.yml commit vao git.
+      secret: "dev-only-secret-khong-dung-cho-production-doi-truoc-khi-deploy-32b"
+      expiration-minutes: 60
