@@ -83,7 +83,8 @@ Khi API sẵn sàng, thay import đó bằng một hàm fetch trả về cùng k
 Phần đã bám theo tài liệu:
 
 - 6 trạng thái và thứ tự chuyển lấy từ `diagrams/05-state-machine.mmd`.
-- Tên cột, bộ lọc và 5 tab lâm sàng theo `01-scope.docx` mục 3.1–3.3.
+- Tên cột lấy từ `../README.md` mục 3.1; bộ lọc và 5 tab lâm sàng theo `../doc/01-scope.md` mục 3.2–3.3.
+  *(Trước đây ghi là `01-scope.docx` — tài liệu đó đã chuyển sang Markdown ngày 2026-10-31; bản `.docx` trong `doc/archive/` không còn được cập nhật.)*
 - Tuổi tính theo `dob_precision`, bệnh nhân chỉ có năm sinh vẫn ra tuổi đúng
   (bước 10 trong kịch bản nghiệm thu tuần 8).
 - Dữ liệu bệnh nhân đều là giả (ràng buộc R-03).

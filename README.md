@@ -28,9 +28,12 @@
 │   ├── 03-state-machine.md          #   đặc tả state machine (README 6A)
 │   ├── 04-his-ris-reconciliation.md #   quy tắc đối chiếu HIS ↔ RIS (README 2.5)
 │   ├── 05-luong-ngoai-le.md         #   sơ đồ luồng ngoại lệ (README 6E)
+│   ├── 06-rbac-matrix.md            #   ma trận phân quyền RBAC (README 6A)
+│   ├── 07-pacs-dicom.md             #   đặc tả tích hợp PACS/DICOM (README 6B/6C)
+│   ├── 09-bao-mat-toan-ven-du-lieu.md  #   bảo mật & toàn vẹn dữ liệu (README 6D)
 │   ├── api/openapi.yaml   #   API contract RIS core, nháp v0.1 (README 6B)
 │   ├── diagrams/          #   nguồn Mermaid (.mmd) + ảnh xuất từ draw.io (.png) cùng tên
-│   └── archive/           #   bản .docx cũ của 01-scope và 02-erd (giữ để đối chiếu)
+│   └── archive/           #   .docx CŨ của 01-scope/02-erd — chỉ để đối chiếu, KHÔNG cập nhật nữa; bản sống là .md ở trên
 ├── database/              # MySQL 8.4 + Flyway dùng chung: `cd database && docker compose up -d` (xem database/README.md)
 ├── backend/               # (dự kiến) Spring Boot — chưa có
 └── deploy/                # (dự kiến) Dockerfile, Docker Compose, manifest k8s — chưa có
@@ -55,6 +58,8 @@ Khi bạn được giao việc trong dự án này:
 - Mọi hành vi đọc/sửa/duyệt dữ liệu bệnh nhân đều phải ghi audit log.
 - Tích hợp dùng chuẩn mở (DICOM / HL7 / FHIR), không tự chế protocol riêng.
 - **Không dùng dữ liệu bệnh nhân thật** ở bất kỳ đâu (seed data, test, ảnh demo, slide). Chỉ dùng dữ liệu giả hoặc bộ DICOM công khai đã ẩn danh. Tên bệnh nhân xuất hiện trong ảnh chụp màn hình tham chiếu **không được** đưa vào seed data.
+- Ảnh chụp màn hình từ hệ thống thật, khi dùng làm tham chiếu, phải **che tên bệnh nhân, mã bệnh nhân, mã hồ sơ (LSVV) và `StudyInstanceUID`** trước khi đưa vào repo, Figma hoặc slide. Che trước khi commit/upload, không che sau.
+- OHIF và Orthanc trong đồ án **không được mở công khai**: chỉ truy cập được trong cụm Kubernetes local, hoặc sau khi đã đăng nhập RIS. Không expose ra Internet, kể cả để demo.
 - Stack đã chốt (Phần 8) không thay đổi nếu không có yêu cầu từ người dùng.
 ---
  
@@ -141,6 +146,8 @@ sequenceDiagram
 ```
  
 > **Lưu ý:** bước 5 (PACS báo về RIS) và cách AI chen vào trạng thái là **giả định**, chưa chốt — xem Phần 4.
+>
+> **Trong 8 tuần, bước 5 làm bằng tay:** người dùng tự chuyển ca sang *Chưa đọc* sau khi đã đẩy ảnh vào PACS. Việc PACS tự báo RIS để chuyển trạng thái là **[HOÃN] H-02** (`doc/01-scope.md` mục 2 và 4). Sơ đồ trên là luồng đích, không phải luồng của bản demo tuần 8.
  
 ### 2.4. Ranh giới tích hợp cần chốt
  
@@ -153,6 +160,7 @@ sequenceDiagram
 | PACS ↔ OHIF | DICOMweb (QIDO-RS / WADO-RS / STOW-RS) | dự kiến |
 | PACS ↔ AI Backend | DICOMweb + webhook/queue thông báo study mới | dự kiến |
 | OHIF → RIS | REST API nội bộ | dự kiến |
+| RIS / màn hình kết quả → OHIF | Deep-link kèm `StudyInstanceUID` (xem 2.7) | làm trong 8 tuần (IN-19, IN-23) |
  
 ### 2.5. ⚠️ Known issue: lệch dữ liệu bệnh nhân giữa HIS và RIS
  
@@ -197,6 +205,45 @@ flowchart TB
 - **Gợi ý (chưa chốt):** dùng **Docker Compose** cho vòng dev hằng ngày (nhanh, ít cấu hình), Kubernetes cho bản tích hợp/demo. Hai bộ cấu hình dùng chung image.
 ---
  
+### 2.7. Hai cửa vào viewer
+
+Một study có thể được mở từ **hai chỗ khác nhau trong RIS**:
+
+| Cửa vào | Ai dùng | Mở từ đâu |
+|---|---|---|
+| (a) **Worklist RIS** | Bác sĩ CĐHA (đọc), Bác sĩ duyệt | Hàng trong worklist → nút **"Xem ảnh"** |
+| (b) **Màn hình kết quả / hồ sơ bệnh nhân** | Bác sĩ lâm sàng (người chỉ định) | Modal thông tin lâm sàng, tab 3 (xem 3.3) → nút **"Xem ảnh"** theo từng dịch vụ CĐHA |
+
+```mermaid
+flowchart LR
+    BSCDHA(("Bác sĩ CĐHA<br/>hoặc Bác sĩ duyệt"))
+    BSLS(("Bác sĩ lâm sàng"))
+
+    subgraph RIS["RIS"]
+        WL["Worklist<br/>nút Xem ảnh"]
+        KQ["Màn hình kết quả / hồ sơ<br/>modal lâm sàng tab 3<br/>nút Xem ảnh"]
+    end
+
+    OHIF["OHIF Viewer<br/>+ AI Panel"]
+    PACS[("PACS / Orthanc")]
+
+    BSCDHA --> WL
+    BSLS --> KQ
+    WL -- "deep-link: StudyInstanceUID" --> OHIF
+    KQ -- "deep-link: StudyInstanceUID" --> OHIF
+    OHIF -- "DICOMweb (QIDO-RS / WADO-RS)" --> PACS
+```
+
+**Điểm quan trọng:**
+
+- Cả hai cửa vào **chỉ cần `study_instance_uid`** để mở **cùng một OHIF**. Không có hai viewer, không có hai cấu hình.
+- **PACS không biết ai gọi.** Nó chỉ nhận yêu cầu DICOMweb cho một study. Phân quyền "ai được xem study nào" là việc của RIS — chỗ sinh ra deep-link — chứ không phải của PACS. Hệ quả: RIS phải ghi `audit_log` hành vi mở viewer (`VIEW_IMAGE`, xem `doc/02-erd.md` mục 4.11), vì PACS không ghi được giúp.
+- **Viewer lấy ảnh từ PACS server qua DICOMweb, không đọc file từ đĩa.** Không có bước nào tải ảnh về máy người dùng rồi mở bằng phần mềm khác.
+- **Tên / mã / tuổi hiển thị trên ảnh là của header DICOM**, không phải của bản ghi RIS mà viewer đang mở. Header DICOM do máy chụp ghi, và máy chụp lấy các trường đó **từ dữ liệu RIS qua Modality Worklist**. Nên: **nhập sai ở RIS thì ảnh cũng sai** — và sửa lại trong RIS *không* làm đổi ảnh đã nằm trong PACS. Đây chính là known issue ở **mục 2.5** nhìn từ phía ảnh. Quy tắc xử lý khi header DICOM lệch dữ liệu RIS: xem `doc/07-pacs-dicom.md` mục 8 (❓ chưa chốt).
+- Trong 8 tuần chưa có MWL (H-01), nên `study_instance_uid` được **nhập tay / seed** (`doc/01-scope.md` mục 2). Ca chưa có `study_instance_uid` thì nút "Xem ảnh" **ẩn hoặc disable**, không mở viewer rỗng (IN-23).
+
+---
+ 
 ## 3. Chức năng đã quan sát được từ hệ thống hiện tại
  
 Dùng làm baseline — bản mới **tối thiểu phải có đủ** các chức năng này.
@@ -224,6 +271,7 @@ Dùng làm baseline — bản mới **tối thiểu phải có đủ** các ch�
 1. **Kết quả tổng quan khám** — chẩn đoán phiếu khám, tiền sử bản thân/gia đình, sinh hiệu (nhịp tim, nhiệt độ, huyết áp, nhịp thở, chiều cao, cân nặng), quá trình bệnh lý, quá trình khám bệnh (A-B-C-D-E-G), khoa khám, phòng khám, kết luận
 2. **Kết quả xét nghiệm** — bảng: STT, số phiếu, tên xét nghiệm, trạng thái, người tạo, ngày tạo, ngày thực hiện
 3. **Kết quả chẩn đoán chức năng chính** — theo từng phiếu: số phiếu, ngày chỉ định, ngày trả kết quả, mã nhóm dịch vụ, ghi chú, tên dịch vụ, kết quả, mã CĐHA
+   > Mỗi dịch vụ CĐHA trong tab này có nút **"Xem ảnh"** mở OHIF cho study tương ứng — đây là cửa vào (b) ở mục 2.7. Nút ẩn/disable khi study chưa có `study_instance_uid` (IN-23 ở `doc/01-scope.md`).
 4. **Đơn thuốc/vật tư trong phiếu khám** — bảng: số hồ sơ, số phiếu, số dòng, mã thuốc/vật tư, tên, thành phần chung, đơn vị tính, số lượng order
 5. **Dữ liệu phẫu thuật thủ thuật**
 ### 3.4. Quản lý ca chụp
@@ -293,6 +341,69 @@ Cần đặc tả rõ (**chưa có — xem Phần 9**):
 ---
  
 ## 6. Danh mục tài liệu & thiết kế
+
+### 6.0. Mục lục tài liệu và thứ tự đọc
+
+**Trạng thái:** 🟡 nháp, chưa nhóm xác nhận · ⬜ chưa viết · ✅ nhóm đã xác nhận (**hiện chưa file nào**)
+
+| # | File | Nhiệm vụ | Thuộc 6… | Tuần | Trạng thái |
+|---|---|---|---|---|---|
+| — | `README.md` | Tài liệu gốc. Bối cảnh, kiến trúc, phạm vi, lịch, câu hỏi mở | — | T1 | 🟡 |
+| 01 | `doc/01-scope.md` | Phạm vi: IN / HOÃN / OUT, kịch bản nghiệm thu, giả định, phân công | A | T1 | 🟡 v0.9 |
+| 02 | `doc/02-erd.md` | Thiết kế dữ liệu: bảng, cột, quyết định 4.1–4.11, chỉ mục, migration | C | T1 | 🟡 v0.9 |
+| 03 | `doc/03-state-machine.md` | Vòng đời ca chụp: trạng thái, chuyển T1–T10, ai được chuyển | A | T1 | 🟡 v0.9 |
+| 04 | `doc/04-his-ris-reconciliation.md` | Quy tắc đối chiếu HIS ↔ RIS (chống gán nhầm bệnh nhân) | A + 2.5 | T1 | 🟡 v0.9 |
+| 05 | `doc/05-luong-ngoai-le.md` | 4 luồng ngoại lệ: chụp lại, hủy, sai thông tin, mất kết nối HIS | E | T1 | 🟡 v0.9 |
+| 06 | `doc/06-rbac-matrix.md` | Ma trận phân quyền: endpoint × vai trò, chuyển trạng thái × vai trò | A | T3 (//) | 🟡 v0.1 |
+| 07 | `doc/07-pacs-dicom.md` | Đường ảnh: AE Title, MWL, C-STORE, deep-link, mapping DICOM tag | B + C | T4–T5 | 🟡 v0.1 |
+| 08 | `doc/08-hl7-message-spec.md` | Đặc tả `ORM^O01` / `ORU^R01`, mapping HL7 ↔ RIS, `HisGateway` | B | T4–T5 | ⬜ chưa viết |
+| 09 | `doc/09-bao-mat-toan-ven-du-lieu.md` | Xác thực, đặc tả audit log, toàn vẹn dữ liệu, bảo vệ secret | D | T3 | 🟡 v0.1 |
+| 10 | `doc/10-lien-ket-he-thong.md` | Danh mục mọi liên kết giữa thành phần + bảng khóa nối | B | T3–T4 | ⬜ chưa viết |
+| 11 | `doc/11-ai-design.md` | Thiết kế AI (không code): pipeline, human-in-the-loop, AI Panel | E | T3 → T8 | ⬜ chưa viết |
+| 12 | `doc/12-seed-data-va-kich-ban-demo.md` | Dữ liệu giả theo test case + kịch bản demo 10 bước | D + F | T4 | ⬜ chưa viết |
+| 13 | `doc/13-user-stories.md` | User story theo 5 vai trò, chỉ cho hạng mục IN | A | viết dần khi code | ⬜ chưa viết |
+| 14 | `doc/14-devops-trien-khai.md` | Dockerfile, manifest k8s, ConfigMap/Secret, quy ước đặt tên | B | T3 | ⬜ chưa viết |
+| — | `doc/api/openapi.yaml` | API contract RIS core (25 endpoint, 9 tag) | B | T2 | 🟡 v0.1 |
+
+**Thứ tự đọc.** Người mới đọc theo nhánh, không đọc tuần tự hết:
+
+```mermaid
+flowchart TB
+    R["README.md<br/>(bắt buộc đọc trước)"]
+    S01["01-scope<br/>phạm vi"]
+    S02["02-erd<br/>dữ liệu"]
+    S03["03-state-machine"]
+    S04["04-his-ris-reconciliation"]
+
+    R --> S01 --> S02
+    S02 --> S03
+    S02 --> S04
+
+    S03 --> B1["05-luong-ngoai-le"]
+    S04 --> B1
+    S03 --> B2["06-rbac-matrix"]
+    S03 --> B3["13-user-stories"]
+    S02 --> B4["openapi.yaml"]
+
+    S02 --> C1["07-pacs-dicom"]
+    S04 --> C2["08-hl7-message-spec"]
+    C1 --> C3["10-lien-ket-he-thong"]
+    C2 --> C3
+
+    S02 --> D1["09-bao-mat-toan-ven-du-lieu"]
+    B2 --> D1
+    S01 --> D2["12-seed-data-va-kich-ban-demo"]
+    S01 --> D3["11-ai-design"]
+    S01 --> D4["14-devops-trien-khai"]
+```
+
+- **Bắt buộc, theo đúng thứ tự:** `README` → `01-scope` → `02-erd`. Ba file này là gốc; mọi file sau đều tham chiếu ngược về chúng.
+- **Nhánh nghiệp vụ:** `03` → `04` → `05`, `06`, `13`.
+- **Nhánh tích hợp:** `07` (DICOM) và `08` (HL7) độc lập nhau, rồi `10` gộp cả hai.
+- **Nhánh nền tảng:** `09` (bảo mật), `12` (seed + demo), `14` (DevOps).
+- **`11-ai-design`** đọc được độc lập — không hạng mục nào chặn nó, và nó không chặn hạng mục nào (AI chỉ là tài liệu, xem Phần 9 câu 19).
+
+> **Quy tắc tránh nhân bản:** mỗi thông tin chỉ có **một nơi là nguồn**, các file khác **tham chiếu** chứ không chép lại. Nguồn: phạm vi → `01`; tên bảng/cột → `02`; trạng thái và điều kiện chuyển → `03`; quyền → `06`; DICOM tag → `07`; HL7 field → `08`. Khi hai file nói khác nhau thì file nguồn thắng.
  
 Mỗi hạng mục được gắn nhãn thời điểm làm:
  
@@ -300,38 +411,57 @@ Mỗi hạng mục được gắn nhãn thời điểm làm:
 - **[//]** = làm song song khi đang code, không chặn
 - **[HOÃN]** = để ngoài phạm vi 8 tuần, không làm lúc này
 - **[NGOÀI PHẠM VI]** = không làm trong đồ án
+
+**Ý nghĩa checkbox** (quan trọng — đọc trước khi tin vào dấu tick):
+
+| Dấu | Nghĩa |
+|---|---|
+| `[ ]` | Chưa có sản phẩm nào trong repo |
+| `[x]` kèm *(nháp vX, chưa xác nhận)* | **Đã có bản nháp trong repo** — **KHÔNG** có nghĩa là xong. Nội dung còn ❓ và **chưa được nhóm xác nhận** |
+| `[x]` không kèm ghi chú | Đã xong và đã được nhóm xác nhận |
+
+Tính đến 2026-11-05 **chưa có hạng mục tài liệu nào được nhóm xác nhận**, nên mọi dấu `[x]` ở dưới đều thuộc dòng giữa. Trạng thái từng file xem **6.0**.
+
 ### A. Nghiệp vụ
-- [ ] **[T1] Scope doc** — trả lời các câu hỏi ở Phần 9 nhóm "Phạm vi" và "Tích hợp". **Không có file này thì mọi quyết định sau đều có thể sai.** *(nháp v0.9 ở `doc/01-scope.md`, chờ nhóm xác nhận)*
-- [ ] **[T1] Đặc tả state machine** trạng thái ca chụp (Phần 4) — xác nhận hoặc gạch bỏ các mũi tên (?) *(nháp ở `doc/03-state-machine.md`, chờ nhóm xác nhận)*
-- [ ] **[T1] Quy tắc đối chiếu dữ liệu HIS ↔ RIS** (Phần 2.5) *(nháp ở `doc/04-his-ris-reconciliation.md`, chờ nhóm xác nhận)*
-- [ ] **[//] Ma trận phân quyền RBAC** (vai trò × chức năng × dữ liệu) — viết lúc code phần auth
-- [ ] **[//] Use case / User story** theo vai trò — chỉ cho các chức năng đang code
+- [x] **[T1] Scope doc** — trả lời các câu hỏi ở Phần 9 nhóm "Phạm vi" và "Tích hợp". **Không có file này thì mọi quyết định sau đều có thể sai.** *(nháp v0.9 ở `doc/01-scope.md`, chưa xác nhận)*
+- [x] **[T1] Đặc tả state machine** trạng thái ca chụp (Phần 4) — xác nhận hoặc gạch bỏ các mũi tên (?) *(nháp v0.9 ở `doc/03-state-machine.md`, chưa xác nhận)*
+- [x] **[T1] Quy tắc đối chiếu dữ liệu HIS ↔ RIS** (Phần 2.5) *(nháp v0.9 ở `doc/04-his-ris-reconciliation.md`, chưa xác nhận)*
+- [x] **[//] Ma trận phân quyền RBAC** (vai trò × chức năng × dữ liệu) — viết lúc code phần auth *(nháp v0.1 ở `doc/06-rbac-matrix.md`, chưa xác nhận)*
+- [ ] **[//] Use case / User story** theo vai trò — chỉ cho các chức năng đang code *(sẽ là `doc/13-user-stories.md` — chưa viết)*
 - [ ] **[HOÃN] SRS đầy đủ** — trong 8 tuần, README + scope doc + user story thay thế SRS
 ### B. Kiến trúc & tích hợp
 - [ ] **[T2] Quyết định stack + sơ đồ kiến trúc** (Phần 8) — chốt nhanh, không để mở quá tuần 2
-- [ ] **[T2] API contract (OpenAPI)** cho RIS core: bệnh nhân, chỉ định, worklist, trạng thái — sinh từ springdoc-openapi hoặc viết tay trước rồi đối chiếu *(nháp v0.1 ở `doc/api/openapi.yaml`, chờ nhóm xác nhận)*
-- [ ] **[T2] Sơ đồ triển khai local** (Phần 2.6) + quy ước đặt tên image, namespace, biến môi trường
-- [ ] **[T3] Dockerfile cho frontend/backend + manifest k8s** (Deployment, Service, StatefulSet MySQL, ConfigMap, Secret)
-- [ ] **[T4–T5] Đặc tả tích hợp DICOM** — MWL, C-STORE, DICOMweb, AE Title
+- [x] **[T2] API contract (OpenAPI)** cho RIS core: bệnh nhân, chỉ định, worklist, trạng thái — sinh từ springdoc-openapi hoặc viết tay trước rồi đối chiếu *(nháp v0.1 ở `doc/api/openapi.yaml`, chưa xác nhận)*
+- [ ] **[T2] Sơ đồ triển khai local** (Phần 2.6) + quy ước đặt tên image, namespace, biến môi trường *(sơ đồ đã có ở 2.6; quy ước đặt tên sẽ là `doc/14-devops-trien-khai.md` — chưa viết)*
+- [ ] **[T3] Dockerfile cho frontend/backend + manifest k8s** (Deployment, Service, StatefulSet MySQL, ConfigMap, Secret) *(đặc tả sẽ là `doc/14-devops-trien-khai.md` — chưa viết)*
+- [x] **[T4–T5] Đặc tả tích hợp DICOM** — MWL, C-STORE, DICOMweb, AE Title *(nháp v0.1 ở `doc/07-pacs-dicom.md` mục 3–5, chưa xác nhận; AE Title và port còn ❓)*
+- [x] **[T4–T5] `doc/07-pacs-dicom.md` (đặc tả tích hợp PACS/DICOM)** — vai trò từng thành phần, bảng AE Title, MWL C-FIND, C-STORE, deep-link OHIF, mapping DICOM tag ↔ cột RIS *(nháp v0.1, chưa xác nhận — 17 câu hỏi mở ở mục 10 của file đó)*
+- [ ] **[T4–T5] `doc/08-hl7-message-spec.md` (đặc tả message HL7 v2)** — `ORM^O01`, `ORU^R01`, segment MSH/PID/PV1/ORC/OBR/OBX, mapping HL7 field ↔ cột RIS, interface `HisGateway` *(chưa viết; yêu cầu ở `doc/01-scope.md` mục 4.1)*
+- [ ] **[T3–T4] `doc/10-lien-ket-he-thong.md` (danh mục liên kết hệ thống)** — mọi liên kết giữa các thành phần + bảng khóa nối + ma trận "khi liên kết hỏng" *(chưa viết)*
 - [ ] **[HOÃN] Đặc tả tích hợp HIS chi tiết** — chỉ cần biết HIS nào + có API không (đã nằm trong scope doc)
 - [ ] **[HOÃN] API contract PACS ↔ AI, đặc tả output AI** (mask format, feature schema)
 - [ ] **[HOÃN] Host lên web / cloud** — tính sau khi chạy ổn trên local
 ### C. Dữ liệu
-- [ ] **[T1] ERD rút gọn** — chỉ: Bệnh nhân, Chỉ định, Ca chụp, Lịch sử trạng thái, Máy/Modality, Khoa, User/Role, Audit log *(nháp v0.9 ở `doc/02-erd.md`, chờ nhóm xác nhận)*
+- [x] **[T1] ERD rút gọn** — chỉ: Bệnh nhân, Chỉ định, Ca chụp, Lịch sử trạng thái, Máy/Modality, Khoa, User/Role, Audit log *(nháp v0.9 ở `doc/02-erd.md`, chưa xác nhận)*
 - [ ] **[//] Data dictionary** — viết dần theo từng bảng khi code
-- [ ] **[T4–T5] Mapping DICOM tag ↔ trường RIS**
+- [x] **[T4–T5] Mapping DICOM tag ↔ trường RIS** *(nháp v0.1 ở `doc/07-pacs-dicom.md` mục 7, chưa xác nhận)*
 - [ ] **[HOÃN] Bảng phụ**: đoàn khám, mã lưu trữ, mã bệnh phẩm, BHYT chi tiết
 - [ ] **[HOÃN] Chiến lược lưu trữ ảnh dài hạn**
 ### D. Bảo mật & tuân thủ
-- [ ] **[//] Audit log** — có ngay từ đầu trong ERD, không làm sau
-- [ ] **[//] Xác thực** — Spring Security + JWT (gợi ý, xem Phần 8)
-- [ ] **[//] Dữ liệu mẫu (seed data)** — sinh dữ liệu giả, tuyệt đối không dùng tên/mã bệnh nhân thật
+- [x] **[//] Audit log** — có ngay từ đầu trong ERD, không làm sau *(bảng ở `doc/02-erd.md`; đặc tả sự kiện + append-only ở `doc/09-bao-mat-toan-ven-du-lieu.md` mục 2, nháp v0.1, chưa xác nhận)*
+- [x] **[//] Xác thực** — Spring Security + JWT (gợi ý, xem Phần 8) *(đặc tả token, băm mật khẩu, khóa tài khoản ở `doc/09-bao-mat-toan-ven-du-lieu.md` mục 1, nháp v0.1, chưa xác nhận)*
+- [x] **[T3] `doc/09-bao-mat-toan-ven-du-lieu.md` (bảo mật & toàn vẹn dữ liệu)** — xác thực, đặc tả audit log, transaction/khóa lạc quan, idempotency HL7, secret trong k8s *(nháp v0.1, chưa xác nhận)*
+- [ ] **[//] Dữ liệu mẫu (seed data)** — sinh dữ liệu giả, tuyệt đối không dùng tên/mã bệnh nhân thật *(migration `V7__seed_demo_data.sql` đã có; đặc tả sẽ là `doc/12-seed-data-va-kich-ban-demo.md` — chưa viết)*
 - [ ] **[NGOÀI PHẠM VI] Pháp lý VN về hồ sơ bệnh án điện tử, kiểm định phần mềm thiết bị y tế** — đồ án không triển khai lâm sàng; chỉ nêu trong báo cáo như hướng phát triển
 ### E. Thiết kế trực quan (sơ đồ, Figma)
-- [x] **[T1] Sơ đồ Mermaid**: kiến trúc (2.2), luồng một ca chụp (2.3), state machine (4) — **đã có bản nháp trong file này**, cần xác nhận. Nguồn `.mmd` tách riêng ở `doc/diagrams/`
-- [ ] **[T1] Sơ đồ luồng ngoại lệ** (Mermaid): chụp lại, hủy chỉ định, sai thông tin bệnh nhân, mất kết nối HIS *(nháp ở `doc/05-luong-ngoai-le.md`, chờ nhóm xác nhận)*
+- [x] **[T1] Sơ đồ Mermaid**: kiến trúc (2.2), luồng một ca chụp (2.3), state machine (4) — **đã có bản nháp trong file này**, chưa xác nhận. Nguồn `.mmd` tách riêng ở `doc/diagrams/`. ⚠️ **2 ảnh `.png` đang lệch nguồn** — xem `doc/02-erd.md` mục 0
+- [x] **[T1] Sơ đồ luồng ngoại lệ** (Mermaid): chụp lại, hủy chỉ định, sai thông tin bệnh nhân, mất kết nối HIS *(nháp v0.9 ở `doc/05-luong-ngoai-le.md`, chưa xác nhận)*
 - [ ] **[T2] Design system trong Figma** — trích từ UI hiện tại: màu, typography, spacing, component bảng / bộ lọc / modal / badge trạng thái. **Không vẽ lại màn hình đã có**, chỉ chuẩn hóa.
-- [ ] **[T2–T3] Wireframe AI Panel trong OHIF** — màn hình duy nhất chưa có tiền lệ: overlay mask, panel kết quả, report nháp, nút xác nhận/sửa của bác sĩ. Đáng đầu tư kỹ.
+- [ ] **[T2–T3] Wireframe AI Panel trong OHIF** — màn hình duy nhất chưa có tiền lệ: overlay mask, panel kết quả, report nháp, nút xác nhận/sửa của bác sĩ. Đáng đầu tư kỹ. *(mô tả nền làm cơ sở cho wireframe sẽ là `doc/11-ai-design.md` mục 5 — chưa viết)*
+- [ ] **[T3→T8] `doc/11-ai-design.md` (thiết kế AI, không code)** — pipeline, vị trí AI trong state machine và `report.origin`, human-in-the-loop, mô tả AI Panel, pháp lý ở mức nêu vấn đề *(chưa viết; deliverable IN-21, IN-22)*
+  > **Không vẽ lại viewer OHIF.** OHIF là sản phẩm có sẵn, giao diện của nó không phải việc của nhóm. Chỉ vẽ: (1) **AI Panel**, (2) **nút "Xem ảnh"** trong worklist và trong modal lâm sàng tab 3, (3) **trạng thái "chưa có ảnh"** (nút ẩn/disable + lý do). Xem mục 2.7.
+- [ ] **[T2–T3] Nút "Xem ảnh" trong Figma** — hai vị trí: hàng worklist và modal lâm sàng tab 3 (cửa vào (a) và (b) ở mục 2.7); IN-23
+- [ ] **[T2–T3] Trạng thái "chưa có ảnh" trong Figma** — ca chưa có `study_instance_uid`: nút ẩn hay disable, có tooltip/ghi chú lý do hay không
 - [ ] **[T3] Review wireframe AI Panel với bác sĩ CĐHA** (nếu sắp xếp được)
 - [ ] **[//] Chỉnh sửa nhỏ các màn hình cũ** trong Figma khi logic mới khác UI cũ
 - [ ] **[HOÃN] Layout đa màn hình đọc phim**
@@ -339,7 +469,7 @@ Mỗi hạng mục được gắn nhãn thời điểm làm:
  
 ### F. Kiểm thử & vận hành
 - [ ] **[//] Test case** cho state machine và đối chiếu dữ liệu HIS/RIS — viết cùng lúc code
-- [ ] **[T8] Kịch bản demo / nghiệm thu nội bộ**
+- [ ] **[T8] Kịch bản demo / nghiệm thu nội bộ** *(10 bước đã có ở `doc/01-scope.md` mục 6; bản chi tiết kèm lệnh sẽ là `doc/12-seed-data-va-kich-ban-demo.md` mục 5 — chưa viết)*
 - [ ] **[HOÃN] Test plan đầy đủ, kế hoạch UAT với bác sĩ/KTV**
 - [ ] **[HOÃN] Backup & disaster recovery cho DICOM, SLA hiệu năng**
 ---
@@ -392,12 +522,12 @@ gantt
 |---|---|---|---|---|
 | **1** | Scope doc, ERD rút gọn, state machine, quy tắc HIS/RIS | Xác nhận 3 sơ đồ Mermaid có sẵn; vẽ thêm sơ đồ luồng ngoại lệ | — | Phần 9 nhóm "Phạm vi" + "Tích hợp" đã có câu trả lời |
 | **2** | API contract RIS core, chốt các ô ❓ còn lại ở Phần 8, sơ đồ triển khai local | Design system trong Figma; bắt đầu wireframe AI Panel | — | OpenAPI spec review xong, không còn ô ❓ ở Phần 8 |
-| **3** | RBAC matrix (//) | Hoàn thiện wireframe AI Panel, review với bác sĩ | Khởi tạo Spring Boot + React + MySQL (Flyway migration), Dockerfile, manifest k8s, auth, audit log | `kubectl apply` chạy được cả 3 thành phần; đăng nhập được; thao tác ghi audit log |
-| **4** | Đặc tả DICOM (bắt đầu) | — | Bệnh nhân, chỉ định, thêm/sửa ca chụp | CRUD chạy được, có quy tắc đối chiếu dữ liệu |
-| **5** | Đặc tả DICOM + mapping tag | — | Worklist 2 tab, state machine | Chuyển trạng thái đúng theo Phần 4, có test |
+| **3** | RBAC matrix (//), **bảo mật & toàn vẹn dữ liệu (`09`)**, **DevOps/triển khai (`14`)**; bắt đầu **danh mục liên kết (`10`)** và **thiết kế AI (`11`)** | Hoàn thiện wireframe AI Panel, review với bác sĩ | Khởi tạo Spring Boot + React + MySQL (Flyway migration), Dockerfile, manifest k8s, auth, audit log | `kubectl apply` chạy được cả 3 thành phần; đăng nhập được; thao tác ghi audit log |
+| **4** | Đặc tả DICOM (`07`, bắt đầu), **đặc tả HL7 (`08`)**, **seed data + kịch bản demo (`12`)**, hoàn thiện `10` | — | Bệnh nhân, chỉ định, thêm/sửa ca chụp | CRUD chạy được, có quy tắc đối chiếu dữ liệu |
+| **5** | Đặc tả DICOM + mapping tag (`07`), hoàn thiện `08` | — | Worklist 2 tab, state machine | Chuyển trạng thái đúng theo Phần 4, có test |
 | **6** | — | — | Bộ lọc (thời gian, trạng thái, máy, khoa), modal thông tin lâm sàng | Bộ lọc chính chạy được trên dữ liệu mẫu |
 | **7** | — | — | Thêm Orthanc + OHIF vào cụm k8s; gửi ảnh mẫu bằng dcm4che; hoàn thiện UI | Mở được ảnh DICOM mẫu từ worklist |
-| **8** | Cập nhật README, báo cáo đồ án, ghi lại nợ kỹ thuật | — | Deploy toàn bộ lên k8s local, sửa lỗi, kiểm thử | Demo end-to-end từ một lệnh deploy, dữ liệu giả |
+| **8** | Cập nhật README, báo cáo đồ án (**chương AI — `11`, IN-22**), ghi lại nợ kỹ thuật | — | Deploy toàn bộ lên k8s local, sửa lỗi, kiểm thử | Demo end-to-end từ một lệnh deploy, dữ liệu giả |
  
 > **Trạng thái thực tế ngày 2026-10-31 (tuần 3):** Frontend đã đi trước kế hoạch — có prototype React chạy bằng dữ liệu giả (worklist, bộ lọc, modal, báo cáo, state machine phía giao diện), chưa nối API. **Backend chưa bắt đầu** (không có Spring Boot, MySQL, Flyway, Docker, k8s trong repo). Bộ tài liệu thiết kế tuần 1–2 đã có bản nháp nhưng **chưa được nhóm xác nhận**; wireframe AI Panel và Design system trong Figma chưa có trong repo.
 
@@ -522,6 +652,12 @@ Mục 8.1 ("Frontend ✅ React") vẫn đúng. **Giữ hay đổi** (React 18 ha
 | **K8s** | Kubernetes |
 | **PVC** | PersistentVolumeClaim — ổ lưu trữ bền vững cho pod trong k8s |
 | **Flyway** | Công cụ quản lý migration schema database |
+| **StudyInstanceUID** | Mã định danh toàn cục của một study DICOM, tag (0020,000D). Do máy chụp sinh; là khóa duy nhất RIS cần để mở ảnh trong OHIF (xem 2.7). Trong ERD là cột `study.study_instance_uid` |
+| **Accession Number** | Mã phiếu chỉ định chụp, DICOM tag (0008,0050) đồng thọi là HL7 OBR-18. RIS sinh ra, máy chụp ghi vào header ảnh → **khóa nối ba chiều HIS ↔ RIS ↔ PACS** |
+| **AE Title** | Application Entity Title — tên định danh của một đầu mối DICOM trên mạng (máy chụp, PACS, RIS). Hai bên phải khai AE Title của nhau trước khi nói chuyện được |
+| **C-STORE** | Lệnh DICOM để **gửi ảnh** từ máy chụp vào PACS. Trong đồ án giả lập bằng `storescu` của dcm4che |
+| **C-FIND** | Lệnh DICOM để **truy vấn**. Dùng cho Modality Worklist: máy chụp C-FIND sang RIS để lấy danh sách ca cần chụp (giả lập bằng `findscu`) |
+| **Deep-link** | URL mở trực tiếp một study trong OHIF bằng cách truyền `StudyInstanceUID` trên query string, thay vì bắt người dùng tự tìm trong viewer (xem 2.7) |
  
 ---
  
@@ -534,3 +670,5 @@ Mục 8.1 ("Frontend ✅ React") vẫn đúng. **Giữ hay đổi** (React 18 ha
 | 2026-10-17 | Chốt stack (React, Spring Boot, MySQL, Docker + K8s local); bối cảnh đồ án môn học; sơ đồ triển khai local; cập nhật câu hỏi mở và lịch tuần | Claude |
 | 2026-10-31 | Đưa README vào gốc repo (kèm mục "Cấu trúc repo"). **Ẩn tên và mã bệnh nhân thật ở mục 2.5** (thay bằng ghi chú), theo nguyên tắc không dùng dữ liệu bệnh nhân thật ở bất kỳ đâu. Chuyển scope doc và ERD sang Markdown, tách 7 sơ đồ Mermaid ra `doc/diagrams/`. Thêm bản nháp `doc/03-state-machine.md`, `04-his-ris-reconciliation.md`, `05-luong-ngoai-le.md`, `api/openapi.yaml`; nâng ERD và scope doc lên v0.9. Cập nhật Phần 7.2 (trạng thái thực tế), 8.2 + 8.3 (Frontend thực tế khác gợi ý; Mock HIS ✅ HL7 v2), Phần 9 (đánh dấu câu 7, 17, 19). Không tick checkbox Phần 6 cho tài liệu nháp chưa được nhóm xác nhận | Claude/agent |
 | 2026-10-31 | Thêm `database/`: Docker Compose chạy MySQL 8.4 + Flyway, 7 file migration V1–V7 theo `doc/02-erd.md` v0.9 (14 bảng + dữ liệu giả). Cả nhóm chạy `docker compose up -d` để có cùng cấu trúc bảng. Đã chạy thử 7 file SQL trên MySQL 8.4.9 thật; container Flyway chưa chạy thử (Docker Desktop chưa bật). Thêm `.gitattributes` ép `*.sql` xuống dòng LF | Claude/agent |
+| 2026-11-05 | **Dọn bộ tài liệu.** Đổi tên `doc/03-pacs-dicom.md` → **`doc/07-pacs-dicom.md`** (hết trùng số với `03-state-machine.md`), cập nhật 18 tham chiếu. Thêm **mục 6.0 "Mục lục tài liệu và thứ tự đọc"** (15 file, có sơ đồ phụ thuộc, gồm 6 file chưa viết: 08, 10, 11, 12, 13, 14). Thêm **quy ước ý nghĩa checkbox** ở mục 6 (`[x]` = đã có nháp trong repo, **không** phải đã xác nhận) và tick 11 hạng mục đã có bản nháp. Sửa lỗi hiển thị `diagrams/01-ranh-gioi-he-thong.mmd` (nhãn cạnh `C-STORE` / `deep-link` chưa bọc ngoặc kép nên bị tách thành node rời). Sửa tham chiếu `01-scope.docx` còn sót trong `Frontend/README.md`. Tạo `doc/09-bao-mat-toan-ven-du-lieu.md` (nháp v0.1). ⚠️ **3 ảnh `.png` đang lệch nguồn `.mmd` và chưa xuất lại được** (`02-erd`, `01-ranh-gioi-he-thong`, `05-state-machine`) — môi trường không có `mermaid-cli`; lệnh và lý do ở `doc/02-erd.md` mục 0 | Claude/agent |
+| 2026-11-05 | Thêm **mục 2.7 "Hai cửa vào viewer"** (worklist CĐHA + màn hình kết quả lâm sàng → cùng một OHIF bằng deep-link `StudyInstanceUID`; PACS không biết ai gọi; tên/mã/tuổi trên ảnh đến từ header DICOM nên sai ở RIS thì sai cả ảnh — liên hệ 2.5). Thêm 2 nguyên tắc bất biến (che danh tính trong ảnh chụp màn hình tham chiếu; OHIF/Orthanc không mở công khai). Thêm dòng deep-link vào bảng 2.4, ghi chú bước 5 làm tay ở 2.3, ghi chú nút "Xem ảnh" ở 3.3 tab 3. Thêm checkbox `07-pacs-dicom.md` (6B) và 2 checkbox Figma + ghi chú "không vẽ lại viewer OHIF" (6E). Thêm 6 thuật ngữ DICOM vào Glossary. Tạo mới `doc/07-pacs-dicom.md` (nháp v0.1) | Claude/agent |

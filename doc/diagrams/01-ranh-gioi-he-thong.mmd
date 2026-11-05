@@ -1,21 +1,26 @@
 flowchart TB
     subgraph XD["Nhóm xây dựng trong 8 tuần"]
-        RIS[RIS backend + frontend]
-        DB[(MySQL)]
+        RIS["RIS backend + frontend"]
+        DB[("MySQL")]
     end
+
     subgraph TICH_HOP["Dựng ở tuần 7, chưa tích hợp sâu"]
-        PACS[(Orthanc)]
-        OHIF[OHIF Viewer]
+        PACS[("Orthanc")]
+        OHIF["OHIF Viewer"]
+        CLI["dcm4che CLI<br/>giả lập máy chụp"]
     end
-    subgraph NGOAI["Ngoài 8 tuần"]
-        MHIS[Mock HIS]
-        AI[AI Backend + AI Panel]
-        MWL[MWL tự động]
+
+    subgraph NGOAI["Ngoài 8 tuần — HOÃN"]
+        MHIS["Mock HIS"]
+        MWL["MWL tự động"]
+        AI["AI Backend + AI Panel"]
     end
-    CLI[dcm4che CLI<br/>giả lập máy chụp] -. C-STORE .-> PACS
+
     RIS --- DB
-    RIS -. deep-link .-> OHIF
-    OHIF -. DICOMweb .-> PACS
-    RIS -. HOÃN .-> MHIS
-    RIS -. HOÃN .-> MWL
-    PACS -. HOÃN .-> AI
+    CLI -. "C-STORE" .-> PACS
+    RIS -. "deep-link" .-> OHIF
+    OHIF -. "DICOMweb" .-> PACS
+
+    RIS -. "HOÃN" .-> MHIS
+    RIS -. "HOÃN" .-> MWL
+    PACS -. "HOÃN" .-> AI
