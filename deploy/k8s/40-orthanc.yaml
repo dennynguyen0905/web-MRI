@@ -1,0 +1,103 @@
+# Orthanc (PACS). Thuoc tuan 7 / IN-19 (doc/01-scope.md) - viet san manifest tu bay gio vi
+# doc/14-devops-trien-khai.md (muc nay) la noi dinh nghia quy uoc trien khai, khong phai vi da
+# dung toi trong 8 tuan dau. Anh: orthancteam/orthanc:26.9.1 - DA pull va xac nhan ton tai tren
+# Docker Hub trong phien lam viec tao file nay (khong doan tag).
+apiVersion: v1
+kind: Service
+metadata:
+  name: orthanc
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: orthanc
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  # type: LoadBalancer, KHONG phai ClusterIP - khac voi ris-backend. Ly do: ca hai noi goi Orthanc
+  # deu la tien trinh CHAY TREN MAY HOST, khong phai tu trong cum:
+  #   (1) OHIF la SPA chay trong trinh duyet nguoi dung - no tu goi DICOMweb bang JavaScript phia
+  #       trinh duyet, KHONG qua backend hay mot Service noi bo nao ca (doc/07-pacs-dicom.md muc 1,
+  #       "OHIF -- DICOMweb --> PACS"). Trinh duyet khong resolve duoc DNS noi bo cum
+  #       ("orthanc.vr-ris.svc...") nen phai dung dia chi browser-reachable.
+  #   (2) May gia lap chup (dcm4che storescu/echoscu, doc/07-pacs-dicom.md muc 5.1) chay tren CHINH
+  #       may dev, goi vao cong DICOM thuan (4242), khong di qua HTTP/Ingress duoc (socket thuan).
+  # Tren Docker Desktop, LoadBalancer = bind vao "localhost" cua chinh may dang chay (khong co IP
+  # cong khai) - day la co che thoa dung nguyen tac bat bien "Orthanc khong duoc expose ra
+  # Internet, chi trong cum k8s local" (README muc 0): "localhost" chi may dang chay Docker Desktop
+  # mo duoc, khong ai tu ben ngoai mang do toi duoc. ⚠️ Ly luan nay CHI dung cho Docker Desktop -
+  # tren k8s cloud thuc, LoadBalancer se co IP cong khai va VI PHAM nguyen tac nay (xem
+  # doc/14-devops-trien-khai.md muc 4, doc/09-bao-mat-toan-ven-du-lieu.md muc 5.2, P-09/S-15 ❓).
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: orthanc
+  ports:
+    - name: dicom
+      port: 4242
+      targetPort: 4242
+    - name: http-dicomweb
+      port: 8042
+      targetPort: 8042
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: orthanc
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: orthanc
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  serviceName: orthanc
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orthanc
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orthanc
+        app.kubernetes.io/part-of: vr-ris-pacs
+    spec:
+      containers:
+        - name: orthanc
+          image: orthancteam/orthanc:26.9.1
+          ports:
+            - containerPort: 4242
+            - containerPort: 8042
+          volumeMounts:
+            - name: config
+              mountPath: /etc/orthanc/orthanc.json
+              subPath: orthanc.json
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/orthanc/db
+          readinessProbe:
+            httpGet:
+              path: /system
+              port: 8042
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /system
+              port: 8042
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            # Anh DICOM (CR/CT) nang hon file tinh thong thuong - de nhieu hon mysql mot chut.
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: orthanc-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi # du cho 1-2 study CR/CT mau (IN-19) + biên dự phòng.

@@ -1,0 +1,67 @@
+# Mock HIS — H-03, [HOÃN] (doc/01-scope.md mục 4). KHÔNG có code Mock HIS nào trong repo tính đến
+# 2026-11-05 (chỉ có interface Backend/src/main/java/com/vrris/pacs/integration/HisGateway.java +
+# bản giả lập đọc file JSON JsonFileHisGateway, xem doc/12-seed-data-va-kich-ban-demo.md mục 3.2).
+# File này là MANIFEST MẪU theo đúng yêu cầu "viết sẵn, không code" — ❓ mọi giá trị dưới đây là
+# CHỖ GIỮ (placeholder), không phải quyết định đã chốt.
+#
+# ⚠️ KHÔNG nằm trong deploy/k8s/kustomization.yaml — "kubectl apply -k deploy/k8s" mặc định KHÔNG
+# triển khai file này. Muốn thử (ví dụ khi bắt đầu code H-03 ở giai đoạn sau): thêm dòng
+# "- 50-mock-his.yaml" vào kustomization.yaml, đổi "image" bên dưới thành image thật, và đổi
+# replicas về 1.
+#
+# MLLP (HL7 v2) là socket TCP thuần, không phải HTTP (doc/01-scope.md mục 4.1: "MLLP là socket
+# thuần... Mock HIS sau này cần một Service/port riêng trong k8s chứ không đi qua Ingress") — Service
+# dưới đây vì vậy không có readiness/liveness httpGet, và KHÔNG có LoadBalancer: Mock HIS chỉ cần
+# ris-backend (trong cụm) gọi tới, không phải trình duyệt hay máy chụp trên host.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-his
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: mock-his
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  replicas: 0 # cố ý 0 — xem cảnh báo ở đầu file. Đổi thành 1 khi có image thật.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-his
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-his
+        app.kubernetes.io/part-of: vr-ris-pacs
+    spec:
+      containers:
+        - name: mock-his
+          # ❓ CHƯA CÓ IMAGE THẬT. Gợi ý ở doc/01-scope.md mục 8.2: "một module Spring Boot nhỏ
+          # hoặc JSON server" — khi code H-03, build image riêng (ví dụ deploy/docker/mock-his.Dockerfile)
+          # và đổi dòng này. Giá trị dưới đây chỉ để `kubectl apply` không báo lỗi thiếu field, image
+          # này KHÔNG tồn tại trên registry nào.
+          image: vrris/mock-his:not-built-yet
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 2575 # 2575 là cổng MLLP quy ước phổ biến (không phải chuẩn bắt buộc) - ❓ chưa chốt.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-his
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: mock-his
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  selector:
+    app.kubernetes.io/name: mock-his
+  ports:
+    - name: mllp
+      port: 2575
+      targetPort: 2575

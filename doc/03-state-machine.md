@@ -4,9 +4,10 @@ Tài liệu con của `README.md`, mục 6A: [T1] Đặc tả state machine. Că
 
 | Phiên bản | 0.9 (nháp — chưa được nhóm xác nhận) |
 |---|---|
-| Ngày | 2026-10-31 |
+| Ngày | 2026-11-05 (v0.9 gốc: 2026-10-31) |
 | Trạng thái tài liệu | Mọi điểm gắn ❓ là **đề xuất, chờ nhóm xác nhận**. Chưa có điểm nào được xác nhận |
-| Liên quan README Phần 9 | Câu 1 (ai chuyển trạng thái, có quay lui không), câu 2 ("quá hạn") |
+| Liên quan README Phần 9 | Câu 1 (ai chuyển trạng thái, có quay lui không), câu 2 ("quá hạn"), câu 11–13 (AI) |
+| Thay đổi 2026-11-05 | Viết lại mục 2.6 (vị trí AI) — sửa mâu thuẫn với quy tắc "AI không ghi trực tiếp vào RIS", thêm đề xuất trường phụ `study.ai_status` (❓ chưa chốt, H-04). Chi tiết đầy đủ ở `doc/11-ai-design.md` |
 
 Quy ước: mã trạng thái trong DB và API là cột **DB / API** của bảng 2.1 (theo `02-erd.md` mục 4.5). Nhãn tiếng Việt chỉ dùng cho UI.
 
@@ -100,13 +101,28 @@ Dấu ✔ = được phép theo đề xuất. Quyền của 5 vai trò lấy t�
 | Người đọc phải là người đang giữ ca | Có (khóa mềm) | Không kiểm; bất kỳ ai có `report.write` đều thao tác được |
 | Người duyệt ≠ người đọc | Có | Không kiểm |
 
-### 2.6. Vị trí của AI (mức thiết kế, không code)
+### 2.6. Vị trí của AI (mức thiết kế, không code) — **sửa 2026-11-05, xem điểm 6**
 
-- AI **không** nằm trong chuỗi trạng thái: AI không tạo, không đổi trạng thái nào của `study`. Phù hợp nguyên tắc bất biến: AI không tự trả kết quả chính thức, luôn có bác sĩ CĐHA xác nhận (human-in-the-loop).
-- AI chỉ tạo **báo cáo nháp** (`report.origin = AI_DRAFT`, `status = DRAFT`). Bản nháp xuất hiện để bác sĩ xem khi ca đã `READING` (bác sĩ đã mở ca).
-- Bác sĩ sửa nội dung → `origin = AI_DRAFT_EDITED`. Bác sĩ chuyển `READING → READ` (T5) là hành động xác nhận có tên người và có audit; nút xác nhận do bác sĩ bấm, không bao giờ tự động.
-- AI Backend không ghi trực tiếp vào RIS (README Phần 2.1); nháp đi qua PACS/OHIF.
-- Toàn bộ phần AI là [HOÃN] ở mức code (H-04). Wireframe AI Panel và chương AI trong báo cáo là deliverable tài liệu (IN-21, IN-22).
+> Mục này mô tả ở mức tóm tắt; đặc tả đầy đủ (pipeline, định dạng kết quả, AI Panel, audit, rủi ro automation bias, pháp lý) nằm ở **`doc/11-ai-design.md`** — đây chỉ là phần phải khớp với state machine.
+
+1. **7 trạng thái chính của `study.status` (bảng 2.1–2.2) không đổi vì AI.** AI không tạo, không tự chuyển trạng thái nào của `study`. Phù hợp nguyên tắc bất biến: AI không tự trả kết quả chính thức, luôn có bác sĩ CĐHA xác nhận (human-in-the-loop).
+2. **Bản ghi `report` trong RIS không do AI ghi.** AI chuẩn bị nội dung nháp (nhãn, điểm tin cậy, văn bản nháp) **ở ngoài RIS** (PACS cho mask DICOM SEG; một kho riêng của AI Backend cho phần phi ảnh — `11-ai-design.md` mục 3). Bản ghi `report` **chỉ xuất hiện trong RIS khi bác sĩ đang đọc (`reading_user_id`) lưu nó** qua `PUT /studies/{studyId}/reports/current` (endpoint đã có, không cần endpoint riêng cho AI) — đúng như AI Backend "không ghi trực tiếp vào RIS" (README mục 2.1). `report.origin` (`MANUAL | AI_DRAFT | AI_DRAFT_EDITED`, `02-erd.md`) do **backend tự tính tại thời điểm lưu**, dựa trên việc nội dung gửi lên có khớp nguyên văn gợi ý AI đang tham chiếu hay không — **không** phải do AI hay client tự khai báo giá trị `origin`. Chi tiết: `11-ai-design.md` mục 4.2 và mục 11 (điểm mâu thuẫn đã sửa).
+3. Bác sĩ chuyển `READING → READ` (T5) vẫn là hành động xác nhận duy nhất, có tên người và có audit, dù báo cáo có gốc từ AI hay không — **không thêm bước xác nhận AI riêng**.
+4. **Trường phụ mới, đề xuất (❓ chưa chốt, thuộc H-04): `study.ai_status`.** Độc lập hoàn toàn với `study.status` — không phải một trạng thái thứ 8 của state machine chính, mà là một **state machine phụ, song song**, theo dõi riêng việc AI đã xử lý ảnh của study này tới đâu:
+
+   | `ai_status` | Ý nghĩa |
+   |---|---|
+   | `NOT_TRIGGERED` | Mặc định. Chưa có gì kích hoạt AI (modality không thuộc danh sách AI hỗ trợ, hoặc AI Backend chưa nhận được thông báo) |
+   | `PENDING` | AI đang xử lý |
+   | `READY` | AI đã có kết quả, sẵn sàng hiển thị ở AI Panel |
+   | `FAILED` | AI xử lý lỗi |
+   | `TIMEOUT` | AI quá thời gian chờ quy định, hoặc RIS không nhận được event nào sau một ngưỡng (xem `11-ai-design.md` mục 2 bước 5) |
+
+   **Ai/cái gì kích hoạt:** PACS, tự động, khi nhận đủ ảnh cho một study có modality AI hỗ trợ — **không phải RIS, không phải bác sĩ**. RIS chỉ **nhận lại** một event trạng thái qua endpoint tích hợp hệ thống (cùng kiểu với `POST /integration/pacs/study-notifications` đã có trong `api/openapi.yaml`), rồi cập nhật `study.ai_status`. **Không có chuyển T1–T10 nào thay đổi vì trường này** — `ai_status` thay đổi độc lập, có thể xảy ra ở bất kỳ lúc nào study đang ở trạng thái `SCHEDULED` hoặc `UNREAD` trở đi (ảnh đã vào PACS).
+   **Khi AI lỗi hoặc chậm (`FAILED`/`TIMEOUT`):** `study.status` **không bị ảnh hưởng** — bác sĩ đọc ca hoàn toàn như không có AI. Đây là yêu cầu an toàn bắt buộc: AI là lớp phụ trợ, không phải đường găng của nghiệp vụ.
+   Sơ đồ: `doc/diagrams/11-ai-state-machine.mmd` — vẽ `study.status` (không đổi) và `study.ai_status` (đề xuất mới) là hai khối tách biệt, có ghi chú rõ phần nào đã có / phần nào AI thêm vào.
+5. **Chưa đưa `study.ai_status` vào `02-erd.md`.** Đây là đề xuất schema (cần migration V8+ nếu được chấp nhận) — cần nhóm xác nhận trước, không tự thêm cột trong lần sửa này.
+6. **Đây là thay đổi lớn so với bản nháp trước (trước 2026-11-05):** bản trước viết "AI chỉ tạo báo cáo nháp (`report.origin = AI_DRAFT`, `status = DRAFT`)" — đọc như AI tự ghi vào bảng `report` của RIS, mâu thuẫn với câu ngay sau đó ("AI Backend không ghi trực tiếp vào RIS"). Đã sửa theo điểm 2 ở trên. Toàn bộ phần AI vẫn là **[HOÃN] ở mức code (H-04)**; wireframe AI Panel và chương AI trong báo cáo là deliverable tài liệu (IN-21, IN-22) — xem đầy đủ ở `doc/11-ai-design.md`.
 
 ### 2.7. Câu hỏi mở của tài liệu này
 

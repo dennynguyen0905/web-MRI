@@ -1,0 +1,43 @@
+name: Build Docker images
+
+# Chi KIEM TRA hai Dockerfile con build duoc khong (bat loi som khi co ai sua Backend/Frontend/deploy
+# lam hong image) - KHONG day (push) image len dau ca, vi doc/14-devops-trien-khai.md mục 8.2 chon
+# "khong dung registry trong 8 tuan" (Docker Desktop k8s dung thang image local). Neu nhom doi sang
+# co registry (vi du GHCR) sau nay, them buoc "docker push" va "docker/login-action" vao day.
+on:
+  push:
+    paths:
+      - "Backend/**"
+      - "Frontend/**"
+      - "database/migrations/**"
+      - "deploy/docker/**"
+      - ".github/workflows/build-images.yml"
+  pull_request:
+    paths:
+      - "Backend/**"
+      - "Frontend/**"
+      - "database/migrations/**"
+      - "deploy/docker/**"
+      - ".github/workflows/build-images.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: ris-backend
+            dockerfile: deploy/docker/backend.Dockerfile
+          - name: ris-frontend
+            dockerfile: deploy/docker/frontend.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build context PHAI la goc repo (".") - xem chu thich dau moi Dockerfile o deploy/docker/.
+      - name: Build ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: vrris/${{ matrix.name }}:ci

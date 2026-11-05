@@ -1,0 +1,37 @@
+# VR-RIS PACS - cau hinh nginx cho ris-frontend (SPA fallback + proxy /api sang ris-backend).
+# Xem doc/14-devops-trien-khai.md muc 3. File ket thuc bang ".template": anh nginx chinh thuc chay
+# envsubst tren file nay luc container khoi dong, ghi ket qua ra /etc/nginx/conf.d/default.conf -
+# ${BACKEND_UPSTREAM} duoc thay bang gia tri thuc (ConfigMap trong k8s, "environment:" trong
+# docker-compose.full.yml). Cac bien bat dau "$" khac (${host}... khong, nhung $uri, $request,
+# $proxy_add_x_forwarded_for...) la bien NGINX, KHONG bi envsubst dong vao vi chung khong phai
+# bien moi truong cua container - chi bien nao thuc su dat qua "ENV"/"environment:" moi bi thay.
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # React Router (hoac tuong tu) dung client-side routing: moi duong dan khong khop file tinh
+    # phai tra ve index.html, khong phai 404, de app tu dinh tuyen o trinh duyet.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Moi request API di qua nginx nay roi moi toi ris-backend - tu Frontend KHONG goi thang
+    # Service backend (giu dung so do 2.6/14: trinh duyet chi noi voi mot dia chi). Backend tu co
+    # context-path "/api/v1" (Backend/src/main/resources/application.yml) nen giu nguyen duong dan,
+    # khong rewrite.
+    location /api/ {
+        proxy_pass http://${BACKEND_UPSTREAM}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Nginx tu tra 200 khi con song - du cho k8s readiness/liveness probe cua frontend
+    # (deploy/k8s/30-frontend-deployment.yaml), khong can endpoint rieng.
+}

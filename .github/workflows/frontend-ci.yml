@@ -1,0 +1,40 @@
+name: Frontend CI
+
+on:
+  push:
+    paths:
+      - "Frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    paths:
+      - "Frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+
+# doc/14-devops-trien-khai.md muc 7: chua chay that tren GitHub (Backend/ va Frontend/ chua
+# commit vao git tinh den 2026-11-05 - xem README muc 7.2), chi chay thu local va dung cu phap
+# hop le. Node 22 - cung ly do chon o deploy/docker/frontend.Dockerfile (LTS thap nhat thoa dieu
+# kien engine cua Vite 7.1: ^20.19.0 || >=22.12.0).
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npx eslint .
+
+      - name: Type-check + build (tsc -b && vite build)
+        run: npm run build

@@ -1,0 +1,57 @@
+# VR-RIS PACS — bản Docker Compose "đầy đủ" (IN-17 docker-compose.yml, doc/01-scope.md mục 3.4):
+# mysql + flyway + ris-backend + ris-frontend trong MỘT lệnh, KHÔNG cần Kubernetes. Dùng cho:
+#   - Thử nguyên cụm giống k8s nhưng không tốn công cấu hình k8s (ví dụ demo nhanh cho người ngoài nhóm).
+#   - Không phải vòng dev HẰNG NGÀY — vòng dev hằng ngày vẫn là database/docker-compose.yml (chỉ
+#     MySQL) + `mvn spring-boot:run` + `npm run dev` (build lại ảnh mỗi lần sửa code chậm hơn nhiều
+#     so với hot-reload của Vite/Spring DevTools) — xem doc/14-devops-trien-khai.md mục 1.
+#
+# Chạy (từ bất kỳ đâu — "context:"/"include:" dưới đây được Docker Compose tính tương đối với VỊ
+# TRÍ FILE NÀY, không phải thư mục đang gọi lệnh; đã xác nhận bằng `docker compose ... config`):
+#   docker compose -f deploy/compose/docker-compose.full.yml up -d --build
+#   docker compose -f deploy/compose/docker-compose.full.yml logs -f flyway   # đợi "Successfully applied 8 migrations"
+# Mở: http://localhost:8080
+#
+# "include" (Compose v2.20+, xem `docker compose version`) đưa service mysql/flyway và volume
+# mysql_data từ database/docker-compose.yml vào ĐÚNG MỘT project này — không chép lại định nghĩa
+# service, khớp nguyên tắc "một thông tin một nguồn" (README mục 6.0).
+name: vr-ris-full
+
+include:
+  - path: ../../database/docker-compose.yml
+
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/backend.Dockerfile
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+    environment:
+      # Giống hệt gia tri dev local trong Backend/src/main/resources/application.yml, NHUNG
+      # SPRING_DATASOURCE_URL doi host "localhost" (dung khi backend chay tren may host, noi voi
+      # cong 3307 lo ra ngoai) thanh "mysql" (ten service trong CHINH compose project nay, cong noi
+      # bo 3306) - vi backend o day chay TRONG container, cung mang voi mysql.
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/vr_ris?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC"
+      SPRING_DATASOURCE_USERNAME: ris
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-ris_dev_pw}
+      TZ: UTC
+      # Profile "default" (KHONG "k8s"): o day van co service "flyway" rieng (tu database/docker-compose.yml,
+      # dong vai tro giong het trong k8s la Flyway tu backend chay) lam migration TRUOC qua
+      # "depends_on: condition: service_completed_successfully" - backend giu spring.flyway.enabled=false
+      # nhu dev local, KHONG dat SPRING_PROFILES_ACTIVE=k8s o day.
+    ports:
+      - "8081:8080" # chi de debug tu may host (vd curl .../actuator/health); frontend moi la cong chinh.
+  frontend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/frontend.Dockerfile
+    depends_on:
+      - backend
+    environment:
+      # Ten service Compose la "backend" (khac ten Service k8s "ris-backend", xem
+      # deploy/docker/frontend.Dockerfile ENV mac dinh va deploy/k8s/20-configmap.yaml) - day la
+      # LY DO CHINH phai dung co che template/envsubst cua nginx thay vi hard-code trong anh.
+      BACKEND_UPSTREAM: "backend:8080"
+    ports:
+      - "8080:80"

@@ -1,0 +1,10 @@
+# Giam dung luong build context khi "docker build -f deploy/docker/*.Dockerfile ." tu goc repo
+# (deploy/14-devops-trien-khai.md muc 3). Khong anh huong gi toi git - day la file rieng cua Docker.
+.git
+.idea
+**/node_modules
+**/target
+**/dist
+**/*.tsbuildinfo
+process
+doc/archive

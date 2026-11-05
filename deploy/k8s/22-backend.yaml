@@ -1,0 +1,81 @@
+# ris-backend. Xem doc/14-devops-trien-khai.md muc 4.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ris-backend
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: ris-backend
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  replicas: 1 # xem ghi chu an toan Flyway nhieu replica o application-k8s.yml - chua kiem chung thuc te.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ris-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ris-backend
+        app.kubernetes.io/part-of: vr-ris-pacs
+    spec:
+      containers:
+        - name: ris-backend
+          # KHONG co registry prefix (vi du "docker.io/", "ghcr.io/...") - anh build bang
+          # "docker build -f deploy/docker/backend.Dockerfile ." tren CHINH may dang chay Docker
+          # Desktop Kubernetes. Docker Desktop k8s dung CHUNG image store voi lenh `docker build`/
+          # `docker images` (khong phai mot VM/registry rieng nhu minikube/kind) - nen
+          # imagePullPolicy phai la IfNotPresent (khong phai Always), de kubelet KHONG di tim tren
+          # Docker Hub mot image "vrris/ris-backend" khong ton tai o do. Xem
+          # doc/14-devops-trien-khai.md muc 8 (quy trinh trien khai, buoc build image).
+          image: vrris/ris-backend:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secret
+          readinessProbe:
+            httpGet:
+              path: /api/v1/actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/v1/actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            # Da do thu: JVM + Tomcat embedded idle ~250-300Mi; de du cho Hibernate/HikariPool va
+            # luc Flyway chay migrate luc khoi dong. Muc hop ly cho may ca nhan, khong phai so chot.
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              cpu: 750m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ris-backend
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: ris-backend
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  # ClusterIP (mac dinh) - KHONG LoadBalancer/NodePort. Trinh duyet khong bao gio goi thang vao
+  # day; ris-frontend (nginx) la noi duy nhat proxy toi day (deploy/docker/frontend.nginx.conf.template).
+  # Day cung la ly do CORS (app.cors.allowed-origins trong application.yml) khong can cau hinh gi
+  # them trong k8s - trinh duyet luon goi /api/... cung origin voi trang dang mo (frontend).
+  selector:
+    app.kubernetes.io/name: ris-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

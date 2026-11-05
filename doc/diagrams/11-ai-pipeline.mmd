@@ -1,0 +1,23 @@
+flowchart TD
+    A["PACS nhận đủ ảnh<br/>(C-STORE hoàn tất)"] --> B{"Modality có trong<br/>danh sách AI hỗ trợ?"}
+    B -- "Không" --> Z1["ai_status = NOT_TRIGGERED<br/>(không làm gì)"]
+    B -- "Có" --> C["Kích hoạt AI Backend<br/>ai_status = PENDING"]
+    C --> D["Lấy ảnh qua DICOMweb<br/>(QIDO-RS + WADO-RS)"]
+    D -- "Lỗi / thiếu ảnh" --> F1["FAILED: KHONG_LAY_DUOC_ANH"]
+    D -- "OK" --> E["Tiền xử lý<br/>(resize, windowing)"]
+    E -- "Sai định dạng" --> F2["FAILED: TIEN_XU_LY_LOI"]
+    E -- "OK" --> G["Suy luận<br/>(model có sẵn)"]
+    G -- "Lỗi runtime" --> F3["FAILED: SUY_LUAN_LOI"]
+    G -- "Quá thời gian chờ" --> T1["TIMEOUT"]
+    G -- "OK" --> H["Lưu DICOM SEG + nháp<br/>(STOW-RS + kho AI)"]
+    H -- "Lỗi ghi PACS" --> F4["FAILED: LUU_PACS_LOI"]
+    H -- "OK" --> I["READY<br/>gửi event tới RIS"]
+    F1 --> J["Gửi event FAILED tới RIS"]
+    F2 --> J
+    F3 --> J
+    F4 --> J
+    T1 --> K["Gửi event TIMEOUT tới RIS"]
+    I --> L["AI Panel hiển thị khi bác sĩ mở ca"]
+    J --> L
+    K --> L
+    Z1 --> L

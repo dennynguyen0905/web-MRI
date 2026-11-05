@@ -69,6 +69,7 @@ Bệnh nhân mẫu mã `TEST0001`…`TEST0008`, tên có hậu tố "Giả", là
 | `V5__audit_and_conflict.sql` | `audit_log`, `identity_conflict` |
 | `V6__clinical_snapshot.sql` | `clinical_snapshot` |
 | `V7__seed_demo_data.sql` | chỉ có dữ liệu giả, không tạo bảng |
+| `V8__rbac_and_demo_extras.sql` | chỉ bổ sung dữ liệu giả còn thiếu (tài khoản demo thứ hai, `his_order_id` khớp `his-mock/orders.json`, một ca `CANCELLED`) — không tạo bảng. Xem `doc/12-seed-data-va-kich-ban-demo.md` mục 3.2 |
 
 Ngoài 14 bảng trên, Flyway tự tạo thêm bảng `flyway_schema_history` để ghi nhớ đã chạy file nào. Đừng sửa bảng này.
 
@@ -93,10 +94,18 @@ Mã trạng thái ca chụp lưu dạng chữ: `SCHEDULED`, `UNREAD`, `READING`,
 
 ## Khi có backend Spring Boot
 
-Backend nối vào `jdbc:mysql://localhost:3307/vr_ris` bằng user `ris`. Migration chỉ nên chạy ở **một** nơi (nhóm quyết định ❓): hoặc để Docker Compose này chạy (backend đặt `spring.flyway.enabled=false`), hoặc để backend chạy Flyway và trỏ `spring.flyway.locations=filesystem:../database/migrations`. Dù chọn cách nào cũng dùng chung thư mục `database/migrations/` và bảng `flyway_schema_history`, nên không bị lệch.
+Backend nối vào `jdbc:mysql://localhost:3307/vr_ris` bằng user `ris`. **Cập nhật 2026-11-05 — câu hỏi "chạy Flyway ở đâu" không còn là một lựa chọn duy nhất, mà theo môi trường** (đề xuất ở `doc/14-devops-trien-khai.md` mục 5, 🟡 chờ nhóm xác nhận):
 
-## Trạng thái kiểm tra (2026-10-31)
+| Môi trường | Ai chạy Flyway | Cấu hình backend |
+|---|---|---|
+| Dev local (vòng hằng ngày) | **Docker Compose này** (`database/docker-compose.yml`, như từ trước tới nay) | `spring.flyway.enabled=false` (`Backend/src/main/resources/application.yml`, không đổi) |
+| Cụm Kubernetes (local, tuần 3 và 8) | **Backend tự chạy** lúc khởi động — không có container flyway riêng như docker-compose trong k8s | Profile `k8s` (`Backend/src/main/resources/application-k8s.yml`): `spring.flyway.enabled=true`, đọc `classpath:db/migration` |
 
-- Cả 7 file đã chạy đúng thứ tự trên **MySQL 8.4.9 thật**: tạo đủ 14 bảng, 23 khóa ngoại; khóa duy nhất và khóa ngoại chặn đúng dữ liệu sai; dữ liệu mẫu nhất quán với state machine.
+Dù chạy ở đâu, cả hai đều dùng **đúng nội dung** `database/migrations/` (nguồn duy nhất): Docker Compose đọc trực tiếp qua volume; backend ở k8s đọc bản mà `maven-resources-plugin` (`Backend/pom.xml`) copy từ `database/migrations/` vào `target/classes/db/migration` lúc build — không có file `.sql` nào được chép tay/commit trùng. Cả hai cũng dùng chung bảng `flyway_schema_history` (trong cùng schema `vr_ris`) nên không bị lệch version. Test của backend (`Backend/src/test/resources/application.yml`) vẫn là cách thứ ba, riêng: tự chạy Flyway nhưng trỏ `filesystem:../database/migrations`, chỉ tới `V6` (không seed `V7`/`V8`) — không đổi.
+
+## Trạng thái kiểm tra (2026-11-05, cập nhật từ 2026-10-31)
+
+- Cả 8 file (V1–V8) đã chạy đúng thứ tự trên **MySQL 8.4 thật** qua `docker compose run --rm flyway migrate` — **đã chạy thật trong phiên làm việc này**, không còn là "chưa kiểm chứng" như ghi chú 2026-10-31 dưới đây: `docker compose run --rm flyway info` báo đúng `Pending` cho V8 trước khi chạy, và `Successfully applied 1 migration to schema vr_ris, now at version v8` sau khi chạy `migrate`.
+- `V1`–`V7` tạo đủ 14 bảng, 23 khóa ngoại; khóa duy nhất và khóa ngoại chặn đúng dữ liệu sai; dữ liệu mẫu nhất quán với state machine. `V8` chỉ `INSERT`/`UPDATE` (không `CREATE TABLE`), xem mục "Các bảng" ở trên.
 - `docker-compose.yml` đã được `docker compose config` đọc hợp lệ; tag `mysql:8.4` và `flyway/flyway:11` có trên Docker Hub.
-- **Chưa chạy được container Flyway thật** (lúc viết, Docker Desktop trên máy tác giả chưa bật). Người đầu tiên chạy `docker compose up -d` xong, xin báo lại nếu `docker compose logs flyway` không ra `Successfully applied 7 migrations`.
+- *(Ghi chú 2026-10-31, nay đã lỗi thời — giữ lại để biết lịch sử)*: ~~Chưa chạy được container Flyway thật (lúc viết, Docker Desktop trên máy tác giả chưa bật)~~.

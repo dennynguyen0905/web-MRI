@@ -240,7 +240,7 @@ Vấn đề: HIS gửi lại cùng một `ORM^O01` (vì không nhận được A
 | Lớp chống trùng thứ hai | `UNIQUE(his_order_id)` trên `imaging_order` — `his_order_id` là ORC-2 Placer Order Number, do HIS đặt | ❓ **ERD hiện KHÔNG có UNIQUE trên cột này** (mục 6 chỉ có `UK(order_code)`) → cần migration nếu chốt |
 | Hành vi khi gặp lại message đã xử lý | Trả **ACK thành công** và **không ghi gì** — không trả lỗi, vì với HIS thì message đó *đã* được nhận | ❓ đề xuất |
 
-**Trong 8 tuần:** không có parser HL7 thật, chỉ có interface `HisGateway` + bản giả lập đọc file JSON (`01-scope.md` mục 4.1). Nên **idempotency chưa thực thi được** — nhưng phải thiết kế trước, vì nó quyết định có cần `UNIQUE(his_order_id)` hay không, và thêm UNIQUE sau khi đã có dữ liệu trùng thì không thêm được. Chi tiết message: `08-hl7-message-spec.md` (chưa viết).
+**Trong 8 tuần:** không có parser HL7 thật, chỉ có interface `HisGateway` + bản giả lập đọc file JSON (`01-scope.md` mục 4.1). Nên **idempotency chưa thực thi được** — nhưng phải thiết kế trước, vì nó quyết định có cần `UNIQUE(his_order_id)` hay không, và thêm UNIQUE sau khi đã có dữ liệu trùng thì không thêm được. Chi tiết message: `08-hl7-message-spec.md` mục 10.2 (nháp v0.1, 2026-11-05).
 
 ### 3.5. Bảo vệ quy tắc "không lưu cột tuổi"
 
@@ -380,7 +380,7 @@ Quyền (`403`) đã có bộ riêng ở `06-rbac-matrix.md` mục 8 — **khôn
 | Máy chụp gửi ảnh **thẳng vào PACS** | Kiến trúc: không có đường máy chụp → RIS cho ảnh | `07` mục 1 | ✅ |
 | AI **không** tự trả kết quả chính thức | `report.origin` phân biệt `MANUAL / AI_DRAFT / AI_DRAFT_EDITED`; chỉ bản `APPROVED` gửi về HIS (`02-erd.md` 4.10) | — | ⚠️ Cơ chế đã có trong ERD; đặc tả đầy đủ ở `11-ai-design.md` **chưa viết** |
 | **Mọi** hành vi đọc/sửa/duyệt dữ liệu bệnh nhân có audit | 9 giá trị `action`, `patient_id` truy vết | 2 | ⚠️ **Chưa đủ**: (a) cách ghi `READ` cho worklist chưa chốt (2.3); (b) không có `action` cho `403` (2.2); (c) không có chỗ ghi đăng nhập thất bại (2.2) |
-| Tích hợp dùng **chuẩn mở** (DICOM/HL7/FHIR) | DICOM ở `07`, HL7 v2 ở `08` (chưa viết) | — | ✅ |
+| Tích hợp dùng **chuẩn mở** (DICOM/HL7/FHIR) | DICOM ở `07`, HL7 v2 ở `08` (nháp v0.1) | — | ✅ |
 | **Không** dữ liệu bệnh nhân thật ở bất kỳ đâu | R-03; TCIA cho ảnh; quy trình che ảnh tham chiếu | 6 | ⚠️ **Chưa kiểm tra git history** (6.2) |
 | Ảnh chụp màn hình phải che danh tính trước khi vào repo | Quy trình 5 bước | 6.2 | ⚠️ Như trên |
 | OHIF/Orthanc **không** mở công khai | 3 phương án, chưa chọn | 5.2, `07` 6.3 | ❓ **Chưa chốt** |
@@ -405,7 +405,7 @@ Quyền (`403`) đã có bộ riêng ở `06-rbac-matrix.md` mục 8 — **khôn
 | S-09 | **Cột riêng cho khóa lạc quan** trên `report` (`version` nghiệp vụ không dùng được cho việc này) | **3.2(a)** | **Cần migration V8+ nếu chốt là có** |
 | S-10 | Ai/làm sao giải phóng khóa khi bác sĩ đóng tab mà không lưu | 3.2(b) | IN-10, IN-14 |
 | S-11 | Có thêm `UNIQUE(his_order_id)` trên `imaging_order` không | 3.4 | **Thêm muộn thì không thêm được** nếu đã có dữ liệu trùng |
-| S-12 | Có commit file k8s `Secret` mẫu (giá trị giả) vào repo không | 5.1 | `14-devops-trien-khai.md` |
+| S-12 | ~~Có commit file k8s `Secret` mẫu (giá trị giả) vào repo không~~ → 🟡 **Có, commit thẳng** (không tách `.example`) — `deploy/k8s/21-secret.yaml`, cùng giá trị giả đã có ở `database/docker-compose.yml`/`application.yml`. Đề xuất, chưa phải quyết định nhóm (D14-06 ở `14-devops-trien-khai.md` mục 10) | 5.1 | `14-devops-trien-khai.md` mục 6.1 |
 | S-13 | Có làm TLS trong 8 tuần không | 5.3 | IN-17 |
 | S-14 | Git history có còn giữ tên/mã bệnh nhân thật ở bản README cũ không | 6.2 | **Nguyên tắc bất biến** — cần kiểm tra ngay |
 | S-15 | Thời gian lưu audit log trong hệ thống thật | 2.6 | Không chặn (ngoài phạm vi, nêu trong báo cáo) |

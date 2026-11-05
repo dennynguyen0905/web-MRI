@@ -1,0 +1,32 @@
+# Profile "k8s" - xem doc/14-devops-trien-khai.md muc 5. Kich hoat bang bien moi truong
+# SPRING_PROFILES_ACTIVE=k8s trong Deployment ris-backend (deploy/k8s/22-backend-deployment.yaml).
+#
+# Khac voi application.yml (dev local, flyway.enabled=false, migration chay qua
+# database/docker-compose.yml): trong k8s KHONG co container flyway rieng nhu docker-compose, nen
+# backend tu chay Flyway luc khoi dong, doc V1..V8 tu classpath:db/migration - thu muc nay KHONG
+# commit trong git, duoc maven-resources-plugin (Backend/pom.xml) copy tu database/migrations/ luc
+# build, nen van chi co MOT noi dinh nghia migration (database/migrations/), dung quy tac "tham
+# chieu, khong chep" o 14-devops-trien-khai.md.
+#
+# An toan khi chay nhieu replica cung luc: Flyway dung advisory lock rieng trong bang
+# flyway_schema_history, replica toi sau se cho replica dang migrate xong roi nhan schema da co -
+# khong tao hai migration chay song song. Trong do an chi chay 1 replica (xem 14-devops-trien-khai.md
+# muc 8.2) nen diem nay chua kiem chung thuc te, ghi lai de nhom biet co the tang replica sau nay.
+spring:
+  flyway:
+    enabled: true
+    # Khong dat "locations" - dung mac dinh cua Flyway la classpath:db/migration.
+    connect-retries: 10
+    connect-retries-interval: 5s
+    # V7 la du lieu demo cho dev local; trong k8s van chay chung V1..V8 (gom ca V8, xem
+    # database/migrations/V8__rbac_and_demo_extras.sql) vi cum k8s local cung chi dung de demo/dev,
+    # khong phai production thuc - ❓ chua chot nhom co muon tach rieng "schema-only" cho k8s khong.
+
+management:
+  endpoint:
+    health:
+      # Spring Boot tu nhan dang dang chay trong pod (bien moi truong KUBERNETES_SERVICE_HOST do
+      # k8s tu bom vao mien container nam trong Service) va tu bat "liveness"/"readiness" group -
+      # dat lai ro rang o day de deploy/k8s/22-backend-deployment.yaml khong phu thuoc hanh vi an.
+      probes:
+        enabled: true

@@ -23,6 +23,9 @@
         <archunit.version>1.2.1</archunit.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <jjwt.version>0.11.5</jjwt.version>
+        <!-- true khi checkout khong co thu muc database/ ngang hang Backend/ (vi du CI chi checkout
+             Backend/) - xem plugin maven-resources-plugin o duoi va doc/14-devops-trien-khai.md muc 5. -->
+        <skipMigrationCopy>false</skipMigrationCopy>
     </properties>
 
     <dependencies>
@@ -49,6 +52,13 @@
             <!-- AOP cho AuditLogAspect (doc/15-kien-truc-backend.md muc 10). -->
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <dependency>
+            <!-- /actuator/health cho k8s readiness/liveness probe (doc/14-devops-trien-khai.md muc 4) -
+                 KHONG co truoc 2026-11-05. Chi expose "health", khong expose toan bo be mat actuator
+                 (env, beans, ...) - xem config.ActuatorSecurityConfig va application.yml. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
         <dependency>
@@ -117,16 +127,19 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <!-- Chay Flyway V1..V6 (database/migrations/, khong seed V7) de dung schema thuc trong
-                 container test - xem src/test/resources/application.yml. -->
+            <!-- Khong con scope=test rieng: ca main va test deu can Flyway.
+                 - Test (src/test/resources/application.yml): chay V1..V6 tu filesystem:../database/migrations.
+                 - Main, profile "k8s" (application-k8s.yml, doc/14-devops-trien-khai.md muc 5): chay toan bo
+                   V1..V8 tu classpath:db/migration, duoc copy vao luc build boi maven-resources-plugin o duoi -
+                   KHONG commit thu muc src/main/resources/db/migration (xem doc/15-kien-truc-backend.md muc 3).
+                 - Main, profile mac dinh (dev local, application.yml): spring.flyway.enabled=false nhu cu,
+                   database/docker-compose.yml van la noi chay migration cho vong dev hang ngay. -->
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-mysql</artifactId>
-            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -160,6 +173,36 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+            <plugin>
+                <!-- doc/14-devops-trien-khai.md muc 5: "tham chieu" thu muc database/migrations/ dang co,
+                     khong commit ban sao. Chi anh huong jar/image dung de chay voi profile "k8s" (Flyway
+                     main doc theo classpath:db/migration mac dinh); profile dev khong doi (flyway.enabled=false).
+                     Khong fail build khi database/migrations/ chua ton tai (vi du checkout chi Backend/) -
+                     skip="${skipMigrationCopy}" de CI/dev tu tat khi can. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-flyway-migrations</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skipMigrationCopy}</skip>
+                            <outputDirectory>${project.build.outputDirectory}/db/migration</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/../database/migrations</directory>
+                                    <includes>
+                                        <include>*.sql</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

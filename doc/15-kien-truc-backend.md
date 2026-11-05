@@ -85,8 +85,15 @@ src/main/java/com/vrris/pacs/
   integration/     Interface HisGateway, PacsGateway
   integration/impl/ JsonFileHisGateway (giả lập đọc file JSON); sau này Hl7HisGateway (H-03)
   RisBackendApplication.java
-src/main/resources/db/migration/   (không dùng — Flyway migration thật nằm ở database/migrations/,
-                                     backend chạy với flyway.enabled=false, xem application.yml hiện có)
+src/main/resources/db/migration/   (không commit — Flyway migration thật nằm ở database/migrations/.
+                                     Dev local: backend chạy với flyway.enabled=false (application.yml
+                                     hiện có), database/docker-compose.yml chạy migration. Từ 2026-11-05,
+                                     thêm profile "k8s" (application-k8s.yml) cho triển khai k8s — nơi
+                                     KHÔNG có container flyway riêng như docker-compose: backend tự chạy
+                                     Flyway, đọc đúng thư mục này nhưng được maven-resources-plugin COPY
+                                     vào target/classes/db/migration lúc build (không tạo file tĩnh trong
+                                     src/), vẫn giữ database/migrations/ là nguồn duy nhất. Xem
+                                     doc/14-devops-trien-khai.md mục 5)
 ```
 
 > **Khác với yêu cầu gốc:** cây package gốc chỉ liệt kê `rule/` và `integration/` là 2 package mới. Tài liệu này thêm **`audit/`** làm nơi đặt AOP ghi audit log (mục 10) — đây là **đề xuất** (💡), chưa phải quyết định đã duyệt, cần nhóm xác nhận (mục 12).
@@ -258,7 +265,7 @@ Dùng lại nghiệp vụ đã có (3 endpoint reference-data), đổi sang cấ
 | Vị trí & cách ghi audit log (đồng bộ/bất đồng bộ) | Mục 10 | ✅ đã chốt 2026-11-05 (đồng bộ) |
 | Giữ `ApiError`/`GlobalExceptionHandler` hiện có hay đổi sang `ProblemDetail` (RFC 7807) như R-05 yêu cầu | Refactor 2026-11-05 **giữ `ApiError`** (không đổi) để không phá `doc/api/openapi.yaml` đang có — đổi sang `ProblemDetail` để lại là nợ kỹ thuật, chưa làm | ❓ chờ nhóm xác nhận — giữ nguyên hiện trạng cho tới khi có quyết định |
 | Thứ tự refactor 3 slice hiện có (department/device/service-item) | Đã làm **cả 3 cùng lúc** trong 1 lần refactor (2026-11-05) — vì `ReferenceDataController`/`ReferenceDataService` cũ gộp chung cả 3, không tách lẻ được mà vẫn build chạy | ✅ đã xong |
-| `src/main/resources/db/migration/` có cần tồn tại trong backend không, hay chỉ dùng `database/migrations/` | Không tạo — giữ một nguồn migration duy nhất ở `database/migrations/` (đã chốt ở `application.yml` hiện có, `flyway.enabled=false`). Test dùng Flyway riêng trỏ `filesystem:../database/migrations`, target V6 (không seed V7) | ✅ theo hiện trạng, ghi lại để không ai tạo trùng |
+| `src/main/resources/db/migration/` có cần tồn tại trong backend không, hay chỉ dùng `database/migrations/` | Không tạo (không commit) — giữ một nguồn migration duy nhất ở `database/migrations/` (đã chốt ở `application.yml` hiện có, `flyway.enabled=false`). Test dùng Flyway riêng trỏ `filesystem:../database/migrations`, target V6 (không seed V7). **Cập nhật 2026-11-05 (`doc/14-devops-trien-khai.md` mục 5):** thêm profile `k8s` để backend tự chạy Flyway khi triển khai k8s (không có container flyway riêng như docker-compose); thư mục này vẫn không commit — `maven-resources-plugin` copy từ `database/migrations/` vào `target/classes/db/migration` lúc build, giữ đúng nguyên tắc "tham chiếu, không chép" | ✅ theo hiện trạng (dev local không đổi); ❓ phần profile `k8s` là đề xuất mới, chờ nhóm xác nhận |
 | ArchUnit L9 (chặn Spring Data JPA) không có trong 8 luật được duyệt ban đầu | Thêm khi code hoá vì pom.xml dùng `spring-boot-starter-data-jpa` cho EntityManager/Hibernate — nếu không có luật này, không gì ngăn ai đó quay lại viết `JpaRepository` | 💡 đã thêm, báo lại để xác nhận giữ |
 
 ---
