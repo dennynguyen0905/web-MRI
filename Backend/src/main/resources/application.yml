@@ -35,6 +35,17 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+management:
+  # /actuator/health cho k8s readiness/liveness probe (doc/14-devops-trien-khai.md muc 4). CHI expose
+  # "health" - khong mo "env"/"beans"/... (nhung endpoint do co the lo cau hinh/secret qua HTTP khong JWT).
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
 app:
   cors:
     # Frontend dev (Frontend/vite.config.ts) chay port 5173, khong co proxy -> can mo CORS.

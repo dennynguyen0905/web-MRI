@@ -1,0 +1,19 @@
+# doc/01-scope.md mục 6 bước 1 yêu cầu đúng "kubectl apply -k ..." — đây là file đó. Chạy từ gốc repo:
+#   kubectl apply -k deploy/k8s
+# Xem doc/14-devops-trien-khai.md mục 8 cho quy trình đầy đủ (điều kiện tiên quyết, thứ tự, cách kiểm tra).
+#
+# 50-mock-his.yaml CỐ Ý không nằm trong "resources" — xem cảnh báo trong chính file đó (H-03, [HOÃN]).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vr-ris
+
+resources:
+  - 00-namespace.yaml
+  - 20-configmap.yaml
+  - 21-secret.yaml
+  - 10-mysql.yaml
+  - 22-backend.yaml
+  - 30-frontend.yaml
+  - 40-orthanc.yaml
+  - 41-ohif.yaml

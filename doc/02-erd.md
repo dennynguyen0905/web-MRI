@@ -11,32 +11,26 @@ Tài liệu con của README.md, mục 6C: [T1] ERD rút gọn. Phạm vi bảng
 
 > Thay đổi so với v0.2: thêm trạng thái `CANCELLED` (❓), bảng ánh xạ mã trạng thái DB/API/UI/Frontend (4.5), quy tắc version báo cáo (4.10), tuổi xấp xỉ khi chỉ biết năm sinh (4.2), mục 10 "Cần Frontend sửa". Mọi điểm gắn ❓ là **đề xuất, chờ nhóm xác nhận**, chưa phải quyết định.
 >
-> Thay đổi ngày 2026-11-05: `audit_log.action` thêm `VIEW_IMAGE` + mục 4.11 giải thích (ghi khi có người mở viewer); mục 4.4 thêm quy tắc **không lưu URL viewer thành cột**; mục 4.9 trỏ sang `07-pacs-dicom.md` cho mapping DICOM tag và cảnh báo `PatientBirthDate` (0010,0030) là kiểu DA đủ ngày; mục 9 thêm 2 ô cần xác nhận (`study` ↔ `service_item`, `patient_code` ↔ `visit_code`). Sơ đồ nguồn `diagrams/02-erd.mmd` đã cập nhật theo — **ảnh `.png` chưa xuất lại, xem mục 0.**
+> Thay đổi ngày 2026-11-05: `audit_log.action` thêm `VIEW_IMAGE` + mục 4.11 giải thích (ghi khi có người mở viewer); mục 4.4 thêm quy tắc **không lưu URL viewer thành cột**; mục 4.9 trỏ sang `07-pacs-dicom.md` cho mapping DICOM tag và cảnh báo `PatientBirthDate` (0010,0030) là kiểu DA đủ ngày; mục 9 thêm 2 ô cần xác nhận (`study` ↔ `service_item`, `patient_code` ↔ `visit_code`). Sơ đồ nguồn `diagrams/02-erd.mmd` đã cập nhật theo — **ảnh `.png` đã xuất lại ngày 2026-11-05, xem mục 0.**
 
 
-## 0. ⚠️ Hai ảnh `.png` trong `diagrams/` đã lỗi thời — cần xuất lại bằng tay
+## 0. Ảnh `.png` trong `diagrams/` — đã xuất lại, khớp nguồn (2026-11-05)
 
-Trạng thái 2026-11-05. **Nguồn `.mmd` là chuẩn; `.png` chỉ để trình bày.** Ba ảnh dưới đây **không khớp** nguồn:
+**Nguồn `.mmd` là chuẩn; `.png` chỉ để trình bày.** Ba ảnh từng lệch nguồn (`02-erd.png`, `01-ranh-gioi-he-thong.png`, `05-state-machine.png`) đã được **xuất lại bằng `mermaid-cli` qua `npx`** trong phiên làm việc ngày 2026-11-05 — môi trường lần này có Node và mạng, không còn bị chặn như lần trước. Cả ba đã đối chiếu lại và khớp đúng nguồn `.mmd` hiện hành:
 
-| Ảnh | Vì sao lỗi thời |
+| Ảnh | Đối chiếu |
 |---|---|
-| `diagrams/02-erd.png` | `02-erd.mmd` đã thêm `VIEW_IMAGE` vào `audit_log.action` (mục 4.11); ảnh vẫn là bản cũ |
-| `diagrams/01-ranh-gioi-he-thong.png` | `01-ranh-gioi-he-thong.mmd` đã sửa **lỗi hiển thị**: nhãn cạnh không bọc dấu ngoặc kép nên Mermaid đọc dấu `-` trong `C-STORE` và `deep-link` như cú pháp cạnh → tách thành node rời (`C`, `STORE`) và node `deep-link` chồng lên `AI Backend + AI Panel`. Ảnh trong repo **vẫn là ảnh bị lỗi đó** |
-| `diagrams/05-state-machine.png` | Xuất từ bản cũ: **6 trạng thái, mã tiếng Việt**. Nguồn `.mmd` hiện là 7 trạng thái (có `CANCELLED` ❓) với mã `SCHEDULED/UNREAD/…`. Đã ghi ở `03-state-machine.md` mục 2 từ 2026-10-31, chưa xuất lại |
+| `diagrams/02-erd.png` | Khớp `02-erd.mmd` (có `VIEW_IMAGE` trong `audit_log.action`, mục 4.11) và khớp mục 1 của file này |
+| `diagrams/01-ranh-gioi-he-thong.png` | Lỗi nhãn cạnh `C-STORE` / `deep-link` tách thành node rời (do thiếu ngoặc kép) đã được sửa từ trước trong `.mmd`; ảnh xuất lại hiển thị đúng hai nhãn này nằm trên cạnh, không còn node rời |
+| `diagrams/05-state-machine.png` | Khớp 7 trạng thái (`SCHEDULED/UNREAD/READING/READ/APPROVING/APPROVED/CANCELLED`), mã tiếng Anh, đúng `03-state-machine.md` mục 2.8 |
 
-**Chưa xuất lại được trong phiên làm việc ngày 2026-11-05:** môi trường không có `mermaid-cli`, và cài qua `npx` bị chặn (tải + chạy mã ngoài). Cần một người chạy bằng tay, một trong hai cách:
+Lệnh đã dùng (giữ lại để tái sử dụng khi sửa `.mmd` sau này):
 
 ```bash
-# Cach 1 — mermaid-cli (can Node + tai Chromium lan dau)
-for d in 02-erd 01-ranh-gioi-he-thong 05-state-machine; do
-  npx -y @mermaid-js/mermaid-cli \
-      -i "doc/diagrams/$d.mmd" -o "doc/diagrams/$d.png" -b white -s 2
-done
+npx -y @mermaid-js/mermaid-cli -i "doc/diagrams/<ten>.mmd" -o "doc/diagrams/<ten>.png" -b white -s 2
 ```
 
-Cách 2 — **draw.io**: Arrange → Insert → Mermaid, dán nội dung `.mmd`, rồi File → Export as → PNG. Đây là cách đang dùng cho 7 ảnh hiện có (ghi ở README mục "Cấu trúc repo").
-
-> **Quy ước:** sửa `.mmd` thì phải xuất lại `.png` cùng tên. Nếu chưa xuất được thì ghi vào đây để người sau biết ảnh đang lệch, **không** xóa ảnh cũ.
+> **Quy ước:** sửa `.mmd` thì phải xuất lại `.png` cùng tên bằng lệnh trên (hoặc draw.io: Arrange → Insert → Mermaid → File → Export as → PNG). Nếu môi trường sau này lại không chạy được `npx`, ghi lại ở đây cho người sau, **không** xóa ảnh cũ.
 
 ---
 
@@ -313,6 +307,8 @@ erDiagram
 | report.* | OBX lặp lại trong ORU^R01 | Mỗi mục (kỹ thuật, mô tả, kết luận…) là một OBX |
 
 Hai điều này không làm bây giờ nhưng đã biết trước: his_message_log (lưu MSH-10, raw message, ACK, số lần retry) sẽ thêm ở H-03; và PID-5 ghép họ tên là nguồn lệch dữ liệu được dự đoán trước, phải có test case riêng theo yêu cầu README 2.5.
+
+**Bảng field đầy đủ, ví dụ message, và mapping mở rộng (kể cả hai cột chưa có ở bảng trên — `visit_code`, `clinical_diagnosis`): xem `08-hl7-message-spec.md` mục 3, 6, 7** (nháp v0.1, 2026-11-05) — bảng trên chỉ giữ các cột đã chốt từ trước, không lặp lại nội dung của `08`.
 
 **Mapping DICOM tag ↔ cột RIS: xem `07-pacs-dicom.md` mục 7.** Bảng trên là cạnh HL7 (HIS ↔ RIS); cạnh DICOM (RIS ↔ PACS) nằm ở file đó. Hai bảng gặp nhau ở `study.accession_number` — HL7 OBR-18 và DICOM (0008,0050) là **cùng một giá trị**, đó là khóa nối ba chiều HIS ↔ RIS ↔ PACS.
 

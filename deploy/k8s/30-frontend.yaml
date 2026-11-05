@@ -1,0 +1,71 @@
+# ris-frontend. Xem doc/14-devops-trien-khai.md muc 4.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ris-frontend
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: ris-frontend
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ris-frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ris-frontend
+        app.kubernetes.io/part-of: vr-ris-pacs
+    spec:
+      containers:
+        - name: ris-frontend
+          image: vrris/ris-frontend:dev # cung quy uoc image local - xem chu thich o 22-backend.yaml.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: frontend-config
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            # nginx tinh + file static - rat nhe, chi can du cho vai trinh worker.
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ris-frontend
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: ris-frontend
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  # type: LoadBalancer - CHI vi day la Docker Desktop Kubernetes: Docker Desktop tu dua moi Service
+  # LoadBalancer ve "localhost:<port>" tren CHINH may dang chay (khong cap IP cong khai nhu
+  # LoadBalancer tren cloud thuc). Day la DUY NHAT dia chi nguoi dung mo trinh duyet vao
+  # (README muc 2.6: mot lenh deploy, mot dia chi vao). KHONG dung tren minikube/kind (can
+  # "minikube tunnel" hoac doi sang NodePort) - ❓ ghi chu neu nhom doi k8s local sau nay.
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: ris-frontend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 80

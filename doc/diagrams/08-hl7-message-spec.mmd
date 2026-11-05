@@ -1,0 +1,33 @@
+sequenceDiagram
+    autonumber
+    participant HIS as Mock HIS<br/>(JsonFileHisGateway giả lập)
+    participant RIS
+
+    rect rgb(240, 248, 255)
+    note over HIS,RIS: Chỉ định mới — luồng chính (T1)
+    HIS->>RIS: ORM^O01 (ORC-1=NW, MSH-10=M1)
+    RIS->>RIS: Đối chiếu HIS/RIS (04-his-ris-reconciliation.md)
+    RIS-->>HIS: ACK (AA, echo M1)
+    end
+
+    rect rgb(255, 250, 230)
+    note over HIS,RIS: Hủy chỉ định đã có ảnh — bị từ chối (luồng 2, 05-luong-ngoai-le.md)
+    HIS->>RIS: ORM^O01 (ORC-1=CA, MSH-10=M2)
+    RIS->>RIS: study đã có study_instance_uid
+    RIS-->>HIS: ACK (AR, echo M2) + ERR
+    end
+
+    rect rgb(240, 255, 240)
+    note over HIS,RIS: Trả kết quả — ca đã APPROVED (T7)
+    RIS->>HIS: ORU^R01 (OBR-25=F, MSH-10=M3)
+    HIS-->>RIS: ACK (AA, echo M3)
+    RIS->>RIS: imaging_order.sync_status = RESULT_SENT
+    end
+
+    rect rgb(255, 235, 235)
+    note over HIS,RIS: Mất kết nối khi trả kết quả — luồng 4, 05-luong-ngoai-le.md
+    RIS->>HIS: ORU^R01 (MSH-10=M4)
+    RIS->>RIS: Timeout, không nhận ACK
+    RIS->>HIS: Gửi lại, cùng MSH-10=M4 (retry)
+    HIS-->>RIS: ACK (AA, echo M4)
+    end

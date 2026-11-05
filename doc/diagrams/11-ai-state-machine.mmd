@@ -1,0 +1,46 @@
+stateDiagram-v2
+    state "study.status — đã có, KHÔNG đổi vì AI" as MAIN {
+        state "Chờ thực hiện (SCHEDULED)" as SCHEDULED
+        state "Chưa đọc (UNREAD)" as UNREAD
+        state "Đang đọc (READING)" as READING
+        state "Đọc xong (READ)" as READ
+        state "Đang duyệt (APPROVING)" as APPROVING
+        state "Duyệt xong (APPROVED)" as APPROVED
+        state "Đã hủy (CANCELLED)" as CANCELLED
+
+        [*] --> SCHEDULED: Nhận chỉ định từ HIS / thêm tay
+        SCHEDULED --> UNREAD: PACS nhận đủ ảnh
+        UNREAD --> READING: Bác sĩ mở ca
+        READING --> READ: Bác sĩ lưu report
+        READ --> APPROVING: Bác sĩ duyệt mở ca
+        APPROVING --> APPROVED: Duyệt
+        APPROVED --> [*]: Gửi kết quả về HIS
+
+        READING --> UNREAD: Bỏ dở (?)
+        APPROVING --> READING: Trả lại để sửa (?)
+        APPROVED --> READING: Mở lại khi phát hiện sai (?)
+        SCHEDULED --> CANCELLED: Hủy chỉ định (?)
+        CANCELLED --> [*]
+    }
+
+    state "study.ai_status — ĐỀ XUẤT MỚI, thuộc H-04, chưa chốt" as AI {
+        state "Chưa xử lý (NOT_TRIGGERED)" as NOT_TRIGGERED
+        state "Đang phân tích (PENDING)" as PENDING
+        state "Sẵn sàng (READY)" as READY
+        state "Lỗi (FAILED)" as FAILED
+        state "Quá thời gian (TIMEOUT)" as TIMEOUT
+
+        [*] --> NOT_TRIGGERED
+        NOT_TRIGGERED --> PENDING: PACS kích hoạt AI (ảnh đủ + modality hỗ trợ)
+        PENDING --> READY: AI trả kết quả (STOW-RS SEG + nháp)
+        PENDING --> FAILED: Lỗi xử lý
+        PENDING --> TIMEOUT: Quá ngưỡng chờ, RIS tự chuyển nếu không nhận event
+        READY --> READY: Bác sĩ xem / dùng / sửa / bỏ qua, không đổi ai_status
+    }
+
+    note right of AI
+        ai_status KHÔNG làm thay đổi bất kỳ
+        chuyển T1-T10 nào của study.status.
+        FAILED/TIMEOUT: bác sĩ đọc thủ công,
+        không bị chặn. Xem doc/11-ai-design.md.
+    end note

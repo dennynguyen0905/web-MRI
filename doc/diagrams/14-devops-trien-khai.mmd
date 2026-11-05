@@ -1,0 +1,76 @@
+%% Nguồn cho doc/14-devops-trien-khai.md mục 9. Vẽ chi tiết hơn diagrams/06-trien-khai-k8s-local.mmd
+%% (sơ đồ đó vẫn là bản tóm tắt nhúng ở README mục 2.6 — KHÔNG xóa, không thay thế): file này thêm
+%% tên Service/Deployment/StatefulSet thật, cổng thật, và đường vào từ trình duyệt/máy host theo
+%% đúng deploy/k8s/*.yaml. Xem doc/02-erd.md mục 0 về việc môi trường này chưa cài mermaid-cli nên
+%% chưa xuất được .png cùng tên — xem doc/14-devops-trien-khai.md mục 9.
+flowchart TB
+    BROWSER(("Trình duyệt<br/>(trên máy host)"))
+    CLI["dcm4che CLI<br/>storescu / echoscu<br/>(trên máy host)"]
+
+    subgraph HOST["Máy host (localhost) — Docker Desktop"]
+        BROWSER
+        CLI
+    end
+
+    subgraph K8S["Cụm Kubernetes local (Docker Desktop) — namespace \"vr-ris\""]
+        subgraph FE_D["Deployment ris-frontend"]
+            FE["Pod: nginx + React build<br/>:80"]
+        end
+        SVC_FE["Service ris-frontend<br/>type LoadBalancer :8080"]
+
+        subgraph BE_D["Deployment ris-backend"]
+            BE["Pod: Spring Boot<br/>:8080, context /api/v1<br/>profile k8s - tu chay Flyway"]
+        end
+        SVC_BE["Service ris-backend<br/>type ClusterIP :8080"]
+
+        subgraph DB_S["StatefulSet mysql"]
+            DB[("Pod: mysql:8.4<br/>:3306")]
+        end
+        SVC_DB["Service mysql<br/>headless (ClusterIP: None)"]
+        PVC_DB[("PVC data<br/>2Gi, StorageClass hostpath")]
+
+        subgraph PACS_S["StatefulSet orthanc — tuần 7, IN-19"]
+            PACS[("Pod: Orthanc 26.9.1<br/>:4242 DICOM, :8042 HTTP/DICOMweb")]
+        end
+        SVC_PACS["Service orthanc<br/>type LoadBalancer :4242, :8042"]
+        PVC_PACS[("PVC data<br/>5Gi")]
+
+        subgraph OHIF_D["Deployment ohif-viewer — tuần 7, IN-19"]
+            OHIF["Pod: OHIF Viewer<br/>:80"]
+        end
+        SVC_OHIF["Service ohif-viewer<br/>type LoadBalancer :8043"]
+
+        subgraph HIS_D["Deployment mock-his — H-03, [HOÃN], replicas=0"]
+            HIS["Pod: chưa có image thật"]
+        end
+        SVC_HIS["Service mock-his<br/>type ClusterIP :2575 (MLLP)"]
+
+        CM1["ConfigMap backend-config<br/>mysql-config, frontend-config, orthanc-config"]
+        SEC1["Secret backend-secret, mysql-secret<br/>⚠️ base64, không phải mã hóa"]
+
+        SVC_FE --> FE
+        FE -- "proxy /api (nginx)" --> SVC_BE
+        SVC_BE --> BE
+        BE -- "JDBC :3306" --> SVC_DB
+        SVC_DB --> DB
+        DB --- PVC_DB
+        SVC_PACS --> PACS
+        PACS --- PVC_PACS
+        SVC_OHIF --> OHIF
+        SVC_HIS -.-> HIS
+        BE -.->|"H-03, [HOÃN]"| SVC_HIS
+
+        CM1 -.->|"envFrom"| BE
+        CM1 -.->|"envFrom"| FE
+        CM1 -.->|"mount orthanc.json"| PACS
+        SEC1 -.->|"envFrom"| BE
+        SEC1 -.->|"envFrom"| DB
+    end
+
+    BROWSER -- "http://localhost:8080<br/>(duy nhất người dùng RIS cần biết)" --> SVC_FE
+    BROWSER -. "http://localhost:8043<br/>deep-link StudyInstanceUID, IN-19/IN-23" .-> SVC_OHIF
+    BROWSER -. "http://localhost:8042/dicom-web<br/>gọi từ JS của OHIF, KHÔNG qua backend" .-> SVC_PACS
+    CLI -. "localhost:4242, C-STORE" .-> SVC_PACS
+
+    classDef hoan fill:#f5f5f5,stroke:#999,stroke-dasharray: 4 3;
+    class HIS_D,HIS,SVC_HIS hoan;

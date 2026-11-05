@@ -1,0 +1,87 @@
+# MySQL cho cum k8s local. Xem doc/14-devops-trien-khai.md muc 4.
+# StorageClass: "hostpath" la StorageClass mac dinh cua Docker Desktop Kubernetes (ten that la
+# "hostpath", khong phai do nhom dat) - PVC duoi day KHONG khai bao storageClassName, de Kubernetes
+# tu dung StorageClass duoc danh dau (default) trong cum, dung voi moi cum Docker Desktop ma khong
+# phai doi ten cung tay cho tung may.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: mysql
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  clusterIP: None # headless - dung cho StatefulSet, Pod co DNS rieng mysql-0.mysql.vr-ris.svc...
+  selector:
+    app.kubernetes.io/name: mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: mysql
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  serviceName: mysql
+  replicas: 1 # 1 replica: do an demo, khong can HA. Tang replica khong tu nhan ban du lieu (MySQL
+              # don, khong cau hinh replication) - xem doc/14-devops-trien-khai.md muc 8.2.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mysql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mysql
+        app.kubernetes.io/part-of: vr-ris-pacs
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4 # dung dung tag database/docker-compose.yml - khong doi phien ban giua 2 moi truong.
+          args:
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_0900_ai_ci
+            - --default-time-zone=+00:00
+          ports:
+            - containerPort: 3306
+          envFrom:
+            - configMapRef:
+                name: mysql-config
+            - secretRef:
+                name: mysql-secret
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            # Muc hop ly cho may ca nhan, khong phai so da do (doc/14-devops-trien-khai.md muc 4).
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              cpu: 1000m
+              memory: 768Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

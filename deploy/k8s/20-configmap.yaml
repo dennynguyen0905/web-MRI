@@ -1,0 +1,72 @@
+# Moi bien KHONG bi mat o day. Xem bang day du (bien nao dung o dau, lay gia tri tu dau) o
+# doc/14-devops-trien-khai.md muc 6.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: vr-ris
+data:
+  MYSQL_DATABASE: vr_ris
+  MYSQL_USER: ris # ten dang nhap khong phai bi mat, chi MYSQL_PASSWORD moi vao Secret.
+  TZ: UTC
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: vr-ris
+data:
+  SPRING_PROFILES_ACTIVE: k8s
+  # Theo dung quy uoc relaxed binding cua Spring Boot: SPRING_DATASOURCE_URL <-> spring.datasource.url.
+  SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/vr_ris?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC"
+  SPRING_DATASOURCE_USERNAME: ris
+  TZ: UTC
+  # ❓ CHUA CO CODE DOC BIEN NAY (app.ohif.base-url khong ton tai trong application.yml nao hien
+  # tai) - dat truoc trong ConfigMap de khi code IN-19/IN-23 (doc/01-scope.md, tuan 6-7) khong phai
+  # sua lai manifest, chi can doc @ConfigurationProperties. Gia tri la URL trinh duyet (localhost)
+  # toi Service OHIF LoadBalancer, KHONG phai DNS noi bo cum - vi OHIF chay trong trinh duyet nguoi
+  # dung, khong phai tu backend goi sang (xem doc/14-devops-trien-khai.md muc 4 va
+  # doc/07-pacs-dicom.md muc 6.1, P-08).
+  APP_OHIF_BASE_URL: "http://localhost:8043"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: vr-ris
+data:
+  # Doc boi nginx qua envsubst luc container khoi dong (deploy/docker/frontend.nginx.conf.template).
+  # "ris-backend" la ten Service noi bo (DNS trong namespace vr-ris) - dung voi gia tri ENV mac dinh
+  # trong deploy/docker/frontend.Dockerfile, ghi lai o day de ro rang, khong phai vi can doi.
+  BACKEND_UPSTREAM: "ris-backend:8080"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orthanc-config
+  namespace: vr-ris
+data:
+  # Orthanc doc file JSON cau hinh qua bien ORTHANC__<TEN_KHOA> (orthancteam/orthanc image) hoac
+  # mount thang file orthanc.json - dung cach mount file de giu nguyen cau truc JSON long nhau,
+  # de doc/sua hon la danh sach bien dep (xem Secret cho DicomAet/RegisteredUsers).
+  # Khong khai bao "DicomModalities" (danh sach AE duoc phep goi NGUOC ra, dung cho C-FIND/C-MOVE
+  # chu dong tu Orthanc) - khong can trong 8 tuan vi RIS chua lam MWL (H-01). May gia lap (dcm4che
+  # storescu tren may host, xem doc/07-pacs-dicom.md muc 5.1) chi GOI VAO Orthanc (C-STORE), duoc
+  # "DicomAlwaysAllowStore": true cho phep du khong whitelist AE - day la lua chon (1) o
+  # doc/07-pacs-dicom.md muc 3.1/6.3 (chi dua vao mang noi bo cum, khong bat xac thuc Orthanc) -
+  # don gian nhat, du cho do an; ❓ giu nguyen de xuat nay cho P-02.
+  orthanc.json: |
+    {
+      "Name": "VRRIS_PACS",
+      "DicomAet": "VRRIS_PACS",
+      "DicomPort": 4242,
+      "HttpPort": 8042,
+      "RemoteAccessAllowed": true,
+      "AuthenticationEnabled": false,
+      "DicomAlwaysAllowStore": true,
+      "DicomWeb": {
+        "Enable": true,
+        "Root": "/dicom-web/"
+      }
+    }
+

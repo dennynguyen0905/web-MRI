@@ -1,0 +1,109 @@
+# OHIF Viewer. Thuoc tuan 7 / IN-19 (doc/01-scope.md) - viet san manifest, CHUA dung toi trong
+# 8 tuan dau (giong orthanc, xem 40-orthanc.yaml).
+#
+# ⚠️ PHAT HIEN LUC VIET FILE NAY (2026-11-05), CHUA CO TRONG doc/07-pacs-dicom.md: kiem tra truc
+# tiep anh "ohif/viewer:v4.12.51.21579" tren Docker Hub (da pull thuc, khong doan) cho thay file
+# cau hinh mac dinh trong anh (/usr/share/nginx/html/app-config.js) co ngay build "19/03/2023" va
+# dung schema "servers.dicomWeb[]" kieu OHIF v2 - KHONG khop tai lieu OHIF hien hanh (v3+ dung
+# "dataSources[]"). Co the anh tren Docker Hub khong duoc cap nhat theo dung tag GitHub. ConfigMap
+# duoi day dung LAI schema cu ma chinh anh nay the hien la no doc duoc (an toan hon doan schema
+# moi ma anh nay co the khong doc) - nhung CHUA CHAY THU duoc voi Orthanc thuc (Orthanc chua dung
+# trong 8 tuan dau). Doi doc/07-pacs-dicom.md P-08 van con ❓: can kiem lai ca duong dan deep-link
+# ("/viewer?StudyInstanceUIDs=...") LAN schema config nay o tuan 7 khi thuc su dung Orthanc + OHIF,
+# co the phai doi sang image khac hoac tu build OHIF moi hon tu source.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ohif-config
+  namespace: vr-ris
+data:
+  app-config.js: |
+    window.config = {
+      routerBasename: '/',
+      extensions: [],
+      showStudyList: true,
+      servers: {
+        dicomWeb: [
+          {
+            name: 'VRRIS_PACS',
+            // Dia chi TRINH DUYET (localhost qua Service LoadBalancer cua Orthanc), KHONG phai
+            // DNS noi bo cum - xem chu thich trong 40-orthanc.yaml.
+            qidoRoot: 'http://localhost:8042/dicom-web',
+            wadoRoot: 'http://localhost:8042/dicom-web',
+            wadoUriRoot: 'http://localhost:8042/dicom-web',
+            qidoSupportsIncludeField: true,
+            imageRendering: 'wadors',
+            thumbnailRendering: 'wadors',
+            supportsFuzzyMatching: true,
+          },
+        ],
+      },
+    };
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ohif-viewer
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: ohif-viewer
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ohif-viewer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ohif-viewer
+        app.kubernetes.io/part-of: vr-ris-pacs
+    spec:
+      containers:
+        - name: ohif-viewer
+          image: ohif/viewer:v4.12.51.21579
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: config
+              mountPath: /usr/share/nginx/html/app-config.js
+              subPath: app-config.js
+              readOnly: true
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: ohif-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ohif-viewer
+  namespace: vr-ris
+  labels:
+    app.kubernetes.io/name: ohif-viewer
+    app.kubernetes.io/part-of: vr-ris-pacs
+spec:
+  # LoadBalancer vi ly do giong orthanc: day la dia chi RIS mo bang deep-link TU TRINH DUYET
+  # (APP_OHIF_BASE_URL o 20-configmap.yaml phai khop dung port o day: 8043).
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: ohif-viewer
+  ports:
+    - name: http
+      port: 8043
+      targetPort: 80

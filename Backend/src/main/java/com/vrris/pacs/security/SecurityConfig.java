@@ -43,6 +43,10 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        // k8s readiness/liveness probe (doc/14-devops-trien-khai.md muc 4) - probe cua
+                        // kubelet khong co JWT. Chi permitAll "health" (da gioi han o application.yml,
+                        // management.endpoints.web.exposure.include=health), khong mo toan bo actuator.
+                        .requestMatchers("/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )

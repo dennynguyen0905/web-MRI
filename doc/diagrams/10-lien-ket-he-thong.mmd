@@ -1,0 +1,32 @@
+flowchart LR
+    BR(("Trình duyệt"))
+
+    subgraph K8S["Cụm Kubernetes local (Docker Desktop) — namespace vr-ris"]
+        FE["ris-frontend<br/>Service LoadBalancer :8080"]
+        BE["ris-backend<br/>Service ClusterIP :8080"]
+        DB[("MySQL")]
+        PACS[("Orthanc<br/>Service LoadBalancer :4242/:8042")]
+        OHIF["OHIF Viewer<br/>Service LoadBalancer :8043"]
+    end
+
+    MOD["Modality giả lập<br/>dcm4che CLI (máy host)"]
+    HIS["Mock HIS"]
+    AI["AI Backend"]
+    SWG["Swagger UI"]
+    CI["GitHub Actions CI"]
+    GH[("Repo GitHub")]
+
+    BR -- "L-01" --> FE
+    FE -- "L-03 (nginx proxy, không qua Ingress)" --> BE
+    BE -- "L-04" --> DB
+    BE -- "L-14" --> SWG
+    MOD -. "L-08 (HOÃN H-01)" .-> BE
+    MOD -- "L-09" --> PACS
+    PACS -. "L-10 (HOÃN H-02)" .-> BE
+    BR -- "L-11 (JS trong trình duyệt)" --> PACS
+    BR -- "L-12 deep-link" --> OHIF
+    BE -. "L-07 (HOÃN H-03)" .-> HIS
+    PACS -. "L-13 (HOÃN H-04)" .-> AI
+    CI -- "L-15" --> GH
+
+    classDef hoan stroke-dasharray: 5 5;
