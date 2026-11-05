@@ -1,0 +1,29 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - "Backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "Backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # mvn verify chay ArchUnit + Testcontainers MySQL (can Docker - runner ubuntu-latest da co san).
+      - name: mvn verify (ArchUnit + Testcontainers)
+        working-directory: Backend
+        run: mvn --batch-mode --no-transfer-progress clean verify

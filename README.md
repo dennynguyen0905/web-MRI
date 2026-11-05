@@ -10,9 +10,9 @@
 | **Loại** | Hệ thống RIS tích hợp PACS + AI hỗ trợ đọc phim cho bệnh viện |
 | **Bối cảnh** | **Đồ án môn học** — không triển khai lâm sàng thật |
 | **Stack** | React · Java Spring Boot · MySQL · Docker + Kubernetes (local) |
-| **Trạng thái** | Giai đoạn thiết kế. Frontend prototype (dữ liệu giả) đã có; **Backend chưa bắt đầu** — xem 7.2 |
-| **Thời gian** | **8 tuần** (xem lịch chi tiết ở Phần 7) |
-| **Mục tiêu hết 8 tuần** | RIS core chạy được với dữ liệu nhập tay + thiết kế xong (chưa code) phần tích hợp PACS |
+| **Trạng thái** | Giai đoạn thiết kế. Frontend prototype (dữ liệu giả) đã có; **Backend: skeleton kiến trúc phân tầng (R-05) cho 3 endpoint reference-data đã có, chưa commit, chưa có patient/order/study/auth thật** — xem 7.2 và `doc/15-kien-truc-backend.md` |
+| **Thời gian** | **4 tuần** (xem lịch chi tiết ở Phần 7) |
+| **Mục tiêu hết 4 tuần** | RIS core chạy được với dữ liệu nhập tay + thiết kế xong (chưa code) phần tích hợp PACS |
 | **Ngôn ngữ tài liệu** | Tiếng Việt |
 | **Cập nhật lần cuối** | 2026-10-31 |
  
@@ -61,6 +61,7 @@ Khi bạn được giao việc trong dự án này:
 - Ảnh chụp màn hình từ hệ thống thật, khi dùng làm tham chiếu, phải **che tên bệnh nhân, mã bệnh nhân, mã hồ sơ (LSVV) và `StudyInstanceUID`** trước khi đưa vào repo, Figma hoặc slide. Che trước khi commit/upload, không che sau.
 - OHIF và Orthanc trong đồ án **không được mở công khai**: chỉ truy cập được trong cụm Kubernetes local, hoặc sau khi đã đăng nhập RIS. Không expose ra Internet, kể cả để demo.
 - Stack đã chốt (Phần 8) không thay đổi nếu không có yêu cầu từ người dùng.
+- **R-05 — Backend theo kiến trúc phân tầng** (package-by-layer, hướng phụ thuộc một chiều), kiểm tra tự động bằng ArchUnit; vi phạm quy tắc tầng làm build đỏ. Mỗi tính năng làm theo lát dọc (rest → service → dao → model → DB), không làm "toàn bộ entity trước, toàn bộ controller sau". Chi tiết: `doc/15-kien-truc-backend.md`.
 ---
  
 ## 1. Bối cảnh
@@ -363,6 +364,7 @@ Cần đặc tả rõ (**chưa có — xem Phần 9**):
 | 12 | `doc/12-seed-data-va-kich-ban-demo.md` | Dữ liệu giả theo test case + kịch bản demo 10 bước | D + F | T4 | ⬜ chưa viết |
 | 13 | `doc/13-user-stories.md` | User story theo 5 vai trò, chỉ cho hạng mục IN | A | viết dần khi code | ⬜ chưa viết |
 | 14 | `doc/14-devops-trien-khai.md` | Dockerfile, manifest k8s, ConfigMap/Secret, quy ước đặt tên | B | T3 | ⬜ chưa viết |
+| 15 | `doc/15-kien-truc-backend.md` | Kiến trúc phân tầng backend: package-by-layer, luật ArchUnit, lát dọc mẫu, vị trí audit aspect (R-05) | B | T2 | 🟡 v0.1 |
 | — | `doc/api/openapi.yaml` | API contract RIS core (25 endpoint, 9 tag) | B | T2 | 🟡 v0.1 |
 
 **Thứ tự đọc.** Người mới đọc theo nhánh, không đọc tuần tự hết:
@@ -395,15 +397,19 @@ flowchart TB
     S01 --> D2["12-seed-data-va-kich-ban-demo"]
     S01 --> D3["11-ai-design"]
     S01 --> D4["14-devops-trien-khai"]
+
+    S01 --> S15["15-kien-truc-backend"]
+    S02 --> S15
 ```
 
 - **Bắt buộc, theo đúng thứ tự:** `README` → `01-scope` → `02-erd`. Ba file này là gốc; mọi file sau đều tham chiếu ngược về chúng.
 - **Nhánh nghiệp vụ:** `03` → `04` → `05`, `06`, `13`.
 - **Nhánh tích hợp:** `07` (DICOM) và `08` (HL7) độc lập nhau, rồi `10` gộp cả hai.
 - **Nhánh nền tảng:** `09` (bảo mật), `12` (seed + demo), `14` (DevOps).
+- **Nhánh kiến trúc backend:** `15` — phụ thuộc `01` (R-05, IN-24) và `02` (tên bảng/cột cho lát dọc mẫu); không chặn và không bị chặn bởi nhánh nghiệp vụ hay tích hợp.
 - **`11-ai-design`** đọc được độc lập — không hạng mục nào chặn nó, và nó không chặn hạng mục nào (AI chỉ là tài liệu, xem Phần 9 câu 19).
 
-> **Quy tắc tránh nhân bản:** mỗi thông tin chỉ có **một nơi là nguồn**, các file khác **tham chiếu** chứ không chép lại. Nguồn: phạm vi → `01`; tên bảng/cột → `02`; trạng thái và điều kiện chuyển → `03`; quyền → `06`; DICOM tag → `07`; HL7 field → `08`. Khi hai file nói khác nhau thì file nguồn thắng.
+> **Quy tắc tránh nhân bản:** mỗi thông tin chỉ có **một nơi là nguồn**, các file khác **tham chiếu** chứ không chép lại. Nguồn: phạm vi → `01`; tên bảng/cột → `02`; trạng thái và điều kiện chuyển → `03`; quyền → `06`; DICOM tag → `07`; HL7 field → `08`; kiến trúc phân tầng backend → `15`. Khi hai file nói khác nhau thì file nguồn thắng.
  
 Mỗi hạng mục được gắn nhãn thời điểm làm:
  
@@ -431,6 +437,8 @@ Tính đến 2026-11-05 **chưa có hạng mục tài liệu nào được nhóm
 - [ ] **[HOÃN] SRS đầy đủ** — trong 8 tuần, README + scope doc + user story thay thế SRS
 ### B. Kiến trúc & tích hợp
 - [ ] **[T2] Quyết định stack + sơ đồ kiến trúc** (Phần 8) — chốt nhanh, không để mở quá tuần 2
+- [x] **[T2] `doc/15-kien-truc-backend.md`** (kiến trúc phân tầng backend: package-by-layer, luật ArchUnit, lát dọc mẫu, R-05) *(nháp v0.1, chưa xác nhận — xem mục 1 của file đó: Backend hiện có khác cấu trúc này, cần refactor ở Pha 2)*
+- [x] **[T3] Skeleton backend + lát dọc mẫu (Department) + ArchUnit + Testcontainers + CI chạy test** — đã refactor `Backend/` (chưa commit) sang `doc/15-kien-truc-backend.md`; `mvn verify` xanh (35/35 test). Thêm `.github/workflows/backend-ci.yml` chạy `mvn verify` khi push/PR đụng `Backend/` — **chưa test được workflow thật** (cần push lên GitHub để CI chạy, chỉ xác nhận được cú pháp và chạy local)
 - [x] **[T2] API contract (OpenAPI)** cho RIS core: bệnh nhân, chỉ định, worklist, trạng thái — sinh từ springdoc-openapi hoặc viết tay trước rồi đối chiếu *(nháp v0.1 ở `doc/api/openapi.yaml`, chưa xác nhận)*
 - [ ] **[T2] Sơ đồ triển khai local** (Phần 2.6) + quy ước đặt tên image, namespace, biến môi trường *(sơ đồ đã có ở 2.6; quy ước đặt tên sẽ là `doc/14-devops-trien-khai.md` — chưa viết)*
 - [ ] **[T3] Dockerfile cho frontend/backend + manifest k8s** (Deployment, Service, StatefulSet MySQL, ConfigMap, Secret) *(đặc tả sẽ là `doc/14-devops-trien-khai.md` — chưa viết)*
@@ -493,6 +501,7 @@ gantt
     Sơ đồ luồng ngoại lệ             :a4, 2026-10-21, 3d
     Stack + kiến trúc                :b1, after a1, 5d
     API contract RIS core            :b2, after a2, 5d
+    Kiến trúc phân tầng backend (R-05) :b3, after b1, 3d
  
     section Figma
     Design system từ UI cũ           :f1, after a3, 5d
@@ -500,7 +509,7 @@ gantt
     Review với bác sĩ                :f3, after f2, 2d
  
     section Code RIS core
-    Setup Spring Boot/React/MySQL, Docker, k8s, auth :c1, after b2, 5d
+    Setup Spring Boot/React/MySQL, Docker, k8s, auth, ArchUnit + Testcontainers + CI :c1, after b2, 7d
     Bệnh nhân + chỉ định + worklist  :c2, after c1, 10d
     State machine + bộ lọc           :c3, after c1, 10d
     Giao diện worklist + lâm sàng    :c4, after c1, 15d
@@ -521,15 +530,17 @@ gantt
 | Tuần | Tài liệu kỹ thuật | Thiết kế trực quan | Code | Điều kiện hoàn thành |
 |---|---|---|---|---|
 | **1** | Scope doc, ERD rút gọn, state machine, quy tắc HIS/RIS | Xác nhận 3 sơ đồ Mermaid có sẵn; vẽ thêm sơ đồ luồng ngoại lệ | — | Phần 9 nhóm "Phạm vi" + "Tích hợp" đã có câu trả lời |
-| **2** | API contract RIS core, chốt các ô ❓ còn lại ở Phần 8, sơ đồ triển khai local | Design system trong Figma; bắt đầu wireframe AI Panel | — | OpenAPI spec review xong, không còn ô ❓ ở Phần 8 |
-| **3** | RBAC matrix (//), **bảo mật & toàn vẹn dữ liệu (`09`)**, **DevOps/triển khai (`14`)**; bắt đầu **danh mục liên kết (`10`)** và **thiết kế AI (`11`)** | Hoàn thiện wireframe AI Panel, review với bác sĩ | Khởi tạo Spring Boot + React + MySQL (Flyway migration), Dockerfile, manifest k8s, auth, audit log | `kubectl apply` chạy được cả 3 thành phần; đăng nhập được; thao tác ghi audit log |
+| **2** | API contract RIS core, chốt các ô ❓ còn lại ở Phần 8, sơ đồ triển khai local, **kiến trúc phân tầng backend (`15`, R-05)** | Design system trong Figma; bắt đầu wireframe AI Panel | — | OpenAPI spec review xong, không còn ô ❓ ở Phần 8 |
+| **3** | RBAC matrix (//), **bảo mật & toàn vẹn dữ liệu (`09`)**, **DevOps/triển khai (`14`)**; bắt đầu **danh mục liên kết (`10`)** và **thiết kế AI (`11`)** | Hoàn thiện wireframe AI Panel, review với bác sĩ | Khởi tạo Spring Boot + React + MySQL (Flyway migration), Dockerfile, manifest k8s, auth, audit log; **ArchUnit + Testcontainers + CI theo `15`** | `kubectl apply` chạy được cả 3 thành phần; đăng nhập được; thao tác ghi audit log; **ArchUnit xanh trong CI** |
 | **4** | Đặc tả DICOM (`07`, bắt đầu), **đặc tả HL7 (`08`)**, **seed data + kịch bản demo (`12`)**, hoàn thiện `10` | — | Bệnh nhân, chỉ định, thêm/sửa ca chụp | CRUD chạy được, có quy tắc đối chiếu dữ liệu |
 | **5** | Đặc tả DICOM + mapping tag (`07`), hoàn thiện `08` | — | Worklist 2 tab, state machine | Chuyển trạng thái đúng theo Phần 4, có test |
 | **6** | — | — | Bộ lọc (thời gian, trạng thái, máy, khoa), modal thông tin lâm sàng | Bộ lọc chính chạy được trên dữ liệu mẫu |
 | **7** | — | — | Thêm Orthanc + OHIF vào cụm k8s; gửi ảnh mẫu bằng dcm4che; hoàn thiện UI | Mở được ảnh DICOM mẫu từ worklist |
 | **8** | Cập nhật README, báo cáo đồ án (**chương AI — `11`, IN-22**), ghi lại nợ kỹ thuật | — | Deploy toàn bộ lên k8s local, sửa lỗi, kiểm thử | Demo end-to-end từ một lệnh deploy, dữ liệu giả |
  
-> **Trạng thái thực tế ngày 2026-10-31 (tuần 3):** Frontend đã đi trước kế hoạch — có prototype React chạy bằng dữ liệu giả (worklist, bộ lọc, modal, báo cáo, state machine phía giao diện), chưa nối API. **Backend chưa bắt đầu** (không có Spring Boot, MySQL, Flyway, Docker, k8s trong repo). Bộ tài liệu thiết kế tuần 1–2 đã có bản nháp nhưng **chưa được nhóm xác nhận**; wireframe AI Panel và Design system trong Figma chưa có trong repo.
+> **Trạng thái thực tế ngày 2026-10-31 (tuần 3):** Frontend đã đi trước kế hoạch — có prototype React chạy bằng dữ liệu giả (worklist, bộ lọc, modal, báo cáo, state machine phía giao diện), chưa nối API. ~~**Backend chưa bắt đầu**~~ — đã cũ, xem cập nhật 2026-11-05 ngay dưới. Bộ tài liệu thiết kế tuần 1–2 đã có bản nháp nhưng **chưa được nhóm xác nhận**; wireframe AI Panel và Design system trong Figma chưa có trong repo.
+>
+> **Cập nhật 2026-11-05:** Backend có Spring Boot + MySQL (qua `database/`) + skeleton kiến trúc phân tầng (R-05, `doc/15-kien-truc-backend.md`) cho 3 endpoint reference-data (`/departments`, `/devices`, `/service-items`) — `mvn verify` xanh (ArchUnit + Testcontainers MySQL + unit test). Chưa có Flyway chạy trong backend thật (vẫn dùng `database/docker-compose.yml` như trước), Docker image, k8s manifest, patient/order/study/report, hay JWT/RBAC đầy đủ (chỉ có khung JWT đọc claim `roles` thô). `Backend/` **chưa commit vào git**.
 
 ### 7.3. Ngoài phạm vi 8 tuần (giai đoạn sau)
  
@@ -580,6 +591,9 @@ Theo thứ tự phụ thuộc:
 | Migration DB | Flyway | Schema được version cùng code, chạy tự động khi backend khởi động | 💡 |
 | Xác thực | Spring Security + JWT | Đủ cho đồ án, không cần SSO/LDAP | 💡 |
 | Tài liệu API | springdoc-openapi (Swagger UI) | Sinh OpenAPI từ code, khớp Phần 6 mục B | 💡 |
+| Kiến trúc backend | Package-by-layer + ArchUnit (R-05). Tầng truy cập dữ liệu: **Hibernate DAO tự viết** (không Spring Data JPA) | Vi phạm tầng làm build đỏ; chi tiết `doc/15-kien-truc-backend.md` | ✅ |
+| Mapping entity ↔ DTO | MapStruct | Tránh lộ entity ra REST, sinh code lúc build | ✅ |
+| Test tầng DAO | Testcontainers (MySQL 8), không dùng H2 | Test chạy đúng dialect MySQL thật, khớp `database/` | ✅ |
 | K8s local | Docker Desktop Kubernetes / minikube / kind | Tùy máy của nhóm | ❓ |
 | Dev loop | Docker Compose song song với k8s | Xem 2.6 | 💡 |
 | Mock HIS | **HL7 v2** — `ORM^O01` (chỉ định), `ORU^R01` (kết quả) qua MLLP. Code Mock HIS là [HOÃN] (H-03); trong 8 tuần chỉ có interface `HisGateway` + bản giả lập đọc file JSON. *(trước đây gợi ý: "Một module Spring Boot nhỏ hoặc JSON server")* | HL7 v2 định nghĩa sẵn khóa đối chiếu (PID-3, ORC-2/3); xem `doc/01-scope.md` mục 4.1 | ✅ |
@@ -671,4 +685,6 @@ Mục 8.1 ("Frontend ✅ React") vẫn đúng. **Giữ hay đổi** (React 18 ha
 | 2026-10-31 | Đưa README vào gốc repo (kèm mục "Cấu trúc repo"). **Ẩn tên và mã bệnh nhân thật ở mục 2.5** (thay bằng ghi chú), theo nguyên tắc không dùng dữ liệu bệnh nhân thật ở bất kỳ đâu. Chuyển scope doc và ERD sang Markdown, tách 7 sơ đồ Mermaid ra `doc/diagrams/`. Thêm bản nháp `doc/03-state-machine.md`, `04-his-ris-reconciliation.md`, `05-luong-ngoai-le.md`, `api/openapi.yaml`; nâng ERD và scope doc lên v0.9. Cập nhật Phần 7.2 (trạng thái thực tế), 8.2 + 8.3 (Frontend thực tế khác gợi ý; Mock HIS ✅ HL7 v2), Phần 9 (đánh dấu câu 7, 17, 19). Không tick checkbox Phần 6 cho tài liệu nháp chưa được nhóm xác nhận | Claude/agent |
 | 2026-10-31 | Thêm `database/`: Docker Compose chạy MySQL 8.4 + Flyway, 7 file migration V1–V7 theo `doc/02-erd.md` v0.9 (14 bảng + dữ liệu giả). Cả nhóm chạy `docker compose up -d` để có cùng cấu trúc bảng. Đã chạy thử 7 file SQL trên MySQL 8.4.9 thật; container Flyway chưa chạy thử (Docker Desktop chưa bật). Thêm `.gitattributes` ép `*.sql` xuống dòng LF | Claude/agent |
 | 2026-11-05 | **Dọn bộ tài liệu.** Đổi tên `doc/03-pacs-dicom.md` → **`doc/07-pacs-dicom.md`** (hết trùng số với `03-state-machine.md`), cập nhật 18 tham chiếu. Thêm **mục 6.0 "Mục lục tài liệu và thứ tự đọc"** (15 file, có sơ đồ phụ thuộc, gồm 6 file chưa viết: 08, 10, 11, 12, 13, 14). Thêm **quy ước ý nghĩa checkbox** ở mục 6 (`[x]` = đã có nháp trong repo, **không** phải đã xác nhận) và tick 11 hạng mục đã có bản nháp. Sửa lỗi hiển thị `diagrams/01-ranh-gioi-he-thong.mmd` (nhãn cạnh `C-STORE` / `deep-link` chưa bọc ngoặc kép nên bị tách thành node rời). Sửa tham chiếu `01-scope.docx` còn sót trong `Frontend/README.md`. Tạo `doc/09-bao-mat-toan-ven-du-lieu.md` (nháp v0.1). ⚠️ **3 ảnh `.png` đang lệch nguồn `.mmd` và chưa xuất lại được** (`02-erd`, `01-ranh-gioi-he-thong`, `05-state-machine`) — môi trường không có `mermaid-cli`; lệnh và lý do ở `doc/02-erd.md` mục 0 | Claude/agent |
+| 2026-11-05 | **Thêm ràng buộc R-05** (kiến trúc phân tầng backend + ArchUnit, Phần 0). Tạo `doc/15-kien-truc-backend.md` (nháp v0.1) + `doc/diagrams/15-kien-truc-backend.mmd`. Thêm checkbox 6B, việc tuần 2–3 ở 7.1/7.2 (tuần 3 +2 ngày, thêm điều kiện "ArchUnit xanh trong CI"), 3 dòng ✅ ở 8.2 (kiến trúc backend, MapStruct, Testcontainers). Thêm IN-24 và đẩy "Tùy chỉnh cột hiển thị" sang HOÃN ở `01-scope.md` (đổi chác phạm vi, mục 9). **Phát hiện khi kiểm tra:** `Backend/` đã có code (package `com.vrris.pacs`, 3 endpoint reference-data) nhưng **chưa commit vào git** — câu "Backend chưa bắt đầu" ở mục đầu trang và 7.2 (ghi ngày 2026-10-31) **đã cũ**; chưa sửa câu đó trong lần này, chờ xác nhận kế hoạch refactor ở Pha 2 (xem `doc/15-kien-truc-backend.md` mục 1) | Claude Code |
 | 2026-11-05 | Thêm **mục 2.7 "Hai cửa vào viewer"** (worklist CĐHA + màn hình kết quả lâm sàng → cùng một OHIF bằng deep-link `StudyInstanceUID`; PACS không biết ai gọi; tên/mã/tuổi trên ảnh đến từ header DICOM nên sai ở RIS thì sai cả ảnh — liên hệ 2.5). Thêm 2 nguyên tắc bất biến (che danh tính trong ảnh chụp màn hình tham chiếu; OHIF/Orthanc không mở công khai). Thêm dòng deep-link vào bảng 2.4, ghi chú bước 5 làm tay ở 2.3, ghi chú nút "Xem ảnh" ở 3.3 tab 3. Thêm checkbox `07-pacs-dicom.md` (6B) và 2 checkbox Figma + ghi chú "không vẽ lại viewer OHIF" (6E). Thêm 6 thuật ngữ DICOM vào Glossary. Tạo mới `doc/07-pacs-dicom.md` (nháp v0.1) | Claude/agent |
+| 2026-11-05 | **Refactor toàn bộ `Backend/` sang kiến trúc phân tầng R-05** (`doc/15-kien-truc-backend.md`): xóa package-by-feature `referencedata/`/`common/` cũ (dùng Spring Data JPA + H2), dựng lại `rest/service/dao/hibernateDao/model/dto/mapper/enu/exception` cho 3 endpoint reference-data, cộng khung mới `rule/` (`AgeCalculator`, `StudyStateMachine` + unit test), `integration/` (`HisGateway`/`JsonFileHisGateway`), `audit/` (`AuditLogAspect`, ghi **đồng bộ** — đã chốt), `security/` (JWT khung + `SecurityConfig`, có `@PreAuthorize` theo 5 vai trò). Thêm ArchUnit (9 luật + L9 chặn Spring Data JPA), MapStruct, Testcontainers MySQL (bỏ H2), `spring-boot-starter-security`/`aop`, `jjwt`. Thêm `.github/workflows/backend-ci.yml` chạy `mvn verify` khi đụng `Backend/`. **`mvn verify` xanh: 35/35 test, BUILD SUCCESS** (chạy thật trên máy, có Docker — 4 lỗi gặp và sửa trong lúc làm, xem `doc/15-kien-truc-backend.md` mục 13). Tiện sửa luôn 1 lỗi tích hợp phát hiện giữa đường: Spring Security chặn cả CORS preflight (OPTIONS) nếu không `permitAll` riêng. `Backend/` vẫn **chưa commit vào git** | Claude Code |

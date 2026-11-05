@@ -1,0 +1,31 @@
+# Config rieng cho test (R-05 quyet dinh 4: KHONG dung H2). DB thuc la MySQL 8 qua Testcontainers
+# (support.AbstractIntegrationTest cap spring.datasource.* luc runtime bang @DynamicPropertySource).
+# Flyway chay o day (khac voi main application.yml dang tat flyway) de dung dung migration thuc
+# trong database/migrations/, chi toi V6 (KHONG seed V7__seed_demo_data.sql, de test tu seed du
+# lieu toi thieu, giong cach lam cu).
+server:
+  servlet:
+    context-path: ""
+
+spring:
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: filesystem:../database/migrations
+    target: "6"
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
+
+app:
+  security:
+    jwt:
+      secret: "test-only-secret-khong-dung-ngoai-test-du-32-ky-tu-cho-hs256"
+      expiration-minutes: 60
