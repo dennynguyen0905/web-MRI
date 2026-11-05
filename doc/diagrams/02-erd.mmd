@@ -182,7 +182,7 @@ erDiagram
         bigint id PK
         bigint actor_user_id FK "nullable - he thong"
         varchar actor_username "snapshot, khong join"
-        varchar action "READ|CREATE|UPDATE|DELETE|STATUS_CHANGE|LOGIN|PRINT|EXPORT"
+        varchar action "READ|VIEW_IMAGE|CREATE|UPDATE|DELETE|STATUS_CHANGE|LOGIN|PRINT|EXPORT"
         varchar entity_type
         bigint entity_id "nullable"
         bigint patient_id "nullable - truy vet theo benh nhan"

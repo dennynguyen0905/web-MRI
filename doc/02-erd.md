@@ -4,12 +4,41 @@ Tài liệu con của README.md, mục 6C: [T1] ERD rút gọn. Phạm vi bảng
 
 | Phiên bản | 0.9 (nháp — còn ❓ ở mục 9, chưa nâng lên v1.0) |
 |---|---|
-| Ngày | 2026-10-31 (v0.2: 2026-10-17) |
+| Ngày | 2026-11-05 (v0.9: 2026-10-31; v0.2: 2026-10-17) |
 | DB | MySQL 8, InnoDB, utf8mb4_0900_ai_ci |
 | Migration | Flyway, V{n}__{mo_ta}.sql |
-| Điều kiện lên v1.0 | Nhóm xác nhận 5 ô ở mục 9 (gồm `facility_id`, phụ thuộc câu 8 ở `01-scope.md`) |
+| Điều kiện lên v1.0 | Nhóm xác nhận **7** ô ở mục 9 (gồm `facility_id`, phụ thuộc câu 8 ở `01-scope.md`) |
 
 > Thay đổi so với v0.2: thêm trạng thái `CANCELLED` (❓), bảng ánh xạ mã trạng thái DB/API/UI/Frontend (4.5), quy tắc version báo cáo (4.10), tuổi xấp xỉ khi chỉ biết năm sinh (4.2), mục 10 "Cần Frontend sửa". Mọi điểm gắn ❓ là **đề xuất, chờ nhóm xác nhận**, chưa phải quyết định.
+>
+> Thay đổi ngày 2026-11-05: `audit_log.action` thêm `VIEW_IMAGE` + mục 4.11 giải thích (ghi khi có người mở viewer); mục 4.4 thêm quy tắc **không lưu URL viewer thành cột**; mục 4.9 trỏ sang `07-pacs-dicom.md` cho mapping DICOM tag và cảnh báo `PatientBirthDate` (0010,0030) là kiểu DA đủ ngày; mục 9 thêm 2 ô cần xác nhận (`study` ↔ `service_item`, `patient_code` ↔ `visit_code`). Sơ đồ nguồn `diagrams/02-erd.mmd` đã cập nhật theo — **ảnh `.png` chưa xuất lại, xem mục 0.**
+
+
+## 0. ⚠️ Hai ảnh `.png` trong `diagrams/` đã lỗi thời — cần xuất lại bằng tay
+
+Trạng thái 2026-11-05. **Nguồn `.mmd` là chuẩn; `.png` chỉ để trình bày.** Ba ảnh dưới đây **không khớp** nguồn:
+
+| Ảnh | Vì sao lỗi thời |
+|---|---|
+| `diagrams/02-erd.png` | `02-erd.mmd` đã thêm `VIEW_IMAGE` vào `audit_log.action` (mục 4.11); ảnh vẫn là bản cũ |
+| `diagrams/01-ranh-gioi-he-thong.png` | `01-ranh-gioi-he-thong.mmd` đã sửa **lỗi hiển thị**: nhãn cạnh không bọc dấu ngoặc kép nên Mermaid đọc dấu `-` trong `C-STORE` và `deep-link` như cú pháp cạnh → tách thành node rời (`C`, `STORE`) và node `deep-link` chồng lên `AI Backend + AI Panel`. Ảnh trong repo **vẫn là ảnh bị lỗi đó** |
+| `diagrams/05-state-machine.png` | Xuất từ bản cũ: **6 trạng thái, mã tiếng Việt**. Nguồn `.mmd` hiện là 7 trạng thái (có `CANCELLED` ❓) với mã `SCHEDULED/UNREAD/…`. Đã ghi ở `03-state-machine.md` mục 2 từ 2026-10-31, chưa xuất lại |
+
+**Chưa xuất lại được trong phiên làm việc ngày 2026-11-05:** môi trường không có `mermaid-cli`, và cài qua `npx` bị chặn (tải + chạy mã ngoài). Cần một người chạy bằng tay, một trong hai cách:
+
+```bash
+# Cach 1 — mermaid-cli (can Node + tai Chromium lan dau)
+for d in 02-erd 01-ranh-gioi-he-thong 05-state-machine; do
+  npx -y @mermaid-js/mermaid-cli \
+      -i "doc/diagrams/$d.mmd" -o "doc/diagrams/$d.png" -b white -s 2
+done
+```
+
+Cách 2 — **draw.io**: Arrange → Insert → Mermaid, dán nội dung `.mmd`, rồi File → Export as → PNG. Đây là cách đang dùng cho 7 ảnh hiện có (ghi ở README mục "Cấu trúc repo").
+
+> **Quy ước:** sửa `.mmd` thì phải xuất lại `.png` cùng tên. Nếu chưa xuất được thì ghi vào đây để người sau biết ảnh đang lệch, **không** xóa ảnh cũ.
+
+---
 
 ## 1. Sơ đồ
 
@@ -200,7 +229,7 @@ erDiagram
         bigint id PK
         bigint actor_user_id FK "nullable - he thong"
         varchar actor_username "snapshot, khong join"
-        varchar action "READ|CREATE|UPDATE|DELETE|STATUS_CHANGE|LOGIN|PRINT|EXPORT"
+        varchar action "READ|VIEW_IMAGE|CREATE|UPDATE|DELETE|STATUS_CHANGE|LOGIN|PRINT|EXPORT"
         varchar entity_type
         bigint entity_id "nullable"
         bigint patient_id "nullable - truy vet theo benh nhan"
@@ -247,6 +276,8 @@ erDiagram
 
 4.4. study_instance_uid nullable và UNIQUE. Trong 8 tuần điền bằng tay hoặc seed để deep-link sang OHIF. Sau này do máy chụp sinh. MySQL cho phép nhiều NULL trong cột UNIQUE nên không vướng.
 
+**Không có cột nào lưu URL viewer.** URL mở OHIF được **ghép tại thời điểm hiển thị** từ (a) base URL OHIF lấy ở **ConfigMap** và (b) `study_instance_uid` của hàng đang xem — xem `01-scope.md` IN-19 điểm 2. Lưu URL đủ thành một cột sẽ nhân bản cấu hình hạ tầng vào dữ liệu nghiệp vụ: đổi host/port OHIF là phải chạy migration `UPDATE` toàn bảng. `study_instance_uid = NULL` nghĩa là **chưa có ảnh** → nút “Xem ảnh” ẩn/disable (IN-23), không phải “có ảnh nhưng thiếu URL”.
+
 4.5. Trạng thái lưu bằng VARCHAR(20), không dùng ENUM của MySQL. ENUM khó thêm giá trị bằng migration. Giá trị trong DB và trong API theo cột **DB / API** dưới đây là chuẩn; **Frontend phải đổi mã theo ERD**, không đổi ERD cho khớp Frontend.
 
 | DB / API (chuẩn) | UI (tiếng Việt) | Mã trong Frontend hiện tại (`Frontend/src/lib/types.ts`) |
@@ -283,6 +314,14 @@ erDiagram
 
 Hai điều này không làm bây giờ nhưng đã biết trước: his_message_log (lưu MSH-10, raw message, ACK, số lần retry) sẽ thêm ở H-03; và PID-5 ghép họ tên là nguồn lệch dữ liệu được dự đoán trước, phải có test case riêng theo yêu cầu README 2.5.
 
+**Mapping DICOM tag ↔ cột RIS: xem `07-pacs-dicom.md` mục 7.** Bảng trên là cạnh HL7 (HIS ↔ RIS); cạnh DICOM (RIS ↔ PACS) nằm ở file đó. Hai bảng gặp nhau ở `study.accession_number` — HL7 OBR-18 và DICOM (0008,0050) là **cùng một giá trị**, đó là khóa nối ba chiều HIS ↔ RIS ↔ PACS.
+
+**Cảnh báo một chỗ dễ sinh lỗi “Tuổi 0”:** DICOM `PatientBirthDate` (0010,0030) là **kiểu DA — ngày đầy đủ `YYYYMMDD`**, không có dạng ngắn. HL7 PID-7 thì **cho phép độ dài thay đổi** (`1958`, `195803`, `19580315`) — đúng lý do cần `dob_precision` ở mục 4.2. Nên khi RIS ghi ngày sinh vào header DICOM (qua MWL, H-01):
+
+- Ca `dob_precision = 'YEAR'` **không biểu diễn được trung thực** trong tag DA. Phải quy ước: ghi `19580101` (mất thông tin “chỉ biết năm”), hoặc để **trống** tag đó.
+- ❓ **Chưa chốt** chọn cách nào — xem `07-pacs-dicom.md` mục 4 và mục 8.
+- Vì sao quan trọng: `01-scope.md` mục 6 bước 10 yêu cầu **không ca nào ra “Tuổi 0”**. Nếu ghi `19580101` rồi hệ thống khác đọc header và coi là ngày sinh chính xác, hoặc nếu để trống rồi viewer tự tính tuổi từ tag rỗng, thì lỗi “Tuổi 0” ở README 2.5 **xuất hiện lại ở phía ảnh** — nơi RIS không sửa được nữa, vì header đã nằm trong PACS.
+
 4.10. Version báo cáo (❓ đề xuất, chờ nhóm xác nhận).
 
 - `DRAFT → FINAL → APPROVED` của một lượt đọc dùng **cùng một bản ghi** `report`, cùng `version`.
@@ -290,6 +329,14 @@ Hai điều này không làm bây giờ nhưng đã biết trước: his_message
 - Mở lại ca đã duyệt (`APPROVED → READING`): tạo bản ghi `report` **mới** (`version + 1`, trạng thái `DRAFT`). Bản `APPROVED` cũ **giữ nguyên, không sửa, không ghi đè**. Bản mới **không kế thừa** `approved_by_user_id` / `approved_at` — phải được duyệt lại. Nội dung bản mới có thể sao chép từ bản `APPROVED` làm điểm xuất phát.
 - Bản hiện hành của một `study` là bản có `version` lớn nhất; chỉ bản `APPROVED` mới được gửi về HIS (ORU^R01).
 - Ràng buộc: `UK(study_id, version)`.
+
+4.11. `audit_log.action` có giá trị `VIEW_IMAGE`. Ghi **mỗi lần có người mở viewer cho một study** — từ worklist hoặc từ màn hình kết quả lâm sàng, tức cả hai cửa vào ở README mục 2.7.
+
+- **Vì sao phải có riêng, không dùng `READ`:** nguyên tắc bất biến của dự án là *mọi hành vi đọc dữ liệu bệnh nhân đều phải ghi audit log*. Mở viewer **là** một hành vi đọc dữ liệu bệnh nhân — ảnh y tế là dữ liệu nhạy cảm nhất trong hệ thống. Nhưng **PACS không biết ai gọi** nó (README 2.7): nó chỉ thấy một yêu cầu DICOMweb cho một study. Nếu RIS không ghi lại lúc sinh deep-link thì **không chỗ nào trong hệ thống biết ai đã xem ảnh của ai**. `READ` dùng cho việc đọc bản ghi RIS; `VIEW_IMAGE` tách riêng để truy vết được theo đúng câu hỏi “ai đã xem ảnh bệnh nhân này”.
+- **Ghi ở đâu:** ở RIS, tại endpoint sinh deep-link, **trước** khi trả URL cho trình duyệt. Không ghi ở phía OHIF (OHIF là sản phẩm có sẵn, không sửa) và không ghi được ở Orthanc.
+- **Giá trị cột:** `entity_type = 'STUDY'`, `entity_id = study.id`, `patient_id` = bệnh nhân của study. `before_value` / `after_value` để NULL (không phải hành vi sửa). ❓ Có ghi thêm `study_instance_uid` vào `after_value` để tiện đối chiếu với log Orthanc hay không — **chưa chốt**.
+- **Hệ quả:** nếu viewer mở trực tiếp bằng URL dán tay (không qua RIS) thì **không có dòng audit nào** — đây chính là lý do OHIF không được mở công khai (nguyên tắc bất biến ở README mục 0; `01-scope.md` IN-19 điểm 3).
+- Migration: thêm vào `V5__audit_and_conflict.sql` chỉ là **sửa COMMENT** của cột (cột đang là `VARCHAR(20)`, không có `CHECK`/`ENUM`). Theo mục 7, **không sửa V1–V7 đã vào `main`** → cần file mới (V8) chỉ để đổi comment, hoặc để comment lệch và coi tài liệu này là chuẩn ❓ chưa chốt.
 
 ## 5. Vì sao thông tin lâm sàng là JSON chứ không phải 15 bảng
 
@@ -340,6 +387,8 @@ Cột "Đề xuất" là trả lời của tài liệu; cột "Trạng thái" ch
 | Một `imaging_order` có nhiều `study` | **Giữ quan hệ 1–n** (khớp IN-02 trong scope doc). Cần đối chiếu với nghiệp vụ thật ở UI tham chiếu | ❓ đề xuất, chờ nhóm xác nhận |
 | "Bác sĩ chỉ định" lưu tên tự do hay là `app_user` | **Tên tự do** (`ordering_doctor_name`) trong 8 tuần; ghi vào nợ kỹ thuật tuần 8. Vai trò Bác sĩ lâm sàng (README mục 5) là người dùng đăng nhập nhưng chưa gắn khóa ngoại vào chỉ định | ❓ đề xuất, chờ nhóm xác nhận |
 | Có cần `facility_id` không | **Không thêm** (một bệnh viện, nhiều khoa). Phụ thuộc câu 8 ở `01-scope.md`, câu này **chưa được xác nhận** nên ô này cũng chưa chốt | ❓ đề xuất, chờ nhóm xác nhận |
+| Một `study` có luôn đúng **một** `service_item`, hay một `study` gồm **nhiều dịch vụ** | **Giữ đúng một** (`study.service_item_id` là FK đơn, không nullable về nghiệp vụ). Hệ quả: chụp 2 dịch vụ trên cùng một lần vào máy = **2 study**, 2 `accession_number`, nhưng có thể **chung một `study_instance_uid`** nếu máy gộp vào một study DICOM — khi đó cột `UK(study_instance_uid)` sẽ **vỡ**. Cần đối chiếu nghiệp vụ thật ở UI tham chiếu, và kiểm tra lại ràng buộc UNIQUE | ❓ đề xuất, chờ nhóm xác nhận — **ảnh hưởng ràng buộc DB, nên chốt trước tuần 7** |
+| `patient_code` (mã bệnh nhân) và `visit_code` (mã hồ sơ / LSVV) là **hai mã tách biệt** | **Có, hai mã khác nhau, không suy ra được từ nhau.** `patient_code` gắn với **một người** và sống qua mọi lần đến viện (khóa đối chiếu chính, mục 4.9 → PID-3). `visit_code` gắn với **một lần vào viện**, nằm ở `imaging_order.visit_code`, một bệnh nhân có nhiều `visit_code`. Đã khớp với hệ thống tham chiếu: bộ lọc README 3.2 cho tìm **riêng** theo “mã bệnh nhân” và theo “mã LSVV”, và cột hiển thị có “Mã hồ sơ” riêng | ❓ đề xuất, chờ nhóm xác nhận (suy luận từ UI tham chiếu, chưa có người xác nhận nghiệp vụ) |
 
 ## 10. Cần Frontend sửa
 
