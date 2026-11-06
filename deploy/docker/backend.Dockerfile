@@ -36,6 +36,11 @@ RUN mvn -f Backend/pom.xml -B -q -DskipTests clean package
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
+# ttf-dejavu: font Unicode de dung PDF phieu ket qua co dau tieng Viet (Task 5). Font dung san
+# trong PDF (Helvetica...) dung bang ma WinAnsi, khong co dau tieng Viet - thieu font thi
+# service/impl/PdfPrintRenderer tra 503 chu khong am tham xuat phieu mat dau.
+RUN apk add --no-cache ttf-dejavu
+
 # Chay bang user thuong, khong phai root (khong co ly do can root: chi chay 1 jar, khong bind port <1024).
 RUN addgroup -S app && adduser -S app -G app
 COPY --from=build /build/Backend/target/ris-backend-*.jar /app/app.jar
