@@ -72,6 +72,8 @@ tags:
     description: Log lệch dữ liệu HIS ↔ RIS (IN-05)
   - name: audit-logs
     description: Nhật ký truy vết (IN-15)
+  - name: printing
+    description: In phiếu kết quả của một bệnh nhân (Task 5 — đề xuất, chưa được nhóm chốt)
   - name: reference-data
     description: Khoa, máy, danh mục dịch vụ
   - name: future
@@ -948,6 +950,100 @@ paths:
                 $ref: '#/components/schemas/Error'
         '422':
           $ref: '#/components/responses/Unprocessable'
+  /patients/{patientId}/print-documents:
+    parameters:
+      - $ref: '#/components/parameters/PatientId'
+    get:
+      tags: [printing]
+      operationId: printPatientDocument
+      summary: Tải một phần phiếu kết quả dạng PDF
+      description: |
+        ⚠️ **Đề xuất kèm Task 5, nhóm chưa chốt.** In ấn là chức năng phụ `H-05` [HOÃN]
+        (`01-scope.md` mục 4) và nút in/tải còn ❓ ở mục 9 — muốn đưa hẳn vào IN thì phải ghi
+        bảng thay đổi phạm vi.
+
+        Mỗi lần gọi trả **một** file cho **một** phần (`section`), đúng yêu cầu "mỗi thông tin là
+        một tờ/file riêng". Muốn nhiều phần thì gọi nhiều lần.
+
+        Dữ liệu: chỉ `FUNCTIONAL` là dữ liệu thật của RIS (tên dịch vụ + nội dung báo cáo hiện hành);
+        `OVERVIEW`/`LABS` đọc từ `clinical_snapshot` (dữ liệu giả, seed); `DRUGS`/`SURGERY` còn rỗng,
+        PDF vẫn tạo nhưng ghi rõ "chưa có dữ liệu — chờ tích hợp HIS" (`01-scope.md` mục 3.3).
+
+        Ghi `audit_log` (`PRINT`) kèm `patient_id` — in là mang dữ liệu bệnh nhân ra khỏi hệ thống
+        (IN-15, `09-bao-mat-toan-ven-du-lieu.md` mục 2.2).
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: PRINT
+      parameters:
+        - name: study_id
+          in: query
+          required: true
+          description: Ca chụp cần in; phải thuộc đúng `patientId`
+          schema:
+            type: integer
+            format: int64
+        - name: section
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/PrintSection'
+      responses:
+        '200':
+          description: 'File PDF, kèm header `Content-Disposition` dạng attachment'
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Ca chụp không thuộc bệnh nhân này (`STUDY_PATIENT_MISMATCH`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Máy chủ chưa có font Unicode để dựng PDF tiếng Việt (`PRINT_FONT_MISSING`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /patients/{patientId}/print-events:
+    parameters:
+      - $ref: '#/components/parameters/PatientId'
+    post:
+      tags: [printing]
+      operationId: recordPrintEvent
+      summary: Ghi nhận một lần in bằng hộp thoại của trình duyệt
+      description: |
+        ⚠️ **Đề xuất kèm Task 5, nhóm chưa chốt.** Không trả file. Dùng khi người dùng in hoặc
+        lưu PDF bằng hộp thoại của trình duyệt: dữ liệu vẫn rời khỏi hệ thống nên vẫn phải ghi
+        `audit_log` (`PRINT`) kèm `patient_id`.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: PRINT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrintEventRequest'
+      responses:
+        '204':
+          description: Đã ghi nhận
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /audit-logs:
     get:
       tags: [audit-logs]
@@ -1294,7 +1390,25 @@ components:
       enum: [PENDING, KEEP_RIS, TAKE_HIS, MANUAL_EDIT]
     AuditAction:
       type: string
-      enum: [READ, CREATE, UPDATE, DELETE, STATUS_CHANGE, LOGIN, PRINT, EXPORT]
+      enum: [READ, VIEW_IMAGE, CREATE, UPDATE, DELETE, STATUS_CHANGE, LOGIN, PRINT, EXPORT]
+    PrintSection:
+      type: string
+      description: |
+        Phần của phiếu kết quả được in, tương ứng 5 tab lâm sàng (README mục 3.3).
+        Trong 8 tuần chỉ `FUNCTIONAL` là dữ liệu thật của RIS.
+      enum: [OVERVIEW, LABS, FUNCTIONAL, DRUGS, SURGERY]
+    PrintEventRequest:
+      type: object
+      required: [study_id, sections]
+      properties:
+        study_id:
+          type: integer
+          format: int64
+        sections:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PrintSection'
     UserRef:
       type: object
       required: [id, full_name]

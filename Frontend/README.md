@@ -1,103 +1,114 @@
 # VR-RIS PACS — Frontend
 
-Giao diện RIS dựng theo bộ ảnh thiết kế trong `../vju_mri_web/img` (đã bỏ khung đen và chữ đánh số ở viền).
-Chỉ có phần frontend; backend Spring Boot do nhóm khác làm.
+Giao diện RIS. Stack: **React 19 · TypeScript · Vite 7 · Tailwind CSS 4**, không dùng thư viện UI ngoài —
+mọi control (nút, input, select, modal, popover, tag, icon) đều tự viết trong `src/shared/ui`.
 
 ## Chạy
 
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm run build   # ra thư mục dist/ (dùng cho image nginx trong manifest k8s)
+npm run build   # ra dist/, dùng cho image nginx ở deploy/docker/frontend.Dockerfile
 ```
 
-Yêu cầu: Node.js 20+ (máy đang dùng Node 26 LTS).
+Yêu cầu Node.js 20+.
 
-## Stack
+### Biến môi trường
 
-React 19 · TypeScript · Vite 7 · Tailwind CSS 4. Không dùng thư viện UI ngoài — mọi control
-(nút, ô nhập, select, checkbox, popover, modal, tag, icon) đều tự viết theo trang
-"DS / Icons", "DS / Controls", "DS / Layout" của bản thiết kế.
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `VITE_API_MODE` | `mock` | `mock` chạy mock server trong trình duyệt; `live` gọi backend thật |
+| `VITE_API_BASE_URL` | `/api/v1` | Đường dẫn tương đối **cùng origin** (`doc/14` mục 3.2) — nginx của `ris-frontend` proxy `/api/` sang backend nên không cần CORS |
+| `VITE_DEV_API_TARGET` | `http://localhost:8080` | Khi `npm run dev`, proxy của Vite thay vai trò nginx |
+| `VITE_PERSIST_SESSION` | `false` | `true` thì access token sống qua lần tải lại trang — **nợ kỹ thuật**, xem `src/shared/api/session.ts` |
+| `VITE_OHIF_BASE_URL` | — | Base URL của OHIF để mở deep-link (IN-23, chưa dùng) |
+
+Gọi backend thật:
+
+```bash
+VITE_API_MODE=live npm run dev
+```
 
 ## Đăng nhập
 
-Mật khẩu chung cho mọi tài khoản demo: `123456`.
+Mock server dùng đúng 7 tài khoản seed của `database/migrations/V7` + `V8`, mật khẩu chung `123456`:
+`admin`, `bslamsang`, `ktv`, `bscdha`, `bscdha2`, `bsduyet`, `bsduyet2`.
 
-| Tài khoản | Vai trò | Thấy được gì |
-|---|---|---|
-| `admin` | Quản trị hệ thống | Toàn bộ chức năng |
-| `bslamsang` | Bác sĩ lâm sàng | Thêm/sửa bệnh nhân, đồng bộ HIS, lâm sàng |
-| `ktv` | Kỹ thuật viên | Như trên + xác nhận đã nhận đủ ảnh |
-| `bscdha` | Bác sĩ CĐHA | Mở ca, nhập và chốt báo cáo |
-| `bsduyet` | Bác sĩ duyệt | Duyệt, trả lại để sửa |
+Chưa đăng nhập mà vào `/worklist` thì bị chuyển về `/login` và quay lại đúng chỗ sau khi đăng nhập.
+Access token giữ trong **bộ nhớ** (không phải localStorage) theo đề xuất ở `doc/09` mục 1.2, nên tải lại
+trang là mất phiên — đổi hành vi này bằng `VITE_PERSIST_SESSION`, nhưng phải ghi nợ kỹ thuật.
+
+Xử lý lỗi theo `doc/06` mục 8: **401** → dọn phiên, về trang login; **403** → hiện dải cảnh báo
+"không đủ quyền", **không** đăng xuất.
 
 ## Cấu trúc
 
+Theo `doc/15-kien-truc-backend.md` mục 7: component **không** gọi thẳng `fetch`, chỉ đi qua hook →
+tầng `api` của feature → `shared/api`.
+
 ```
 src/
-  index.css                     design token: màu thương hiệu, màu 6 trạng thái, nền, viền
-  lib/
-    types.ts                    kiểu dữ liệu bám đúng ERD (diagrams/02-erd.mmd)
-    status.ts                   6 trạng thái ca chụp + màu + hình chấm
-    stateMachine.ts             các bước chuyển hợp lệ + quyền cần có cho từng bước
-    auth.ts                     5 vai trò, bảng quyền, nhãn "cần vai trò gì"
-    useWorklistStore.ts         state ca chụp, báo cáo, lịch sử trạng thái trong phiên
-    format.ts                   ngày/giờ, ngày sinh theo dob_precision, tính tuổi, giới tính
-  data/mock.ts                  dữ liệu giả + tài khoản demo + snapshot lâm sàng 5 tab
-  pages/LoginPage.tsx           màn đăng nhập
-  components/
-    ui/                         Icon, controls (Button/Input/Select/Checkbox/Modal/Popover/Tag), StatusChip
-    layout/TopBar.tsx           thanh trên + popover "Cấu hình hệ thống"  (ảnh 09)
-    layout/Sidebar.tsx          cây máy, lọc trạng thái, các select lọc   (ảnh 01, 05–07)
-    worklist/WorklistTable.tsx  bảng worklist, sắp xếp, lọc theo cột, popover cột hiển thị (ảnh 01–04, 08)
-    worklist/PatientPanel.tsx   panel chi tiết bệnh nhân bên phải         (ảnh 02–03)
-    worklist/RelatedOrders.tsx  bảng phiếu cùng bệnh nhân phía dưới       (ảnh 02–03)
-    worklist/Pagination.tsx     phân trang
-    modals/AddStudyModal        Thêm ca chụp                              (ảnh 10)
-    modals/UpdateStudyModal     Cập nhật ca chụp — so sánh hiện tại ↔ mới (ảnh 11)
-    modals/UpdateFromHisModal   Cập nhật chỉ định từ HIS                  (ảnh 12)
-    modals/ClinicalModal        Thông tin lâm sàng 5 tab                  (ảnh 13–17)
-    modals/ReportModal          Báo cáo kết quả + lịch sử trạng thái      (IN-10, không có ảnh mẫu)
-  pages/WorklistPage.tsx        ghép tất cả: tab Chờ / Đã thực hiện, lọc, chọn dòng, modal
+  app/App.tsx                  router + AuthProvider + RequireAuth
+  shared/
+    ui/                        Icon, controls (Button/Input/Select/Modal/Popover/Tag/Textarea), StatusChip
+    lib/                       types (mã ERD), status, stateMachine, auth (RBAC), format
+    api/
+      http.ts                  HttpClient trên fetch + ApiError (401/403)
+      dto.ts                   DTO snake_case đúng openapi.yaml
+      mappers.ts               DTO → kiểu miền camelCase
+      session.ts               nơi giữ access token
+      client.ts                chọn mock hay live
+      mock/{seed,mockClient}   mock server trong trình duyệt, chép đúng seed V7+V8
+    hooks/useAsync.ts          hook gọi API dùng chung
+  features/
+    auth/                      api, useAuth, RequireAuth, LoginPage
+    worklist/                  api, hooks, Sidebar/TopBar/WorklistTable/PatientPanel/RelatedOrders/Pagination, WorklistPage
+    clinical/                  api + ClinicalModal (5 tab)
+    reports/                   api, useStudyReport, ReportModal
+    studies/                   AddStudyModal, UpdateStudyModal, UpdateFromHisModal
+    printing/                  api, printSheet, PrintModal
 ```
 
-## Báo cáo kết quả và state machine
+## Những chỗ bám tài liệu
 
-Nút "Báo cáo" ở panel phải mở modal nhập 5 trường theo IN-10: kỹ thuật, mô tả, chẩn đoán,
-kết luận, khuyến nghị. Các nút chuyển trạng thái không viết cứng — chúng sinh ra từ
-`TRANSITIONS` trong `stateMachine.ts` (dựng theo `05-state-machine.mmd`) rồi lọc tiếp theo
-quyền của vai trò đang đăng nhập, nên một ca "Chưa đọc" chỉ hiện "Mở ca để đọc" cho bác sĩ CĐHA,
-còn bác sĩ duyệt mở cùng ca đó thì chỉ xem được.
+- **Mã trạng thái** dùng mã DB/API (`SCHEDULED/UNREAD/READING/READ/APPROVING/APPROVED`),
+  nhãn tiếng Việt nằm trong `shared/lib/status.ts`. `CANCELLED` **chưa có** — còn ❓, khớp
+  `enu.StudyStatus` của backend (nợ kỹ thuật, `doc/12` TC-16).
+- **Tuổi** lấy `age` + `age_approximate` từ API: `~68` khi ngày sinh chỉ có năm/tháng, `—` khi
+  không có ngày sinh. Không bao giờ ra `0` (`01-scope.md` mục 6 bước 10, TC-09).
+- **Chuyển trạng thái** sinh từ `shared/lib/stateMachine.ts` (T2–T9 theo `doc/03`), lọc tiếp theo
+  vai trò. Backend vẫn kiểm lại — 403/409 hiện ngay trong modal báo cáo.
+- **Kỹ thuật và kết luận** lấy từ báo cáo hiện hành, không lấy từ `study` (`doc/02-erd.md` mục 10).
+- **Lọc theo thời gian**: chỉ hai ô chọn ngày, đúng tham số `date_from`/`date_to` của `GET /studies`.
+  Năm nút khoảng thời gian nhanh đã bỏ theo yêu cầu của nhóm.
+- **Bộ lọc đã [HOÃN]** (đồng bộ HIS, BHYT, ca quá hạn) không dựng, vì backend không có tham số
+  tương ứng — dựng ra sẽ là nút bấm không làm gì.
 
-Vòng đời báo cáo: `DRAFT` → `FINAL` (lưu chính thức) → `APPROVED` (duyệt). Nhánh
-"trả lại để sửa" đưa báo cáo về `RETURNED`, và lần chốt chính thức sau đó mới tăng `version`.
-Ba nhánh ngoại lệ trong sơ đồ — bỏ dở, trả lại, mở lại — hiển thị kiểu cảnh báo và yêu cầu nhập lý do,
-lý do được ghi vào dòng lịch sử trạng thái bên phải modal.
+## In phiếu kết quả
 
-## Nối vào backend
+Nút **In** ở panel bệnh nhân mở hộp thoại chọn nội dung. Mỗi mục được chọn in ra **một tờ riêng**.
 
-Mọi dữ liệu đi qua `WORKLIST` trong `src/data/mock.ts`, kiểu `WorklistRow[]`
-(`study` + `order` + `patient` + `service` + `device` + `department`) — đúng các bảng trong ERD.
-Khi API sẵn sàng, thay import đó bằng một hàm fetch trả về cùng kiểu; các component không đổi.
+- **In / Lưu PDF**: dựng HTML rồi gọi hộp thoại in của trình duyệt (in giấy hoặc Save as PDF).
+  Chạy được cả ở chế độ mock. Trước khi mở hộp thoại có gọi `POST /patients/{id}/print-events`
+  để ghi `audit_log` action `PRINT`.
+- **Tải PDF từ máy chủ**: gọi `GET /patients/{id}/print-documents` cho từng mục, backend dựng PDF.
+  Chỉ bật ở chế độ `live`.
 
-Phần đã bám theo tài liệu:
+Dữ liệu: chỉ **Kết quả chẩn đoán chức năng chính** là dữ liệu thật của RIS; tổng quan khám và
+xét nghiệm là dữ liệu giả trong `clinical_snapshot`; đơn thuốc và phẫu thuật thủ thuật còn rỗng —
+hộp thoại ghi rõ từng mục lấy dữ liệu từ đâu.
 
-- 6 trạng thái và thứ tự chuyển lấy từ `diagrams/05-state-machine.mmd`.
-- Tên cột lấy từ `../README.md` mục 3.1; bộ lọc và 5 tab lâm sàng theo `../doc/01-scope.md` mục 3.2–3.3.
-  *(Trước đây ghi là `01-scope.docx` — tài liệu đó đã chuyển sang Markdown ngày 2026-10-31; bản `.docx` trong `doc/archive/` không còn được cập nhật.)*
-- Tuổi tính theo `dob_precision`, bệnh nhân chỉ có năm sinh vẫn ra tuổi đúng
-  (bước 10 trong kịch bản nghiệm thu tuần 8).
-- Dữ liệu bệnh nhân đều là giả (ràng buộc R-03).
+⚠️ In ấn vẫn là chức năng phụ `H-05` [HOÃN] ở `01-scope.md` mục 4. Muốn đưa hẳn vào IN thì phải
+ghi bảng thay đổi phạm vi (mục 9) và chốt quyền `report.print` ở `doc/06` mục 3.
 
 ## Chưa làm
 
-- Deep-link sang OHIF Viewer (IN-19, tuần 7).
-- Audit log (IN-15) — backend ghi, frontend chưa có màn xem.
-- Màn quản trị người dùng / gán vai trò: hiện danh sách tài khoản nằm cứng trong `data/mock.ts`.
-
-## Lưu ý khi nối backend
-
-Màn đăng nhập và bảng quyền ở frontend chỉ để giao diện gọn mắt. Scope doc IN-14 yêu cầu
-chặn ở tầng API chứ không chỉ ẩn nút, nên backend vẫn phải kiểm tra quyền cho mọi endpoint,
-kể cả những thao tác mà giao diện đã khóa sẵn. Tương tự, điều kiện chuyển trạng thái trong
-`stateMachine.ts` phải được backend kiểm lại trước khi ghi `study_status_history`.
+- Nút **"Xem ảnh"** mở OHIF (IN-23) — kế hoạch bố cục ở `doc/16-fe-viewer-entry-points.md`,
+  chờ backend thêm endpoint trả URL viewer để ghi được `VIEW_IMAGE`.
+- Màn **audit log** (IN-15) và **quản lý người dùng**.
+- Gửi form **Thêm ca chụp** và **Cập nhật ca chụp** lên API (hiện mới có giao diện).
+- Sửa `shared/lib/auth.ts` cho khớp `doc/06-rbac-matrix.md` mục 6 (bỏ `ADMIN` khỏi `report.write`
+  và `report.approve`, thêm `APPROVER` vào `study.reopen`, thêm `study.cancel`/`study.release`/
+  `conflict.resolve`/`audit.view`) — là task riêng, chưa làm ở đợt này.
+- Lọc theo **Chỉ định** và **Bộ phận chụp** hiện lọc phía client trên trang đang xem, vì
+  `GET /studies` chưa có tham số tương ứng trong `openapi.yaml` v0.1.

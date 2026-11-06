@@ -1,0 +1,340 @@
+import { useCallback, useMemo, useState } from 'react'
+import { ClinicalModal } from '@/features/clinical/components/ClinicalModal'
+import { PrintModal } from '@/features/printing/components/PrintModal'
+import { ReportModal } from '@/features/reports/components/ReportModal'
+import { fetchCurrentReport } from '@/features/reports/api/reportApi'
+import { AddStudyModal } from '@/features/studies/components/AddStudyModal'
+import { UpdateFromHisModal } from '@/features/studies/components/UpdateFromHisModal'
+import { UpdateStudyModal } from '@/features/studies/components/UpdateStudyModal'
+import { useAuth, useCurrentUser } from '@/features/auth/hooks/useAuth'
+import { useAsync } from '@/shared/hooks/useAsync'
+import { can, deniedReason } from '@/shared/lib/auth'
+import type { TimeField, WorklistRow, WorklistTab } from '@/shared/lib/types'
+import { Button, Select, cx } from '@/shared/ui/controls'
+import { Download, Printer, Warning } from '@/shared/ui/Icon'
+import { DEFAULT_SIDEBAR_FILTERS, Sidebar, type SidebarFilters } from '../components/Sidebar'
+import { Pagination } from '../components/Pagination'
+import { PatientPanel } from '../components/PatientPanel'
+import { RelatedOrders } from '../components/RelatedOrders'
+import { TopBar, type TopBarState } from '../components/TopBar'
+import {
+  WorklistTable, useOptionalColumns, type ColumnFilters, type ColumnKey,
+} from '../components/WorklistTable'
+import { fetchWorklist, type WorklistFilters } from '../api/worklistApi'
+import { useReferenceData, useStatusCounts, useWorklist } from '../hooks/useWorklist'
+
+const PENDING_COLUMNS: ColumnKey[] = [
+  'index', 'patientCode', 'fullName', 'dob', 'age', 'gender', 'service', 'orderingDoctor',
+  'bodyPart', 'conclusion', 'groupCode', 'groupName', 'recordCode', 'specimenCode', 'archiveCode',
+]
+
+const DONE_COLUMNS: ColumnKey[] = [
+  'index', 'status', 'patientInfo', 'service', 'scannedAt', 'startedAt', 'completedAt',
+  'orderingDoctor', 'conclusion', 'bodyPart', 'groupCode', 'groupName', 'recordCode',
+  'specimenCode', 'archiveCode',
+]
+
+const DEFAULT_TOPBAR: TopBarState = {
+  patientCode: '',
+  patientName: '',
+  visitCode: '',
+  dateFrom: '',
+  dateTo: '',
+  timeField: 'SCHEDULED',
+}
+
+const EMPTY_COLUMN_FILTERS: ColumnFilters = {
+  patientCode: '', fullName: '', orderCode: '', visitCode: '',
+}
+
+export function WorklistPage() {
+  const user = useCurrentUser()
+  const { signOut, forbiddenMessage, reportForbidden, clearForbidden } = useAuth()
+
+  const [tab, setTab] = useState<WorklistTab>('PENDING')
+  const [topbar, setTopbar] = useState<TopBarState>(DEFAULT_TOPBAR)
+  const [filters, setFilters] = useState<SidebarFilters>(DEFAULT_SIDEBAR_FILTERS)
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [sort, setSort] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const { visible: optionalCols, toggle: toggleOptional } = useOptionalColumns()
+  const [columnFilterMode, setColumnFilterMode] = useState(false)
+  const [modal, setModal] = useState<null | 'ADD' | 'UPDATE' | 'HIS' | 'CLINICAL' | 'REPORT' | 'PRINT'>(null)
+
+  const reference = useReferenceData()
+  const counts = useStatusCounts(refreshKey)
+
+  /* ------------------------------------------------- Bộ lọc gửi lên API */
+
+  const worklistFilters = useMemo<WorklistFilters>(() => ({
+    tab,
+    timeField: topbar.timeField,
+    dateFrom: topbar.dateFrom,
+    dateTo: topbar.dateTo,
+    // Tab "Chờ" chỉ có SCHEDULED nên không gửi kèm bộ lọc trạng thái của sidebar.
+    statuses: tab === 'DONE' ? filters.statuses : [],
+    departmentIds: [],
+    deviceIds: filters.deviceIds,
+    modality: filters.modality,
+    patientClass: filters.patientClass,
+    patientCode: columnFilters.patientCode || topbar.patientCode,
+    fullName: columnFilters.fullName || topbar.patientName,
+    visitCode: columnFilters.visitCode || topbar.visitCode,
+    orderCode: columnFilters.orderCode,
+    page,
+    pageSize,
+    sort,
+  }), [tab, topbar, filters, columnFilters, page, pageSize, sort])
+
+  const worklist = useWorklist(worklistFilters, refreshKey)
+
+  const rows = worklist.data?.items ?? []
+  const total = worklist.data?.total ?? 0
+
+  // Lọc theo chỉ định / bộ phận chụp chưa có tham số trong `GET /studies` (openapi v0.1),
+  // nên tạm lọc trên trang hiện tại và ghi rõ là lọc phía client.
+  const visibleRows = useMemo(() => rows.filter(r => {
+    if (filters.serviceItemId && String(r.service.id) !== filters.serviceItemId) return false
+    if (filters.bodyPart && r.service.bodyPart !== filters.bodyPart) return false
+    return true
+  }), [rows, filters.serviceItemId, filters.bodyPart])
+
+  const selected = useMemo(
+    () => visibleRows.find(r => r.study.id === selectedId)
+      ?? rows.find(r => r.study.id === selectedId)
+      ?? null,
+    [visibleRows, rows, selectedId],
+  )
+
+  /* --------------------------------- Các ca khác của cùng bệnh nhân (IN-08) */
+
+  const relatedCode = selected?.patient.patientCode ?? null
+  const related = useAsync<WorklistRow[]>(
+    async signal => {
+      const page = await fetchWorklist({
+        ...worklistFilters,
+        tab: '',
+        statuses: [],
+        deviceIds: [],
+        modality: '',
+        patientClass: '',
+        dateFrom: '',
+        dateTo: '',
+        patientCode: relatedCode!,
+        fullName: '',
+        visitCode: '',
+        orderCode: '',
+        page: 1,
+        pageSize: 50,
+        sort: '',
+      }, signal)
+      return page.items
+    },
+    [relatedCode, refreshKey],
+    { enabled: relatedCode != null },
+  )
+
+  /* ------------------------------ Báo cáo hiện hành của ca đang chọn (panel) */
+
+  const selectedStudyId = selected?.study.id ?? null
+  const selectedReport = useAsync(
+    signal => fetchCurrentReport(selectedStudyId!, signal),
+    [selectedStudyId, refreshKey],
+    { enabled: selectedStudyId != null },
+  )
+
+  /* ---------------------------------------------------------- Thao tác */
+
+  const patchTopbar = (next: Partial<TopBarState>) => { setTopbar(s => ({ ...s, ...next })); setPage(1) }
+  const patchFilters = (next: Partial<SidebarFilters>) => { setFilters(s => ({ ...s, ...next })); setPage(1) }
+
+  const onColumnFilter = (key: keyof ColumnFilters, value: string) => {
+    setColumnFilters(f => ({ ...f, [key]: value }))
+    setPage(1)
+  }
+
+  const onSort = (field: string) => {
+    setSort(current => {
+      const [f, dir] = current.split(',')
+      if (f !== field) return `${field},asc`
+      return dir === 'asc' ? `${field},desc` : ''
+    })
+    setPage(1)
+  }
+
+  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+
+  const resetAll = () => {
+    setTopbar(DEFAULT_TOPBAR)
+    setFilters(DEFAULT_SIDEBAR_FILTERS)
+    setColumnFilters(EMPTY_COLUMN_FILTERS)
+    setSort('')
+    setPage(1)
+  }
+
+  const openGated = (want: 'report.print' | 'clinical.view', target: typeof modal) => {
+    if (!can(user, want)) {
+      reportForbidden(`Không đủ quyền. ${deniedReason(want)}.`)
+      return
+    }
+    clearForbidden()
+    setModal(target)
+  }
+
+  const apiError = worklist.error ?? counts.error ?? reference.error
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <TopBar
+        state={topbar}
+        onChange={patchTopbar}
+        onReset={resetAll}
+        onReload={refresh}
+        onAddPatient={() => setModal('ADD')}
+        user={user}
+        onLogout={signOut}
+      />
+
+      {(apiError || forbiddenMessage) && (
+        <div
+          className={cx(
+            'flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-[11.5px]',
+            forbiddenMessage || apiError?.isForbidden
+              ? 'border-[#f6e0b5] bg-[#fdf9ef] text-[#92400e]'
+              : 'border-[#f7cfcf] bg-[#fdf2f2] text-[#c81e1e]',
+          )}
+        >
+          <Warning size={13} className="shrink-0" />
+          <span className="flex-1">{forbiddenMessage ?? apiError?.message}</span>
+          {forbiddenMessage && (
+            <button onClick={clearForbidden} className="font-medium underline">Ẩn</button>
+          )}
+        </div>
+      )}
+
+      <div className="flex min-h-0 flex-1">
+        <Sidebar
+          filters={filters}
+          onChange={patchFilters}
+          departments={reference.data?.departments ?? []}
+          devices={reference.data?.devices ?? []}
+          serviceItems={reference.data?.serviceItems ?? []}
+          counts={counts.data}
+          visibleCount={total}
+        />
+
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-app p-2">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-white">
+            <div className="flex h-[38px] shrink-0 items-center gap-1.5 border-b border-line px-2">
+              <TabButton active={tab === 'PENDING'} onClick={() => { setTab('PENDING'); setPage(1) }}>Chờ</TabButton>
+              <TabButton active={tab === 'DONE'} onClick={() => { setTab('DONE'); setPage(1) }}>Đã thực hiện</TabButton>
+
+              <div className="flex-1" />
+
+              <div className="w-[150px]">
+                <Select
+                  value={topbar.timeField}
+                  onChange={e => patchTopbar({ timeField: e.target.value as TimeField })}
+                  options={[
+                    { value: 'SCHEDULED', label: 'Thời gian thực hiện' },
+                    { value: 'ORDERED', label: 'Thời gian chỉ định' },
+                    { value: 'COMPLETED', label: 'Thời gian kết thúc' },
+                  ]}
+                />
+              </div>
+              <Button
+                variant="ghost" icon={<Printer size={12} />}
+                disabled={!can(user, 'list.print')}
+                title={can(user, 'list.print') ? undefined : deniedReason('list.print')}
+              >
+                In danh sách
+              </Button>
+              <Button variant="ghost" icon={<Download size={12} />} disabled={!can(user, 'list.print')}>
+                Tải danh sách
+              </Button>
+            </div>
+
+            <WorklistTable
+              rows={visibleRows}
+              loading={worklist.loading}
+              columns={tab === 'PENDING' ? PENDING_COLUMNS : DONE_COLUMNS}
+              selectedId={selectedId}
+              onSelect={r => setSelectedId(r.study.id)}
+              onOpen={r => { setSelectedId(r.study.id); openGated('clinical.view', 'CLINICAL') }}
+              visibleOptional={optionalCols}
+              onToggleOptional={toggleOptional}
+              columnFilterMode={columnFilterMode}
+              onToggleColumnFilterMode={() => setColumnFilterMode(v => !v)}
+              columnFilters={columnFilters}
+              onColumnFilter={onColumnFilter}
+              sort={sort}
+              onSort={onSort}
+            />
+
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPage={setPage}
+              onPageSize={n => { setPageSize(n); setPage(1) }}
+            />
+
+            <RelatedOrders
+              rows={selected ? related.data ?? [] : []}
+              selectedId={selectedId}
+              onSelect={r => setSelectedId(r.study.id)}
+              loading={related.loading}
+            />
+          </div>
+        </main>
+
+        {/* Task 6: panel chỉ dựng khi đã chọn một ca; chưa chọn thì bảng chiếm hết chiều ngang. */}
+        {selected && (
+          <PatientPanel
+            row={selected}
+            user={user}
+            report={selectedReport.data ?? null}
+            onClose={() => setSelectedId(null)}
+            onUpdate={() => setModal('UPDATE')}
+            onUpdateFromHis={() => setModal('HIS')}
+            onAddOrder={() => setModal('ADD')}
+            onClinical={() => openGated('clinical.view', 'CLINICAL')}
+            onReport={() => setModal('REPORT')}
+            onPrint={() => openGated('report.print', 'PRINT')}
+          />
+        )}
+      </div>
+
+      <AddStudyModal open={modal === 'ADD'} onClose={() => setModal(null)} />
+      <UpdateStudyModal open={modal === 'UPDATE'} onClose={() => setModal(null)} row={selected} />
+      <UpdateFromHisModal open={modal === 'HIS'} onClose={() => setModal(null)} row={selected} />
+      <ClinicalModal open={modal === 'CLINICAL'} onClose={() => setModal(null)} row={selected} />
+      <ReportModal
+        open={modal === 'REPORT'}
+        onClose={() => setModal(null)}
+        row={selected}
+        user={user}
+        onChanged={refresh}
+      />
+      <PrintModal open={modal === 'PRINT'} onClose={() => setModal(null)} row={selected} user={user} />
+    </div>
+  )
+}
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        'focus-ring h-7 rounded-md px-3.5 text-[12px] font-semibold transition-colors',
+        active ? 'bg-brand-600 text-white' : 'text-ink-3 hover:bg-line-soft hover:text-ink',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
