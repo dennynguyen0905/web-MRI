@@ -1,6 +1,6 @@
 # Database dùng chung cho cả nhóm: MySQL 8 + Flyway chạy các file trong ./migrations.
 # Chạy:   docker compose up -d        (trong thư mục database/)
-# Xem:    docker compose logs flyway   (phải thấy "Successfully applied 7 migrations")
+# Xem:    docker compose logs flyway   (phải thấy "Successfully applied 8 migrations")
 # Xóa sạch làm lại: docker compose down -v && docker compose up -d
 # Mật khẩu dưới đây chỉ dùng cho máy dev của từng người. Muốn đổi: copy .env.example thành .env rồi sửa.
 

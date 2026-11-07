@@ -11,7 +11,7 @@ Cần Docker Desktop (có `docker compose`). Mở Docker Desktop lên trước, 
 ```bash
 cd database
 docker compose up -d
-docker compose logs -f flyway     # đợi thấy: Successfully applied 7 migrations
+docker compose logs -f flyway     # đợi thấy: Successfully applied 8 migrations
 ```
 
 Xong. Database `vr_ris` đã có đủ 14 bảng và dữ liệu giả để dev.
@@ -103,9 +103,12 @@ Backend nối vào `jdbc:mysql://localhost:3307/vr_ris` bằng user `ris`. **C�
 
 Dù chạy ở đâu, cả hai đều dùng **đúng nội dung** `database/migrations/` (nguồn duy nhất): Docker Compose đọc trực tiếp qua volume; backend ở k8s đọc bản mà `maven-resources-plugin` (`Backend/pom.xml`) copy từ `database/migrations/` vào `target/classes/db/migration` lúc build — không có file `.sql` nào được chép tay/commit trùng. Cả hai cũng dùng chung bảng `flyway_schema_history` (trong cùng schema `vr_ris`) nên không bị lệch version. Test của backend (`Backend/src/test/resources/application.yml`) vẫn là cách thứ ba, riêng: tự chạy Flyway nhưng trỏ `filesystem:../database/migrations`, chỉ tới `V6` (không seed `V7`/`V8`) — không đổi.
 
-## Trạng thái kiểm tra (2026-11-05, cập nhật từ 2026-10-31)
+## Trạng thái kiểm tra (2026-11-07, cập nhật từ 2026-11-05)
 
-- Cả 8 file (V1–V8) đã chạy đúng thứ tự trên **MySQL 8.4 thật** qua `docker compose run --rm flyway migrate` — **đã chạy thật trong phiên làm việc này**, không còn là "chưa kiểm chứng" như ghi chú 2026-10-31 dưới đây: `docker compose run --rm flyway info` báo đúng `Pending` cho V8 trước khi chạy, và `Successfully applied 1 migration to schema vr_ris, now at version v8` sau khi chạy `migrate`.
+- Cả 8 file (`V1`–`V8`, trong đó `V8` là `V8__rbac_and_demo_extras.sql`) đã chạy đúng thứ tự trên **MySQL 8.4.9 thật** (cổng `3307`, `utf8mb4` / `utf8mb4_0900_ai_ci`, `UTC`):
+  - Chạy lần đầu trên schema `vr_ris` rỗng: `Successfully validated 8 migrations` → **`Successfully applied 8 migrations to schema vr_ris, now at version v8`**.
+  - Xóa sạch tạo lại từ đầu (tương đương `docker compose down -v && docker compose up -d`): vẫn áp đủ `V1`–`V8` từ `<< Empty Schema >>` lên `v8` không lỗi, tạo đủ 14 bảng nghiệp vụ + bảng `flyway_schema_history` (8 dòng `success = 1`), 7 tài khoản demo (`admin`, `bslamsang`, `ktv`, `bscdha`, `bsduyet`, `bscdha2`, `bsduyet2`) và ca chụp `CANCELLED` (`id = 10`).
+  - Đã sửa ghi chú cũ `"Successfully applied 7 migrations"` thành `"Successfully applied 8 migrations"` trong `database/docker-compose.yml` và tài liệu này.
 - `V1`–`V7` tạo đủ 14 bảng, 23 khóa ngoại; khóa duy nhất và khóa ngoại chặn đúng dữ liệu sai; dữ liệu mẫu nhất quán với state machine. `V8` chỉ `INSERT`/`UPDATE` (không `CREATE TABLE`), xem mục "Các bảng" ở trên.
 - `docker-compose.yml` đã được `docker compose config` đọc hợp lệ; tag `mysql:8.4` và `flyway/flyway:11` có trên Docker Hub.
 - *(Ghi chú 2026-10-31, nay đã lỗi thời — giữ lại để biết lịch sử)*: ~~Chưa chạy được container Flyway thật (lúc viết, Docker Desktop trên máy tác giả chưa bật)~~.
