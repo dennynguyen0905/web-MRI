@@ -56,6 +56,7 @@ Lấy từ `x-allowed-roles` trong `openapi.yaml` v0.1. ✔ = được gọi. D�
 | `PUT /studies/{id}/reports/current` | — | — | — | ✔ * | — |
 | `GET /identity-conflicts`, `GET …/{id}` | ✔ | — | ✔ | — | — |
 | `POST /identity-conflicts/{id}/resolution` | ✔ | — | ✔ | — | — |
+| `GET /patients/{id}/print-documents`, `POST /patients/{id}/print-events` ❓ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `GET /audit-logs` | ✔ | — | — | — | — |
 | `GET /departments`, `/devices`, `/service-items` | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /integration/his/orders`, `POST /integration/pacs/study-notifications` | chỉ tài khoản hệ thống (`system`), không dùng JWT của người dùng | | | | |
@@ -110,6 +111,7 @@ Frontend mới chỉ ẩn nút. Cột "Đề xuất" là quyền mà backend s�
 | `conflict.resolve` | (chưa có) | **ADMIN, TECHNICIAN** ❓ D22 | **Thêm mới** (màn danh sách lệch dữ liệu, T34) |
 | `audit.view` | (chưa có) | **ADMIN** | **Thêm mới** (T36) |
 | `list.print` | Cả 5 | Giữ nguyên | — |
+| `report.print` (mới) | Cả 5 | **Cả 5** ❓ — đề xuất kèm Task 5 | Bắt buộc ghi `audit_log` `PRINT` kèm `patient_id` mỗi lần in |
 | `config.system` | ADMIN | ADMIN; chưa có endpoint quản lý người dùng/máy trong OpenAPI ❓ | Giữ nguyên, ghi nợ kỹ thuật |
 
 Frontend còn **không kiểm** điều kiện "người giữ ca" và "người duyệt ≠ người đọc". Đó là việc của backend, không sửa ở Frontend.
