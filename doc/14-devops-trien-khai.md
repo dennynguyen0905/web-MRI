@@ -248,6 +248,9 @@ docker build -f deploy/docker/backend.Dockerfile  -t vrris/ris-backend:dev  .
 docker build -f deploy/docker/frontend.Dockerfile -t vrris/ris-frontend:dev .
 
 # 2. (Một lần) Bật Kubernetes trong Docker Desktop nếu chưa bật: Settings -> Kubernetes -> Enable.
+#    Kiểm tra cụm đã lên và có StorageClass mặc định (phải thấy một dòng có "(default)", ví dụ "hostpath (default)"):
+kubectl cluster-info
+kubectl get storageclass
 
 # 3. Áp toàn bộ manifest.
 kubectl apply -k deploy/k8s
@@ -255,7 +258,7 @@ kubectl apply -k deploy/k8s
 # 4. Theo dõi tới khi mọi pod Ready.
 kubectl get pods -n vr-ris -w
 
-# 5. Theo dõi backend tự chạy Flyway xong (xem log có "Successfully applied N migrations").
+# 5. Theo dõi backend tự chạy Flyway xong (xem log có "Successfully applied 8 migrations").
 kubectl logs -n vr-ris deployment/ris-backend -f
 
 # 6. Mở trình duyệt: http://localhost:8080
@@ -277,7 +280,7 @@ kubectl delete -k deploy/k8s      # xóa mọi object, bao gồm PVC (mất dữ
 | `kubectl kustomize deploy/k8s` (dựng offline, không cần cụm) | ✅ Chạy thật — 18 object, không lỗi |
 | `docker compose -f deploy/compose/docker-compose.full.yml config` | ✅ Chạy thật — hợp lệ, `include` gộp đúng `database/docker-compose.yml` |
 | `docker compose -f deploy/compose/docker-compose.full.yml up` (chạy thật cả 4 service) | ❌ **Chưa chạy** — sẽ đụng container `vr-ris-mysql`/cổng `3307` đang chạy cho vòng dev (mục 1); cần dừng cụm dev trước, chưa làm trong phiên này để không ảnh hưởng máy đang dùng |
-| `kubectl apply -k deploy/k8s` trên cụm thật | ❌ **Chưa chạy** — Docker Desktop Kubernetes chưa bật trên máy này (mục 8.1) |
+| `kubectl apply -k deploy/k8s` trên cụm thật (`kubectl cluster-info`, `kubectl get storageclass`) | ❌ **Chưa chạy** — máy phiên 2026-11-05 chưa bật Docker Desktop Kubernetes (mục 8.1); máy kiểm tra ngày 2026-11-07 chỉ cài `MySQL Server 8.4.9` trực tiếp, **chưa cài Docker Desktop và `kubectl`**, nên chỉ kiểm chứng lại được Flyway `V1`→`V8` (kể cả xóa sạch chạy lại từ đầu ra `"Successfully applied 8 migrations"`) và full test suite 113/113 trên MySQL 8.4.9 cổng `3307`. Cần chạy trên máy thành viên có Docker Desktop bật Kubernetes |
 | Toàn bộ `deploy/k8s/40-orthanc.yaml`, `41-ohif.yaml` chạy thật, mở ảnh DICOM qua OHIF | ❌ **Chưa chạy** — đúng kế hoạch (tuần 7, IN-19), chỉ viết sẵn manifest |
 | `frontend-ci.yml`, `build-images.yml` trên GitHub Actions thật | ❌ **Chưa chạy** — `Backend/`/`Frontend/` chưa commit vào git |
 
