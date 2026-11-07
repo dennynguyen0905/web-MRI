@@ -98,8 +98,16 @@ Dữ liệu: chỉ **Kết quả chẩn đoán chức năng chính** là dữ li
 xét nghiệm là dữ liệu giả trong `clinical_snapshot`; đơn thuốc và phẫu thuật thủ thuật còn rỗng —
 hộp thoại ghi rõ từng mục lấy dữ liệu từ đâu.
 
-⚠️ In ấn vẫn là chức năng phụ `H-05` [HOÃN] ở `01-scope.md` mục 4. Muốn đưa hẳn vào IN thì phải
+⚠️ In ấn phiếu lẻ vẫn là chức năng phụ `H-05` [HOÃN] ở `01-scope.md` mục 4. Muốn đưa hẳn vào IN thì phải
 ghi bảng thay đổi phạm vi (mục 9) và chốt quyền `report.print` ở `doc/06` mục 3.
+
+## Tải danh sách & In danh sách (`IN-25` ❓)
+
+Các nút **"Tải danh sách"** và **"In danh sách"** trên thanh công cụ worklist (cùng **"Tải toàn bộ danh sách"** / **"In toàn bộ danh sách"** trong menu Cấu hình hệ thống):
+
+- **Tải danh sách**: gọi `GET /studies/export` (hoặc `GET /patients/export`), trả về file CSV (`UTF-8` có BOM `\uFEFF` để mở trực tiếp bằng Excel giữ nguyên tiếng Việt, chống CSV Formula Injection). Backend tự động ghi `audit_log` với `action = 'EXPORT'` (kèm `patient_id` nếu danh sách xuất chỉ thuộc 1 bệnh nhân, `NULL` nếu nhiều bệnh nhân theo `doc/09` mục 2.2).
+- **In danh sách**: gọi `POST /patients/export-events` để ghi `audit_log` với `action = 'EXPORT'`, sau đó dựng bảng HTML danh sách ca chụp và mở hộp thoại in của trình duyệt.
+- Hoạt động ở cả hai chế độ `mock` và `live`, chỉ dùng dữ liệu giả (`R-03`), cột Tuổi tuân thủ `AgeCalculator` (`~68` khi ngày sinh chỉ biết năm/tháng, `—` khi không có ngày sinh, không bao giờ là `0`).
 
 ## Chưa làm
 
