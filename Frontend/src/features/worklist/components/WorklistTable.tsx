@@ -42,7 +42,7 @@ const cellMuted = 'text-ink-3'
 
 export const COLUMNS: Record<ColumnKey, Column> = {
   index: {
-    key: 'index', label: '#', width: '36px', align: 'center',
+    key: 'index', label: 'STT', width: '36px', align: 'center',
     render: (_r, i) => <span className="tabular-nums text-ink-4">{i + 1}</span>,
   },
   status: {
