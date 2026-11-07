@@ -17,12 +17,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -57,14 +62,18 @@ class StudyControllerTest extends AbstractIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private String adminToken;
+    private Long patientId;
     private Long studyId;
 
     @BeforeEach
     void seed() {
         adminToken = jwtService.generateToken("admin", List.of("ADMIN"));
 
-        Long patientId = savePatient("TEST0001").getId();
+        patientId = savePatient("TEST0001").getId();
         Long departmentId = saveDepartment("K01").getId();
         Long serviceItemId = saveServiceItem("CT_SO_NAO").getId();
         Long orderId = saveOrder("PH20261031001", patientId, departmentId).getId();
@@ -108,6 +117,48 @@ class StudyControllerTest extends AbstractIntegrationTest {
     @Test
     void list_tra_401_khi_khong_co_token() throws Exception {
         mockMvc.perform(get("/studies"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void export_studies_tra_file_csv_va_ghi_audit_log_EXPORT() throws Exception {
+        byte[] bytes = mockMvc.perform(get("/studies/export")
+                        .param("status", "SCHEDULED")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        org.hamcrest.Matchers.containsString("danh-sach-ca-chup_")))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+
+        String csv = new String(bytes, StandardCharsets.UTF_8);
+        assertThat(csv).startsWith("\uFEFFSTT,Mã hồ sơ,Trạng thái,");
+        assertThat(csv).contains("2026103100001,SCHEDULED,PH20261031001");
+        assertThat(csv).contains("TEST0001,Benh nhan TEST0001");
+        // Chua co ngay sinh -> tuoi hien thi "—", khong phai "0"
+        assertThat(csv).contains(",—,U,");
+
+        Integer auditCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'EXPORT' AND entity_type = 'STUDY' "
+                        + "AND patient_id = ? AND actor_username = 'admin'",
+                Integer.class, patientId);
+        assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void export_studies_tra_400_khi_status_khong_hop_le() throws Exception {
+        mockMvc.perform(get("/studies/export")
+                        .param("status", "SAI_TRANG_THAI")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void export_studies_tra_401_khi_khong_co_token() throws Exception {
+        mockMvc.perform(get("/studies/export"))
                 .andExpect(status().isUnauthorized());
     }
 

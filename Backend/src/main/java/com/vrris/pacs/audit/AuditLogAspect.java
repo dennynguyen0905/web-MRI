@@ -41,13 +41,53 @@ public class AuditLogAspect {
         entry.setActorUsername(currentUsername());
         entry.setAction(audited.action().name());
         entry.setEntityType(audited.entityType());
-        entry.setPatientId(longArg(joinPoint, audited.patientIdArg()));
+        Long patientId = longArg(joinPoint, audited.patientIdArg());
+        if (patientId == null) {
+            patientId = extractPatientId(result, joinPoint.getArgs());
+        }
+        entry.setPatientId(patientId);
         entry.setEntityId(longArg(joinPoint, audited.entityIdArg()));
         entry.setIpAddress(currentIpAddress());
         entry.setOccurredAt(LocalDateTime.now());
         auditLogDao.save(entry);
 
         return result;
+    }
+
+    /**
+     * Trich patientId() tu ket qua tra ve hoac tham so request (vi du ExportDocumentResponse,
+     * ListExportEventRequest) khi method khong nhan patientId truc tiep qua tham so kieu Long.
+     * Phuc vu quy tac doc/09 muc 2.2: EXPORT ghi patient_id neu 1 benh nhan, NULL neu nhieu.
+     */
+    private Long extractPatientId(Object result, Object[] args) {
+        Long fromResult = invokePatientIdAccessor(result);
+        if (fromResult != null) {
+            return fromResult;
+        }
+        if (args != null) {
+            for (Object arg : args) {
+                Long fromArg = invokePatientIdAccessor(arg);
+                if (fromArg != null) {
+                    return fromArg;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Long invokePatientIdAccessor(Object target) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Object val = target.getClass().getMethod("patientId").invoke(target);
+            if (val instanceof Number number) {
+                return number.longValue();
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Doi tuong khong co accessor patientId() -> bo qua.
+        }
+        return null;
     }
 
     /** Lay tham so thu `index` cua method duoi dang Long; null khi khong co hoac khong phai so. */

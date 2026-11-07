@@ -41,6 +41,7 @@ info:
     |---|---|---|---|---|---|
     | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` | ✔ | ✔ | ✔ | ✔ | ✔ |
     | `GET /patients`, `GET /imaging-orders`, `GET /studies` và chi tiết | ✔ | ✔ (chỉ bệnh nhân mình chỉ định ❓) | ✔ | ✔ | ✔ |
+    | `GET /patients/export`, `GET /studies/export`, `POST /patients/export-events` ❓ | ✔ | ✔ (chỉ bệnh nhân mình chỉ định ❓) | ✔ | ✔ | ✔ |
     | `POST/PATCH /patients`, `POST/PATCH /imaging-orders`, `POST …/studies` | ✔ | ✔ | ✔ | — | — |
     | `PATCH /studies/{id}` | ✔ | ✔ (trừ `study_instance_uid`) | ✔ | — | — |
     | `POST /studies/{id}/transitions` | Theo `to_status`, xem `03-state-machine.md` mục 2.5 | | | | |
@@ -204,6 +205,81 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /patients/export:
+    get:
+      tags: [patients]
+      operationId: exportPatients
+      summary: Xuất danh sách bệnh nhân dạng CSV (UTF-8 kèm BOM)
+      description: |
+        ⚠️ **Đề xuất kèm IN-25, chờ nhóm xác nhận.** "Tải danh sách" ban đầu thuộc `H-05` [HOÃN]
+        (`01-scope.md` mục 4); đã bổ sung đề xuất `IN-25` vào `01-scope.md` mục 3.1 & mục 9 và
+        `06-rbac-matrix.md` mục 3.
+
+        Trả file CSV mã hóa `UTF-8` có byte BOM (`\uFEFF`) ở đầu để mở trực tiếp bằng Microsoft Excel
+        không bị lỗi tiếng Việt. Cột `Tuổi` được tính từ `date_of_birth` theo `dob_precision` (`~68`
+        khi `dob_precision != DAY`, `—` khi chưa có ngày sinh, **không bao giờ là 0**).
+
+        Ghi `audit_log` (`EXPORT`, `entity_type = PATIENT`) cho mỗi lần tải (IN-15,
+        `09-bao-mat-toan-ven-du-lieu.md` mục 2.2): `patient_id` có giá trị nếu kết quả xuất chỉ thuộc
+        đúng một bệnh nhân, `NULL` nếu nhiều bệnh nhân.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: EXPORT
+      parameters:
+        - name: q
+          in: query
+          description: Chuỗi tìm tự do trên mã bệnh nhân, họ tên, BHXH
+          schema:
+            type: string
+        - name: patient_code
+          in: query
+          schema:
+            type: string
+        - name: full_name
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: 'File CSV (UTF-8 kèm BOM), kèm header `Content-Disposition` dạng attachment'
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /patients/export-events:
+    post:
+      tags: [patients]
+      operationId: recordExportEvent
+      summary: Ghi nhận một lần xuất hoặc in danh sách từ trình duyệt
+      description: |
+        ⚠️ **Đề xuất kèm IN-25, chờ nhóm xác nhận.** Không trả file. Dùng khi người dùng bấm
+        "In danh sách" (hộp thoại in của trình duyệt) hoặc tải danh sách ở chế độ client: dữ liệu
+        bệnh nhân vẫn rời khỏi hệ thống nên bắt buộc ghi `audit_log` (`EXPORT`) theo IN-15 và
+        `09-bao-mat-toan-ven-du-lieu.md` mục 2.2.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: EXPORT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListExportEventRequest'
+      responses:
+        '204':
+          description: Đã ghi nhận
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /patients/{patientId}:
     parameters:
       - $ref: '#/components/parameters/PatientId'
@@ -516,6 +592,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WorklistPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /studies/export:
+    get:
+      tags: [studies]
+      operationId: exportStudies
+      summary: Xuất danh sách ca chụp / bệnh nhân trên worklist dạng CSV (UTF-8 kèm BOM)
+      description: |
+        ⚠️ **Đề xuất kèm IN-25, chờ nhóm xác nhận.** Phục vụ nút **"Tải danh sách"** và
+        **"Tải toàn bộ danh sách"** trên màn hình worklist (`01-scope.md` mục 3.1 & mục 9).
+
+        Ghép thông tin bệnh nhân, chỉ định, dịch vụ, máy chụp và kết luận báo cáo hiện hành thành
+        file CSV mã hóa `UTF-8` có byte BOM (`\uFEFF`). Cột `Tuổi` tính qua `AgeCalculator` (`~68`
+        khi `dob_precision != DAY`, `—` khi chưa có ngày sinh, **không bao giờ là 0**).
+
+        Ghi `audit_log` (`EXPORT`, `entity_type = STUDY`) cho mỗi lần tải (`09-…` mục 2.2):
+        `patient_id` có giá trị nếu danh sách xuất thuộc đúng một bệnh nhân, `NULL` nếu nhiều bệnh nhân.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: EXPORT
+      parameters:
+        - name: order_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/StudyStatus'
+        - name: device_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: q
+          in: query
+          description: Tìm tự do trên mã bệnh nhân, họ tên, mã phiếu, mã hồ sơ
+          schema:
+            type: string
+        - name: patient_code
+          in: query
+          schema:
+            type: string
+        - name: full_name
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: 'File CSV (UTF-8 kèm BOM), kèm header `Content-Disposition` dạng attachment'
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1409,6 +1545,27 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/PrintSection'
+    ListExportEventRequest:
+      type: object
+      required: [target, mode]
+      properties:
+        target:
+          type: string
+          enum: [PATIENTS, STUDIES]
+          description: Danh sách được xuất/in (`PATIENTS` hoặc `STUDIES`)
+        mode:
+          type: string
+          enum: [EXPORT, PRINT]
+          description: Tải file (`EXPORT`) hay in danh sách (`PRINT`)
+        row_count:
+          type: integer
+          minimum: 0
+          description: Số dòng trong danh sách xuất/in
+        patient_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Điền khi danh sách xuất chỉ thuộc đúng một bệnh nhân (`09-…` mục 2.2)
     UserRef:
       type: object
       required: [id, full_name]
