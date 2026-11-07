@@ -1,7 +1,9 @@
 package com.vrris.pacs.rest;
 
+import com.vrris.pacs.dto.request.ListExportEventRequest;
 import com.vrris.pacs.dto.request.PatientCreateRequest;
 import com.vrris.pacs.dto.request.PatientUpdateRequest;
+import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.PatientPageResponse;
 import com.vrris.pacs.dto.response.PatientResponse;
 import com.vrris.pacs.service.PatientService;
@@ -10,8 +12,13 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -21,6 +28,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.nio.charset.StandardCharsets;
 
 /**
  * 4 endpoint /patients theo doc/api/openapi.yaml (operationId listPatients/getPatient/
@@ -56,6 +65,43 @@ public class PatientController {
             @Parameter(description = "<field>,<asc|desc>, vi du full_name,asc") @RequestParam(required = false) String sort
     ) {
         return patientService.search(q, patientCode, fullName, page, pageSize, sort);
+    }
+
+    @GetMapping(path = "/patients/export", produces = "text/csv;charset=UTF-8")
+    @Operation(
+            summary = "Xuat danh sach benh nhan dang CSV (UTF-8 kem BOM)",
+            description = "De xuat IN-25 (doc/01-scope.md muc 3.1 & muc 9, doc/06-rbac-matrix.md muc 3). "
+                    + "Ghi audit_log action EXPORT (patient_id co neu 1 benh nhan, NULL neu nhieu - doc/09 muc 2.2).")
+    @ApiResponse(responseCode = "200", description = "File CSV (UTF-8 kem BOM)")
+    @PreAuthorize(READ_ROLES)
+    public ResponseEntity<Resource> exportPatients(
+            @Parameter(description = "Tim tu do tren ma benh nhan, ho ten, BHXH") @RequestParam(required = false) String q,
+            @Parameter(description = "Loc theo ma benh nhan") @RequestParam(name = "patient_code", required = false) String patientCode,
+            @Parameter(description = "Loc theo ho ten") @RequestParam(name = "full_name", required = false) String fullName,
+            @Parameter(description = "<field>,<asc|desc>, vi du full_name,asc") @RequestParam(required = false) String sort
+    ) {
+        ExportDocumentResponse document = patientService.exportCsv(q, patientCode, fullName, sort);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(document.fileName(), StandardCharsets.UTF_8)
+                .build());
+        return ResponseEntity.ok()
+                .headers(headers)
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .contentLength(document.content().length)
+                .body(new ByteArrayResource(document.content()));
+    }
+
+    @PostMapping(path = "/patients/export-events", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Ghi nhan mot lan xuat hoac in danh sach tu trinh duyet",
+            description = "Khong tra file. Ghi audit_log action EXPORT (IN-15, doc/09 muc 2.2).")
+    @ApiResponse(responseCode = "204", description = "Da ghi nhan")
+    @PreAuthorize(READ_ROLES)
+    public void recordExportEvent(@Valid @RequestBody ListExportEventRequest request) {
+        patientService.recordExportEvent(request);
     }
 
     @GetMapping(path = "/patients/{patientId}", produces = MediaType.APPLICATION_JSON_VALUE)

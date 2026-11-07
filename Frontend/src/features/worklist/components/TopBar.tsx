@@ -27,11 +27,15 @@ interface Props {
   onReset: () => void
   onReload: () => void
   onAddPatient: () => void
+  onExportAll?: () => void
+  onPrintAll?: () => void
   user: AppUser
   onLogout: () => void
 }
 
-export function TopBar({ state, onChange, onReset, onReload, onAddPatient, user, onLogout }: Props) {
+export function TopBar({
+  state, onChange, onReset, onReload, onAddPatient, onExportAll, onPrintAll, user, onLogout,
+}: Props) {
   const config = usePopover()
   const account = usePopover()
 
@@ -112,7 +116,14 @@ export function TopBar({ state, onChange, onReset, onReload, onAddPatient, user,
           >
             <Settings size={14} />
           </IconButton>
-          <SystemConfigMenu open={config.open} onClose={config.close} onAddPatient={onAddPatient} user={user} />
+          <SystemConfigMenu
+            open={config.open}
+            onClose={config.close}
+            onAddPatient={onAddPatient}
+            onExportAll={onExportAll}
+            onPrintAll={onPrintAll}
+            user={user}
+          />
         </div>
       </div>
 
@@ -171,10 +182,12 @@ const CONFIG_ROWS: { label: string; options: [string, string]; initial: string }
   { label: 'Giao diện xổ', options: ['Tắt', 'Bật'], initial: 'Tắt' },
 ]
 
-function SystemConfigMenu({ open, onClose, onAddPatient, user }: {
+function SystemConfigMenu({ open, onClose, onAddPatient, onExportAll, onPrintAll, user }: {
   open: boolean
   onClose: () => void
   onAddPatient: () => void
+  onExportAll?: () => void
+  onPrintAll?: () => void
   user: AppUser
 }) {
   return (
@@ -189,7 +202,12 @@ function SystemConfigMenu({ open, onClose, onAddPatient, user }: {
       </div>
 
       <div className="mt-3 space-y-1.5 border-t border-line pt-3">
-        <Button variant="outline" block icon={<Printer size={13} />} disabled={!can(user, 'list.print')}>
+        <Button
+          variant="outline" block icon={<Printer size={13} />}
+          disabled={!can(user, 'list.print')}
+          title={can(user, 'list.print') ? undefined : deniedReason('list.print')}
+          onClick={() => { onPrintAll?.(); onClose() }}
+        >
           In toàn bộ danh sách
         </Button>
         <Button
@@ -207,7 +225,12 @@ function SystemConfigMenu({ open, onClose, onAddPatient, user }: {
         >
           Thêm bệnh nhân
         </Button>
-        <Button variant="outline" block icon={<Download size={13} />} disabled={!can(user, 'list.print')}>
+        <Button
+          variant="outline" block icon={<Download size={13} />}
+          disabled={!can(user, 'list.print')}
+          title={can(user, 'list.print') ? undefined : deniedReason('list.print')}
+          onClick={() => { onExportAll?.(); onClose() }}
+        >
           Tải toàn bộ danh sách
         </Button>
         <Button variant="outline" block icon={<Monitor size={13} />}>Chọn Modality</Button>

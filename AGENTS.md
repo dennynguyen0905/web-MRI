@@ -105,10 +105,10 @@ Lấy từ **README mục 7.2** (cập nhật 2026-11-06) — không tự ước
 
 | Có rồi | Chưa có |
 |---|---|
-| Frontend **đã nối lớp API** (mock server + chế độ `live`), đăng nhập + chặn route | Deep-link OHIF (IN-19), nút "Xem ảnh" (IN-23 — kế hoạch ở `doc/16`), màn audit log, quản lý người dùng |
-| Backend: reference-data, patient, imaging-order, study (bản rút gọn) + **in phiếu kết quả** (PDF, audit `PRINT`); `mvn verify` xanh 97/97 | Backend: `/auth/login`, worklist đầy đủ (IN-07), report, transitions, RBAC đầy đủ (JWT hiện chỉ đọc claim `roles` thô) |
+| Frontend **đã nối lớp API** (mock server + chế độ `live`), đăng nhập + chặn route, **tải/in danh sách bệnh nhân & worklist (`IN-25`)** | Deep-link OHIF (IN-19), nút "Xem ảnh" (IN-23 — kế hoạch ở `doc/16`), màn audit log, quản lý người dùng |
+| Backend: reference-data, patient, imaging-order, study (bản rút gọn) + **in phiếu kết quả** (PDF, audit `PRINT`) + **xuất/tải danh sách bệnh nhân & ca chụp** (CSV UTF-8 BOM, audit `EXPORT`, `IN-25`) | Backend: `/auth/login`, worklist đầy đủ (IN-07), report, transitions, RBAC đầy đủ (JWT hiện chỉ đọc claim `roles` thô) |
 | `database/` — MySQL 8.4 + Flyway qua Docker Compose (V1–V8, 14 bảng + seed giả); `deploy/docker/` + `deploy/k8s/` + `deploy/compose/` | `kubectl apply` trên cụm thật (mới dựng offline bằng `kubectl kustomize`) |
-| `doc/api/openapi.yaml` (nháp v0.2, 27 endpoint — thêm 2 endpoint in, ❓ chưa chốt) | — |
+| `doc/api/openapi.yaml` (nháp v0.2, 30 endpoint — thêm 2 endpoint in + 3 endpoint xuất danh sách, ❓ chưa chốt) | — |
 | Bộ tài liệu thiết kế 01–16 (đều nháp, xem README mục 6.0 cho trạng thái từng file) | Nhóm xác nhận các bản nháp — chưa file nào ở trạng thái ✅ |
 | `.github/workflows/backend-ci.yml`, `frontend-ci.yml` (file đã có); `Backend/` **đã commit** | Chạy CI thật trên GitHub |
 | — | Design system + wireframe AI Panel trong Figma |

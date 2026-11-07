@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
 import { ClinicalModal } from '@/features/clinical/components/ClinicalModal'
+import { saveBlob } from '@/features/printing/api/printApi'
 import { PrintModal } from '@/features/printing/components/PrintModal'
+import { printHtml } from '@/features/printing/lib/printSheet'
 import { ReportModal } from '@/features/reports/components/ReportModal'
 import { fetchCurrentReport } from '@/features/reports/api/reportApi'
 import { AddStudyModal } from '@/features/studies/components/AddStudyModal'
@@ -20,8 +22,10 @@ import { TopBar, type TopBarState } from '../components/TopBar'
 import {
   WorklistTable, useOptionalColumns, type ColumnFilters, type ColumnKey,
 } from '../components/WorklistTable'
+import { downloadStudiesCsv, logListExportEvent } from '../api/exportApi'
 import { fetchWorklist, type WorklistFilters } from '../api/worklistApi'
 import { useReferenceData, useStatusCounts, useWorklist } from '../hooks/useWorklist'
+import { buildWorklistPrintHtml } from '../lib/listPrintSheet'
 
 const PENDING_COLUMNS: ColumnKey[] = [
   'index', 'patientCode', 'fullName', 'dob', 'age', 'gender', 'service', 'orderingDoctor',
@@ -47,6 +51,25 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
   patientCode: '', fullName: '', orderCode: '', visitCode: '',
 }
 
+const EXPORT_ALL_FILTERS: WorklistFilters = {
+  tab: '',
+  timeField: 'SCHEDULED',
+  dateFrom: '',
+  dateTo: '',
+  statuses: [],
+  departmentIds: [],
+  deviceIds: [],
+  modality: '',
+  patientClass: '',
+  patientCode: '',
+  fullName: '',
+  visitCode: '',
+  orderCode: '',
+  page: 1,
+  pageSize: 5000,
+  sort: '',
+}
+
 export function WorklistPage() {
   const user = useCurrentUser()
   const { signOut, forbiddenMessage, reportForbidden, clearForbidden } = useAuth()
@@ -64,6 +87,8 @@ export function WorklistPage() {
   const { visible: optionalCols, toggle: toggleOptional } = useOptionalColumns()
   const [columnFilterMode, setColumnFilterMode] = useState(false)
   const [modal, setModal] = useState<null | 'ADD' | 'UPDATE' | 'HIS' | 'CLINICAL' | 'REPORT' | 'PRINT'>(null)
+  const [busyExport, setBusyExport] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const reference = useReferenceData()
   const counts = useStatusCounts(refreshKey)
@@ -185,6 +210,61 @@ export function WorklistPage() {
     setModal(target)
   }
 
+  const handleExportList = async (all = false) => {
+    if (!can(user, 'list.print')) {
+      reportForbidden(`Không đủ quyền. ${deniedReason('list.print')}.`)
+      return
+    }
+    clearForbidden()
+    setActionError(null)
+    setBusyExport(true)
+    try {
+      const targetFilters = all ? EXPORT_ALL_FILTERS : worklistFilters
+      const { blob, filename } = await downloadStudiesCsv(targetFilters)
+      saveBlob(blob, filename)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Không tải được danh sách.'
+      setActionError(msg)
+    } finally {
+      setBusyExport(false)
+    }
+  }
+
+  const handlePrintList = async (all = false) => {
+    if (!can(user, 'list.print')) {
+      reportForbidden(`Không đủ quyền. ${deniedReason('list.print')}.`)
+      return
+    }
+    clearForbidden()
+    setActionError(null)
+    setBusyExport(true)
+    try {
+      let targetRows = visibleRows
+      if (all) {
+        const fullPage = await fetchWorklist(EXPORT_ALL_FILTERS)
+        targetRows = fullPage.items
+      }
+      const uniquePatientIds = Array.from(new Set(targetRows.map(r => r.patient.id)))
+      const singlePatientId = uniquePatientIds.length === 1 ? uniquePatientIds[0] : null
+      await logListExportEvent({
+        target: 'STUDIES',
+        mode: 'PRINT',
+        rowCount: targetRows.length,
+        patientId: singlePatientId,
+      })
+      printHtml(buildWorklistPrintHtml({
+        rows: targetRows,
+        tab: all ? 'ALL' : tab,
+        printedBy: user.fullName,
+      }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Không in được danh sách.'
+      setActionError(msg)
+    } finally {
+      setBusyExport(false)
+    }
+  }
+
   const apiError = worklist.error ?? counts.error ?? reference.error
 
   return (
@@ -195,11 +275,13 @@ export function WorklistPage() {
         onReset={resetAll}
         onReload={refresh}
         onAddPatient={() => setModal('ADD')}
+        onExportAll={() => void handleExportList(true)}
+        onPrintAll={() => void handlePrintList(true)}
         user={user}
         onLogout={signOut}
       />
 
-      {(apiError || forbiddenMessage) && (
+      {(apiError || forbiddenMessage || actionError) && (
         <div
           className={cx(
             'flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-[11.5px]',
@@ -209,9 +291,9 @@ export function WorklistPage() {
           )}
         >
           <Warning size={13} className="shrink-0" />
-          <span className="flex-1">{forbiddenMessage ?? apiError?.message}</span>
-          {forbiddenMessage && (
-            <button onClick={clearForbidden} className="font-medium underline">Ẩn</button>
+          <span className="flex-1">{forbiddenMessage ?? actionError ?? apiError?.message}</span>
+          {(forbiddenMessage || actionError) && (
+            <button onClick={() => { clearForbidden(); setActionError(null) }} className="font-medium underline">Ẩn</button>
           )}
         </div>
       )}
@@ -248,12 +330,18 @@ export function WorklistPage() {
               </div>
               <Button
                 variant="ghost" icon={<Printer size={12} />}
-                disabled={!can(user, 'list.print')}
+                disabled={!can(user, 'list.print') || busyExport}
                 title={can(user, 'list.print') ? undefined : deniedReason('list.print')}
+                onClick={() => void handlePrintList(false)}
               >
                 In danh sách
               </Button>
-              <Button variant="ghost" icon={<Download size={12} />} disabled={!can(user, 'list.print')}>
+              <Button
+                variant="ghost" icon={<Download size={12} />}
+                disabled={!can(user, 'list.print') || busyExport}
+                title={can(user, 'list.print') ? undefined : deniedReason('list.print')}
+                onClick={() => void handleExportList(false)}
+              >
                 Tải danh sách
               </Button>
             </div>
