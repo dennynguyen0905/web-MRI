@@ -17,11 +17,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -57,17 +59,23 @@ class StudyControllerTest extends AbstractIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private String adminToken;
     private Long studyId;
+    private Long patientId;
+    private Long orderId;
+    private Long serviceItemId;
 
     @BeforeEach
     void seed() {
         adminToken = jwtService.generateToken("admin", List.of("ADMIN"));
 
-        Long patientId = savePatient("TEST0001").getId();
+        patientId = savePatient("TEST0001").getId();
         Long departmentId = saveDepartment("K01").getId();
-        Long serviceItemId = saveServiceItem("CT_SO_NAO").getId();
-        Long orderId = saveOrder("PH20261031001", patientId, departmentId).getId();
+        serviceItemId = saveServiceItem("CT_SO_NAO").getId();
+        orderId = saveOrder("PH20261031001", patientId, departmentId).getId();
         studyId = saveStudy("2026103100001", orderId, serviceItemId, "SCHEDULED").getId();
     }
 
@@ -109,6 +117,75 @@ class StudyControllerTest extends AbstractIntegrationTest {
     void list_tra_401_khi_khong_co_token() throws Exception {
         mockMvc.perform(get("/studies"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getViewerLink_thanh_cong_ghi_audit_log_VIEW_IMAGE() throws Exception {
+        Study study = saveStudyWithUid("2026103100002", orderId, serviceItemId, "READ", "1.2.826.0.1.3680043.8.498.10000001");
+
+        mockMvc.perform(get("/studies/" + study.getId() + "/viewer-link")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.study_id").value(study.getId()))
+                .andExpect(jsonPath("$.patient_id").value(patientId))
+                .andExpect(jsonPath("$.study_instance_uid").value("1.2.826.0.1.3680043.8.498.10000001"))
+                .andExpect(jsonPath("$.viewer_url").value("http://localhost:8043/viewer/1.2.826.0.1.3680043.8.498.10000001"));
+
+        Integer auditCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'VIEW_IMAGE' AND entity_type = 'STUDY' "
+                        + "AND entity_id = ? AND patient_id = ? AND actor_username = 'admin'",
+                Integer.class, study.getId(), patientId);
+        assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void getViewerLink_tra_422_khi_chua_co_anh_pacs() throws Exception {
+        mockMvc.perform(get("/studies/" + studyId + "/viewer-link")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("STUDY_NO_DICOM_IMAGE"));
+    }
+
+    @Test
+    void getViewerLink_tra_401_khi_khong_co_token() throws Exception {
+        mockMvc.perform(get("/studies/" + studyId + "/viewer-link"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getViewerLink_tra_403_khi_vai_tro_khong_hop_le() throws Exception {
+        String guestToken = jwtService.generateToken("guest", List.of("GUEST"));
+        mockMvc.perform(get("/studies/" + studyId + "/viewer-link")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + guestToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getViewerLink_cac_vai_tro_duoc_phep_deu_mo_duoc_viewer() throws Exception {
+        Study study = saveStudyWithUid("2026103100003", orderId, serviceItemId, "READ", "1.2.826.0.1.3680043.8.498.10000002");
+
+        List<String> allowedRoles = List.of("CLINICIAN", "TECHNICIAN", "RADIOLOGIST", "APPROVER");
+        for (String role : allowedRoles) {
+            String token = jwtService.generateToken("user_" + role.toLowerCase(), List.of(role));
+            mockMvc.perform(get("/studies/" + study.getId() + "/viewer-link")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.study_instance_uid").value("1.2.826.0.1.3680043.8.498.10000002"));
+        }
+    }
+
+    private Study saveStudyWithUid(String accessionNumber, Long orderId, Long serviceItemId, String status, String studyInstanceUid) {
+        Study study = new Study();
+        study.setAccessionNumber(accessionNumber);
+        study.setOrderId(orderId);
+        study.setServiceItemId(serviceItemId);
+        study.setStatus(status);
+        study.setStudyInstanceUid(studyInstanceUid);
+        LocalDateTime now = LocalDateTime.now();
+        study.setScheduledAt(now);
+        study.setCreatedAt(now);
+        study.setUpdatedAt(now);
+        return studyDao.save(study);
     }
 
     private Study saveStudy(String accessionNumber, Long orderId, Long serviceItemId, String status) {

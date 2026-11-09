@@ -56,3 +56,7 @@ app:
       # Kubernetes Secret (IN-17), khong de lai trong application.yml commit vao git.
       secret: "dev-only-secret-khong-dung-cho-production-doi-truoc-khi-deploy-32b"
       expiration-minutes: 60
+  ohif:
+    # Base URL cua OHIF Viewer (doc/07-pacs-dicom.md muc 6.1, IN-19/IN-23).
+    # Trong k8s doc tu ConfigMap backend-config (APP_OHIF_BASE_URL).
+    base-url: ${APP_OHIF_BASE_URL:http://localhost:8043}

@@ -3,6 +3,7 @@ package com.vrris.pacs.service;
 import com.vrris.pacs.dto.request.StudyCreateRequest;
 import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
+import com.vrris.pacs.dto.response.ViewerLinkResponse;
 
 import java.util.List;
 
@@ -18,6 +19,13 @@ public interface StudyService {
 
     /** Khong tim thay -> ApiException (STUDY_NOT_FOUND, 404). */
     StudyResponse getById(Long id);
+
+    /**
+     * Sinh deep-link xem anh OHIF (IN-19, IN-23).
+     * Khong tim thay -> ApiException (STUDY_NOT_FOUND, 404).
+     * study_instance_uid null -> ApiException (STUDY_NO_DICOM_IMAGE, 422).
+     */
+    ViewerLinkResponse getViewerLink(Long id);
 
     /** Dung noi bo de ghep ImagingOrderResponse.studies - khong tu ghi audit rieng (xem Javadoc impl). */
     List<StudyResponse> listByOrderId(Long orderId);

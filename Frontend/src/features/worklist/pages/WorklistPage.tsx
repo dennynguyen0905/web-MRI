@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ClinicalModal } from '@/features/clinical/components/ClinicalModal'
 import { PrintModal } from '@/features/printing/components/PrintModal'
 import { ReportModal } from '@/features/reports/components/ReportModal'
@@ -9,7 +9,7 @@ import { UpdateStudyModal } from '@/features/studies/components/UpdateStudyModal
 import { useAuth, useCurrentUser } from '@/features/auth/hooks/useAuth'
 import { useAsync } from '@/shared/hooks/useAsync'
 import { can, deniedReason } from '@/shared/lib/auth'
-import type { TimeField, WorklistRow, WorklistTab } from '@/shared/lib/types'
+import type { StudyStatus, TimeField, WorklistRow, WorklistTab } from '@/shared/lib/types'
 import { Button, Select, cx } from '@/shared/ui/controls'
 import { Download, Printer, Warning } from '@/shared/ui/Icon'
 import { DEFAULT_SIDEBAR_FILTERS, Sidebar, type SidebarFilters } from '../components/Sidebar'
@@ -67,6 +67,31 @@ export function WorklistPage() {
 
   const reference = useReferenceData()
   const counts = useStatusCounts(refreshKey)
+
+  /* ------------------------- Tab mặc định theo vai trò (đăng nhập lần đầu) */
+  // RADIOLOGIST → "Chưa đọc" (UNREAD); APPROVER → "Đọc xong" (READ) hoặc "Đang duyệt" (APPROVING),
+  // chọn tab có nhiều ca hơn, mặc định READ nếu chưa xác định được. CLINICIAN/TECHNICIAN/ADMIN
+  // giữ tab đầu tiên hiện tại ('PENDING'). Chỉ áp dụng một lần lúc vào worklist, không ghi đè
+  // lựa chọn tab sau đó của người dùng. Vai trò lấy từ `useCurrentUser()` — cùng nguồn `auth.ts`.
+  const appliedRoleDefaultTab = useRef(false)
+  useEffect(() => {
+    if (appliedRoleDefaultTab.current) return
+    if (user.roles.includes('RADIOLOGIST')) {
+      appliedRoleDefaultTab.current = true
+      setTab('DONE')
+      setFilters(f => ({ ...f, statuses: ['UNREAD'] }))
+    } else if (user.roles.includes('APPROVER')) {
+      if (!counts.data) return // chờ số đếm trạng thái tải xong để biết tab nào nhiều ca hơn
+      appliedRoleDefaultTab.current = true
+      const target: StudyStatus = (counts.data.byStatus.APPROVING ?? 0) > (counts.data.byStatus.READ ?? 0)
+        ? 'APPROVING'
+        : 'READ'
+      setTab('DONE')
+      setFilters(f => ({ ...f, statuses: [target] }))
+    } else {
+      appliedRoleDefaultTab.current = true
+    }
+  }, [user.roles, counts.data])
 
   /* ------------------------------------------------- Bộ lọc gửi lên API */
 
@@ -310,7 +335,7 @@ export function WorklistPage() {
       </div>
 
       <AddStudyModal open={modal === 'ADD'} onClose={() => setModal(null)} />
-      <UpdateStudyModal open={modal === 'UPDATE'} onClose={() => setModal(null)} row={selected} />
+      <UpdateStudyModal open={modal === 'UPDATE'} onClose={() => setModal(null)} row={selected} user={user} />
       <UpdateFromHisModal open={modal === 'HIS'} onClose={() => setModal(null)} row={selected} />
       <ClinicalModal open={modal === 'CLINICAL'} onClose={() => setModal(null)} row={selected} />
       <ReportModal

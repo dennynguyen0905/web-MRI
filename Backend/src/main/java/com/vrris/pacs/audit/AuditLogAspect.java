@@ -41,13 +41,57 @@ public class AuditLogAspect {
         entry.setActorUsername(currentUsername());
         entry.setAction(audited.action().name());
         entry.setEntityType(audited.entityType());
-        entry.setPatientId(longArg(joinPoint, audited.patientIdArg()));
-        entry.setEntityId(longArg(joinPoint, audited.entityIdArg()));
+        entry.setPatientId(resolvePatientId(joinPoint, audited, result));
+        entry.setEntityId(resolveEntityId(joinPoint, audited, result));
         entry.setIpAddress(currentIpAddress());
         entry.setOccurredAt(LocalDateTime.now());
         auditLogDao.save(entry);
 
         return result;
+    }
+
+    private Long resolvePatientId(ProceedingJoinPoint joinPoint, Audited audited, Object result) {
+        Long id = longArg(joinPoint, audited.patientIdArg());
+        if (id != null) {
+            return id;
+        }
+        return extractLongProperty(result, "patientId");
+    }
+
+    private Long resolveEntityId(ProceedingJoinPoint joinPoint, Audited audited, Object result) {
+        Long id = longArg(joinPoint, audited.entityIdArg());
+        if (id != null) {
+            return id;
+        }
+        return extractLongProperty(result, "entityId", "studyId", "id");
+    }
+
+    private Long extractLongProperty(Object target, String... methodNames) {
+        if (target == null) {
+            return null;
+        }
+        Class<?> clazz = target.getClass();
+        for (String name : methodNames) {
+            try {
+                var method = clazz.getMethod(name);
+                Object val = method.invoke(target);
+                if (val instanceof Number n) {
+                    return n.longValue();
+                }
+            } catch (NoSuchMethodException ignored) {
+                String getter = "get" + Character.toUpperCase(name.charAt(0)) + name.substring(1);
+                try {
+                    var method = clazz.getMethod(getter);
+                    Object val = method.invoke(target);
+                    if (val instanceof Number n) {
+                        return n.longValue();
+                    }
+                } catch (Exception ignored2) {
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 
     /** Lay tham so thu `index` cua method duoi dang Long; null khi khong co hoac khong phai so. */

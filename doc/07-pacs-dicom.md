@@ -215,15 +215,26 @@ Orthanc còn gán **ID nội bộ riêng** (chuỗi hash) cho mỗi mức. ❓ N
 
 ### 6.1. Hình thức URL
 
-OHIF mở trực tiếp một study bằng `StudyInstanceUID` trên query string:
+✅ **Đã kiểm chứng bằng tay 2026-11-09** (chạy thật `ohif/viewer:v4.12.51.21579` + Orthanc + 2 ca test, xem mục 9.1) — khác với giả định ban đầu bên dưới:
 
 ```text
-<OHIF_BASE_URL>/viewer?StudyInstanceUIDs=<study_instance_uid>
+<OHIF_BASE_URL>/viewer/<study_instance_uid>
 ```
 
-- `OHIF_BASE_URL` lấy từ **ConfigMap**, không hard-code và **không lưu trong DB** (`01-scope.md` IN-19 điểm 2, `02-erd.md` 4.4). DB chỉ giữ `study.study_instance_uid`.
-- Tham số là `StudyInstanceUID**s**` (số nhiều) — OHIF cho mở nhiều study một lần, ngăn cách bằng dấu phẩy. Trong đồ án chỉ truyền một giá trị.
-- ❓ **Chưa kiểm chứng** trên bản OHIF thực dùng: đường dẫn `/viewer` và tên tham số đổi theo phiên bản và cấu hình data source. Phải thử ở tuần 7 (IN-19) rồi cập nhật mục này.
+- `OHIF_BASE_URL` lấy từ **ConfigMap/env** (`APP_OHIF_BASE_URL` backend, `VITE_OHIF_BASE_URL` frontend mock), không hard-code và **không lưu trong DB** (`01-scope.md` IN-19 điểm 2, `02-erd.md` 4.4). DB chỉ giữ `study.study_instance_uid`.
+- `study_instance_uid` nằm **trong path**, KHÔNG phải query string `?StudyInstanceUIDs=`. Bản OHIF đang dùng (`ohif/viewer:v4.12.51.21579`) dựng kiểu cũ ("ConnectedStandaloneRouting", khớp schema cấu hình `servers.dicomWeb` — xem mục 6.1.1), và route đó chỉ bắt path `/viewer/:studyInstanceUids`. Dùng dạng query string sẽ rơi vào route khác (nạp file đơn lẻ) và báo lỗi `Error: "No URL was specified. Use ?url=$yourURL"` — đây chính là lỗi đã gặp khi test tay IN-19 lần đầu.
+- Code đã sửa theo dạng path ở cả hai nơi sinh URL: `Backend/src/main/java/com/vrris/pacs/service/impl/StudyServiceImpl.java` (`getViewerLink`) và `Frontend/src/shared/api/mock/mockClient.ts` (mock `/studies/:id/viewer-link`).
+- ❓ **Vẫn chưa chốt theo chính sách nhóm:** nếu sau này đổi sang image OHIF khác (bản chính thức mới hơn, dùng kiến trúc "Modes") thì định dạng URL có thể đổi lại. Phần tìm hiểu này chỉ đúng cho **đúng bản image đang khoá** (`deploy/compose/docker-compose.full.yml`, `deploy/k8s/41-ohif.yaml`).
+
+### 6.1.1. ✅ CORS — bắt buộc phải có proxy trước Orthanc
+
+Orthanc (kể cả plugin `dicom-web`) **không tự thêm header CORS** (xác nhận từ tài liệu chính thức: `book.orthanc-server.com/plugins/dicomweb.html`, mục "properly setup CORS in your reverse proxy" — đã kiểm tra thêm bằng container cô lập, thử cả config `HttpHeaders`/`ORTHANC_JSON` và xác nhận **không có tác dụng** với Orthanc 1.13.0 trong image `orthancteam/orthanc:26.9.1`).
+
+Hệ quả: OHIF (origin `http://localhost:8043`) gọi QIDO-RS/WADO-RS thẳng tới Orthanc (origin `http://localhost:8042`, khác port = khác origin) sẽ bị trình duyệt chặn CORS.
+
+**Cách đã làm:** thêm một service nginx nhỏ (`orthanc-cors-proxy`, cổng `8044`) đứng trước Orthanc, chỉ thêm 3 header CORS + trả `OPTIONS` preflight, rồi forward nguyên vẹn vào Orthanc. OHIF trỏ `qidoRoot`/`wadoRoot`/`wadoUriRoot` vào `:8044` thay vì `:8042` thẳng. Chi tiết: `deploy/docker/orthanc-cors-proxy.conf`, service `orthanc-cors-proxy` trong `deploy/compose/docker-compose.full.yml`.
+
+⚠️ `deploy/k8s/41-ohif.yaml` (bản k8s) **CHƯA có proxy này** — manifest đó ghi từ 2026-11-05, trước khi phát hiện vấn đề CORS. Khi nào dùng thật trên k8s phải thêm một Service/nginx tương đương, nếu không sẽ gặp lại đúng lỗi "No URL was specified" dù URL đã đúng định dạng.
 
 ### 6.2. Hai cửa vào
 
@@ -256,6 +267,23 @@ Ca chưa có `study_instance_uid` → nút **ẩn hoặc disable** (❓ chọn �
 | Chỉ dựa vào mạng nội bộ cụm (không expose Service OHIF) | Đơn giản nhất, đủ cho đồ án | Ai vào được cụm là xem được mọi ảnh |
 | Chặn ở Ingress bằng session RIS (auth subrequest) | Đúng nguyên tắc “sau đăng nhập RIS” | Phải cấu hình Ingress, OHIF phải cùng domain hoặc chịu CORS |
 | RIS sinh **token ngắn hạn** gắn vào URL | Vá được chỗ URL bị dán lại | Phải có thành phần kiểm token trước Orthanc; OHIF không sửa được nên token phải đặt ở tầng proxy |
+
+### 6.4. ✅ Tuỳ biến giao diện OHIF kiểu "nhẹ" (không fork source)
+
+OHIF chạy trong hệ này là **image Docker đóng gói sẵn** (`ohif/viewer:v4.12.51.21579`), không phải mã nguồn nằm trong repo — xem mục 1. Khi cần thêm giao diện riêng (ví dụ panel AI sau này) có hai cách:
+
+1. **Fork toàn bộ source** OHIF (`github.com/OHIF/Viewers`, kho rất lớn, Yarn/Lerna monorepo) rồi tự build lại image — tốn công bảo trì dài hạn, **chưa làm**.
+2. **"Cách nhẹ" — extension nạp ngoài, đã làm và kiểm chứng 2026-11-09:** chính `index.html` của image này có sẵn một khối hướng dẫn (comment `<!-- EXTENSIONS -->`) cho phép nạp một file JS ngoài rồi đăng ký vào `window.config.extensions`, không cần sửa/build lại OHIF.
+
+**Vị trí source + cách build:** `deploy/ohif-extensions/vr-ris-demo-panel/` (package riêng, `npm install && npm run build`). File build ra (`dist/vr-ris-demo-panel.bundle.js`) được chép thủ công vào `deploy/docker/ohif-extensions/` — thư mục này mount vào container qua service `ohif-viewer` trong `deploy/compose/docker-compose.full.yml` (`/usr/share/nginx/html/extensions/`, đọc-only). `deploy/docker/ohif-app-config.js` dùng `document.write` để chèn thẻ `<script>` nạp file đó rồi gộp vào `window.config.extensions` — xem comment ngay trong file.
+
+**Những điều đã xác minh bằng cách đọc code đã minify của chính image này (không có doc/source map chính thức đi kèm):**
+
+- Component panel phải trả về **đúng hình dạng cũ**: `{ defaultContext: [...], menuOptions: [...], components: [{id, component}] }` — KHÔNG phải mảng phẳng kiểu OHIF v3/v4 chính thức (`[{name, iconName, component}]`). Thiếu `defaultContext` làm **crash cả thanh toolbar** (lỗi "undefined is not iterable"), không chỉ panel mới không hiện.
+- React/ReactDOM **không được expose ra global** trong image này (`window.React` không tồn tại) — extension phải tự đóng gói React riêng. Hệ quả: component phải viết bằng **class, không dùng hook** (`useState`/`useEffect`...), vì hai bản React khác nhau (của OHIF và của extension) có "dispatcher" nội bộ riêng, gọi hook từ bản React của extension sẽ báo lỗi "Invalid hook call". Class component không bị ảnh hưởng vì `setState`/lifecycle đi qua `this.updater` do chính OHIF gán lúc mount, không phụ thuộc bản React nào.
+- Cơ chế nạp (`<script>` + `window.config.extensions`) hoạt động đúng như mô tả trong `index.html`: không cần sửa `index.html` gốc, chỉ cần `app-config.js` (file vốn đã được mount riêng).
+
+**Giới hạn của bản demo hiện tại:** `vr-ris-demo-panel` chỉ là **placeholder tĩnh** (chứng minh cơ chế nạp hoạt động), chưa nối AI thật. Việc nối panel AI thật (bộ `ai-panel/` ở gốc repo — xem README) vào đúng cơ chế này là việc **chưa làm**, để dành bước sau.
 
 ---
 
@@ -362,6 +390,25 @@ flowchart LR
 
 Dù chọn hướng nào, đây là **minh hoạ sống của README 2.7**: tên trên ảnh đến từ header DICOM, không đến từ bản ghi RIS mà viewer đang mở.
 
+### 9.1. ✅ Ca test tay đã chạy (2026-11-08/09) — không phải TCIA
+
+Khác với mục 9 ở trên (vẫn ❓ chưa tải TCIA chính thức), có **2 ca test thủ công** đã chạy thật để tự kiểm luồng "Xem ảnh" đầu-cuối (RIS worklist → OHIF → ảnh thật), phục vụ việc tự test, không phải dữ liệu demo chính thức của đồ án:
+
+| Gì | Chi tiết |
+|---|---|
+| Nguồn ảnh | Bộ nghiên cứu công khai **TopCoW** (MRA sọ não, định dạng `.nii`/NIfTI), lấy từ `Frontend/dataTesting` |
+| Chuyển đổi | NIfTI → DICOM bằng `nibabel` + `pydicom` (script tạm, không nằm trong repo) — **không dùng** file mask phân đoạn kèm theo (`topcow_mr_027.nii`), chỉ dùng ảnh gốc (`topcow_mr_027_0000.nii`) |
+| Bệnh nhân giả | `Nguyễn Hải Linh` (TEST0009, `study_instance_uid` kết thúc `...10000007`) và `Nguyễn Khánh` (TEST0010, `...10000008`) — cùng một ảnh nguồn, hai UID khác nhau |
+| Seed | `Frontend/src/shared/api/mock/seed.ts` — thêm `PATIENTS`/`IMAGING_ORDERS`/`STUDIES` id 9–11, trạng thái `UNREAD` |
+| Nạp vào Orthanc | `storescu`/`dcmsend` thủ công từ các file DICOM đã sinh, vào `vr-ris-full-orthanc-1` |
+
+**Hai lỗi đã gặp và sửa khi test ca này — ghi lại để không lặp lại:**
+
+1. **URL sai định dạng** (`?StudyInstanceUIDs=` thay vì `/viewer/<uid>`) — xem mục 6.1. Đây là nguyên nhân gốc của lỗi "No URL was specified" gặp lần đầu.
+2. **CORS** — xem mục 6.1.1. Cần có `orthanc-cors-proxy` thì ảnh mới tải được (401/bị chặn CORS nếu gọi Orthanc thẳng).
+
+⚠️ Đây **không phải** câu trả lời cho ❓ ở mục 9 (modality/nguồn dữ liệu demo chính thức của đồ án vẫn chưa chốt — CR+CT từ TCIA là đề xuất chưa xác nhận). Ca Linh/Khánh chỉ để tự kiểm tra kỹ thuật, dùng seed `mock` mode, **không có trong migration DB** (`database/migrations/`) — nếu cần ở chế độ `live` phải seed thêm riêng.
+
 ---
 
 ## 10. Câu hỏi còn mở
@@ -377,7 +424,7 @@ Tổng hợp mọi ❓ ở trên. Không có ô nào được nhóm xác nhận.
 | P-05 | Map `gender = 'U'` sang `PatientSex` thành `O` hay rỗng | 4.1, 7.1 | MWL |
 | P-06 | Danh sách đầy đủ tag trong `ScheduledProcedureStepSequence` | 4 | H-01 |
 | P-07 | Nhập `study_instance_uid` ở đâu trên giao diện trong 8 tuần | 2.1 | IN-03 / IN-04 (tuần 4) |
-| P-08 | Đường dẫn và tên tham số deep-link của bản OHIF thực dùng | 6.1 | IN-23 (tuần 6–7) |
+| P-08 | ✅ **Đã kiểm chứng 2026-11-09**: Đường dẫn và tên tham số deep-link của bản OHIF thực dùng | 6.1 | IN-23 (tuần 6–7) |
 | P-09 | Cách chặn truy cập OHIF: mạng nội bộ / Ingress auth / token ngắn hạn | 6.3 | IN-19 điểm 3; điểm bảo mật trong báo cáo |
 | P-10 | Nút “Xem ảnh” khi chưa có ảnh: ẩn hay disable | 6.2 | Figma (README 6E), IN-23 |
 | P-11 | Khi header DICOM lệch RIS: bên nào thắng, có sửa header không | 8.2 | Quy tắc đối chiếu (README 2.5) ở cạnh thứ ba |
