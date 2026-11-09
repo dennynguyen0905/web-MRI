@@ -646,6 +646,37 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /studies/{studyId}/viewer-link:
+    parameters:
+      - $ref: '#/components/parameters/StudyId'
+    get:
+      tags: [studies]
+      operationId: getStudyViewerLink
+      summary: Lấy link xem ảnh OHIF cho ca chụp
+      description: |
+        Kiểm tra ca chụp đã có `study_instance_uid` chưa, ghép base URL OHIF từ cấu hình hệ thống
+        (ConfigMap APP_OHIF_BASE_URL) và sinh deep-link. Ghi `audit_log` (`VIEW_IMAGE`) trước khi trả URL.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: VIEW_IMAGE
+      responses:
+        '200':
+          description: Link mở OHIF Viewer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Ca chụp chưa có ảnh DICOM trong PACS (study_instance_uid là null)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /studies/{studyId}/transitions:
     parameters:
       - $ref: '#/components/parameters/StudyId'
@@ -1849,6 +1880,25 @@ components:
                 - $ref: '#/components/schemas/Report'
               type: object
               nullable: true
+    ViewerLink:
+      type: object
+      description: Thông tin deep-link mở OHIF Viewer cho ca chụp
+      required: [study_id, patient_id, study_instance_uid, viewer_url]
+      properties:
+        study_id:
+          type: integer
+          format: int64
+          example: 1
+        patient_id:
+          type: integer
+          format: int64
+          example: 1
+        study_instance_uid:
+          type: string
+          example: '1.2.826.0.1.3680043.8.498.10000001'
+        viewer_url:
+          type: string
+          example: 'http://localhost:8043/viewer/1.2.826.0.1.3680043.8.498.10000001'
     WorklistRow:
       type: object
       description: Một hàng worklist, đã ghép sẵn các bảng liên quan

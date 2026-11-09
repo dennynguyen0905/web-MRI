@@ -69,6 +69,9 @@ export const PATIENTS: PatientDto[] = [
   { id: 6, patient_code: 'TEST0006', his_patient_id: null, full_name: 'Vũ Thị Giả F', date_of_birth: '1983-09-09', dob_precision: 'DAY', gender: 'F', social_insurance_no: 'GIA0000000006', phone: '0900000006', address: 'Địa chỉ giả 6', health_check_code: null },
   { id: 7, patient_code: 'TEST0007', his_patient_id: null, full_name: 'Đặng Văn Giả G', date_of_birth: '2001-02-28', dob_precision: 'DAY', gender: 'M', social_insurance_no: 'GIA0000000007', phone: '0900000007', address: 'Địa chỉ giả 7', health_check_code: null },
   { id: 8, patient_code: 'TEST0008', his_patient_id: null, full_name: 'Bùi Thị Giả H', date_of_birth: '1949-12-01', dob_precision: 'YEAR', gender: 'F', social_insurance_no: 'GIA0000000008', phone: '0900000008', address: 'Địa chỉ giả 8', health_check_code: null },
+  /** Ca test thủ công (2026-11-08): có ảnh DICOM thật nạp vào Orthanc (chuyển từ dataTesting/*.nii, bộ MRA sọ não TopCoW, đã ẩn danh) để tự kiểm luồng "Xem ảnh" → OHIF thật, không chỉ xem UI mock. */
+  { id: 9, patient_code: 'TEST0009', his_patient_id: null, full_name: 'Nguyễn Hải Linh', date_of_birth: '1988-05-12', dob_precision: 'DAY', gender: 'F', social_insurance_no: 'GIA0000000009', phone: '0900000009', address: 'Địa chỉ giả 9', health_check_code: null },
+  { id: 10, patient_code: 'TEST0010', his_patient_id: null, full_name: 'Nguyễn Khánh', date_of_birth: '1995-02-03', dob_precision: 'DAY', gender: 'M', social_insurance_no: 'GIA0000000010', phone: '0900000010', address: 'Địa chỉ giả 10', health_check_code: null },
 ]
 
 /** `ordering_doctor_name` của đơn 4 và `his_order_id` 5 đơn đã áp đúng V8. */
@@ -81,6 +84,8 @@ export const IMAGING_ORDERS: ImagingOrderDto[] = [
   { id: 6, order_code: 'PH20261031002', patient_id: 5, visit_code: 'VV0006', source: 'MANUAL', his_order_id: null, sync_status: 'NOT_SYNCED', ordering_department_id: 8, ordering_doctor_name: 'BS. Chỉ Định C (giả)', patient_class: 'OUTPATIENT', room: null, bed: null, clinical_diagnosis: 'Đau lưng (dữ liệu giả)', ordered_at: '2026-10-31T04:30:00Z' },
   { id: 7, order_code: 'PH20261031003', patient_id: 6, visit_code: 'VV0007', source: 'MANUAL', his_order_id: 'HISO2026110500014', sync_status: 'NOT_SYNCED', ordering_department_id: 7, ordering_doctor_name: 'BS. Chỉ Định B (giả)', patient_class: 'OUTPATIENT', room: null, bed: null, clinical_diagnosis: 'Khó thở (dữ liệu giả)', ordered_at: '2026-10-31T05:30:00Z' },
   { id: 8, order_code: 'PH20261031004', patient_id: 7, visit_code: 'VV0008', source: 'MANUAL', his_order_id: 'HISO2026110500013', sync_status: 'NOT_SYNCED', ordering_department_id: 6, ordering_doctor_name: 'BS. Chỉ Định A (giả)', patient_class: 'OUTPATIENT', room: null, bed: null, clinical_diagnosis: 'Kiểm tra sức khỏe (dữ liệu giả)', ordered_at: '2026-10-31T06:30:00Z' },
+  { id: 9, order_code: 'PH20261108001', patient_id: 9, visit_code: 'VV0009', source: 'MANUAL', his_order_id: null, sync_status: 'NOT_SYNCED', ordering_department_id: 7, ordering_doctor_name: 'BS. Chỉ Định A (giả)', patient_class: 'OUTPATIENT', room: null, bed: null, clinical_diagnosis: 'Đau đầu, nghi dị dạng mạch não (dữ liệu giả)', ordered_at: '2026-11-08T01:00:00Z' },
+  { id: 10, order_code: 'PH20261108002', patient_id: 10, visit_code: 'VV0010', source: 'MANUAL', his_order_id: null, sync_status: 'NOT_SYNCED', ordering_department_id: 7, ordering_doctor_name: 'BS. Chỉ Định B (giả)', patient_class: 'OUTPATIENT', room: null, bed: null, clinical_diagnosis: 'Theo dõi sau chụp MRA (dữ liệu giả)', ordered_at: '2026-11-08T01:30:00Z' },
 ]
 
 export const STUDIES: StudyDto[] = [
@@ -93,6 +98,9 @@ export const STUDIES: StudyDto[] = [
   { id: 7, accession_number: '2026103100002', order_id: 6, service_item_id: 2, device_id: 1, status: 'SCHEDULED', study_instance_uid: null, scheduled_at: '2026-10-31T05:00:00Z', started_at: null, completed_at: null, due_at: null, performed_by: null, reading_user: null, approving_user: null },
   { id: 8, accession_number: '2026103100003', order_id: 7, service_item_id: 4, device_id: 2, status: 'SCHEDULED', study_instance_uid: null, scheduled_at: '2026-10-31T06:00:00Z', started_at: null, completed_at: null, due_at: null, performed_by: null, reading_user: null, approving_user: null },
   { id: 9, accession_number: '2026103100004', order_id: 8, service_item_id: 1, device_id: null, status: 'SCHEDULED', study_instance_uid: null, scheduled_at: '2026-10-31T07:00:00Z', started_at: null, completed_at: null, due_at: null, performed_by: null, reading_user: null, approving_user: null },
+  /** study_instance_uid trỏ tới ảnh thật đã nạp vào Orthanc cục bộ (xem chú thích ở PATIENTS id 9/10) — accession_number khớp đúng tag (0008,0050) trong file DICOM đã nạp. */
+  { id: 10, accession_number: '2026110800001', order_id: 9, service_item_id: 5, device_id: 3, status: 'UNREAD', study_instance_uid: '1.2.826.0.1.3680043.8.498.10000007', scheduled_at: '2026-11-08T01:10:00Z', started_at: '2026-11-08T01:15:00Z', completed_at: '2026-11-08T01:40:00Z', due_at: null, performed_by: userRef(3), reading_user: null, approving_user: null },
+  { id: 11, accession_number: '2026110800002', order_id: 10, service_item_id: 5, device_id: 3, status: 'UNREAD', study_instance_uid: '1.2.826.0.1.3680043.8.498.10000008', scheduled_at: '2026-11-08T01:40:00Z', started_at: '2026-11-08T01:45:00Z', completed_at: '2026-11-08T02:10:00Z', due_at: null, performed_by: userRef(3), reading_user: null, approving_user: null },
 ]
 
 export const REPORTS: ReportDto[] = [

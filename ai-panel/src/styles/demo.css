@@ -1,0 +1,73 @@
+/* Chỉ dùng cho khung minh hoạ (DemoApp) — KHÔNG phải một phần của AI Panel giao nộp. */
+html, body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font);
+}
+.demo-shell { display: flex; min-height: 100vh; }
+.demo-main {
+  flex: 1;
+  background: var(--bg-viewport);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+}
+.demo-main .hint { color: var(--text-muted); font-size: 12.5px; max-width: 460px; text-align: center; line-height: 1.6; }
+.demo-side {
+  width: 320px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.demo-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  margin: 12px;
+  border-radius: 8px;
+  background: var(--bg-viewport);
+  border: 1px dashed var(--border-input);
+}
+.demo-switch .lbl { font-size: 10px; color: var(--text-placeholder); margin-bottom: 4px; }
+.demo-switch button {
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-panel-alt);
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+.demo-switch button.active { background: var(--accent-cyan); color: #04222b; border-color: var(--accent-cyan); font-weight: 600; }
+.demo-switch label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  cursor: pointer;
+}
+.demo-log {
+  margin: 0 12px 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--bg-viewport);
+  border: 1px solid var(--border-subtle);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  overflow-y: auto;
+  max-height: 180px;
+  font-family: ui-monospace, monospace;
+  white-space: pre-wrap;
+}
+.demo-log .lbl { font-size: 10px; color: var(--text-placeholder); font-family: var(--font); margin-bottom: 4px; }
