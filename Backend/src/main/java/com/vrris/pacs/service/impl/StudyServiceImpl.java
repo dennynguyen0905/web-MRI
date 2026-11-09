@@ -8,13 +8,16 @@ import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dto.request.StudyCreateRequest;
 import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
+import com.vrris.pacs.dto.response.ViewerLinkResponse;
 import com.vrris.pacs.enu.AuditAction;
 import com.vrris.pacs.enu.StudyStatus;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.mapper.StudyMapper;
+import com.vrris.pacs.model.ImagingOrder;
 import com.vrris.pacs.model.Study;
 import com.vrris.pacs.rule.AccessionNumberGenerator;
 import com.vrris.pacs.service.StudyService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +52,9 @@ public class StudyServiceImpl implements StudyService {
     private final DeviceDao deviceDao;
     private final StudyMapper studyMapper;
 
+    @Value("${app.ohif.base-url:http://localhost:8043}")
+    private String ohifBaseUrl = "http://localhost:8043";
+
     public StudyServiceImpl(StudyDao studyDao, ImagingOrderDao imagingOrderDao, ServiceItemDao serviceItemDao,
                              DeviceDao deviceDao, StudyMapper studyMapper) {
         this.studyDao = studyDao;
@@ -81,6 +87,31 @@ public class StudyServiceImpl implements StudyService {
     @Audited(action = AuditAction.READ, entityType = "STUDY")
     public StudyResponse getById(Long id) {
         return studyMapper.toResponse(findOrThrow(id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @Audited(action = AuditAction.VIEW_IMAGE, entityType = "STUDY", entityIdArg = 0)
+    public ViewerLinkResponse getViewerLink(Long id) {
+        Study study = findOrThrow(id);
+        if (study.getStudyInstanceUid() == null || study.getStudyInstanceUid().isBlank()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "STUDY_NO_DICOM_IMAGE",
+                    "Ca chụp chưa có ảnh trong PACS (study_instance_uid is null)");
+        }
+        ImagingOrder order = imagingOrderDao.findById(study.getOrderId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "IMAGING_ORDER_NOT_FOUND",
+                        "Khong tim thay chi dinh id=" + study.getOrderId()));
+        String base = (ohifBaseUrl != null && !ohifBaseUrl.isBlank()) ? ohifBaseUrl.trim() : "http://localhost:8043";
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        // UID phai nam trong PATH ("/viewer/<uid>"), KHONG phai query string ("?StudyInstanceUIDs=").
+        // Ban OHIF dang chay (ohif/viewer:v4.12.51.21579) dung route cu "ConnectedStandaloneRouting"
+        // ung voi schema cau hinh "servers.dicomWeb", chi khop path "/viewer/:studyInstanceUids";
+        // dang "?StudyInstanceUIDs=" roi ve route khac va bao loi "No URL was specified" (phat hien
+        // bang tay 2026-11-09, xem doc/07-pacs-dicom.md).
+        String viewerUrl = base + "/viewer/" + study.getStudyInstanceUid();
+        return new ViewerLinkResponse(study.getId(), order.getPatientId(), study.getStudyInstanceUid(), viewerUrl);
     }
 
     @Override

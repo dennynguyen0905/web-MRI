@@ -2,6 +2,7 @@ package com.vrris.pacs.rest;
 
 import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
+import com.vrris.pacs.dto.response.ViewerLinkResponse;
 import com.vrris.pacs.service.StudyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -60,5 +61,14 @@ public class StudyController {
     @PreAuthorize(READ_ROLES)
     public StudyResponse getStudy(@PathVariable Long studyId) {
         return studyService.getById(studyId);
+    }
+
+    @GetMapping(path = "/studies/{studyId}/viewer-link", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Lay link mo OHIF Viewer cho ca chup", description = "Kiem tra study_instance_uid, ghi audit_log VIEW_IMAGE, ghep base URL OHIF.")
+    @ApiResponse(responseCode = "200", description = "Link mo OHIF Viewer")
+    @ApiResponse(responseCode = "422", description = "Ca chup chua co anh trong PACS (study_instance_uid is null)")
+    @PreAuthorize(READ_ROLES)
+    public ViewerLinkResponse getViewerLink(@PathVariable Long studyId) {
+        return studyService.getViewerLink(studyId);
     }
 }
