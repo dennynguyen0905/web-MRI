@@ -1,11 +1,11 @@
 # VR-RIS PACS — Kế hoạch giao diện mở viewer (nút "Xem ảnh") và vị trí AI Panel
 
-| Phiên bản | 0.1 (nháp — chưa được nhóm xác nhận) |
+| Phiên bản | 0.2 (đã cài đặt code theo thiết kế) |
 |---|---|
-| Ngày | 2026-11-06 |
+| Ngày | 2026-11-07 |
 | Thuộc | IN-23 (nút "Xem ảnh", tuần 6–7), tham chiếu IN-19 (Orthanc + OHIF, tuần 7) |
 | Nguồn ràng buộc | `07-pacs-dicom.md` mục 6 · `README` mục 2.7 · `01-scope.md` IN-19/IN-23 · `02-erd.md` mục 4.4, 4.11 · `06-rbac-matrix.md` |
-| Trạng thái | 🟡 Kế hoạch, **chưa code**. Task chỉ yêu cầu bố cục + đối chiếu, không yêu cầu cài đặt |
+| Trạng thái | 🟡 Đã hoàn thành cài đặt Backend (`GET /studies/{id}/viewer-link`, audit `VIEW_IMAGE`), Frontend (hai cửa vào worklist và modal lâm sàng), Docker Compose (Orthanc + OHIF). Chờ kiểm chứng trên cụm K8s thật |
 
 ## 0. Phạm vi đã điều chỉnh
 
