@@ -6,6 +6,7 @@ import { fetchCurrentReport } from '@/features/reports/api/reportApi'
 import { AddStudyModal } from '@/features/studies/components/AddStudyModal'
 import { UpdateFromHisModal } from '@/features/studies/components/UpdateFromHisModal'
 import { UpdateStudyModal } from '@/features/studies/components/UpdateStudyModal'
+import { openStudyViewer } from '@/features/studies/api/viewerApi'
 import { useAuth, useCurrentUser } from '@/features/auth/hooks/useAuth'
 import { useAsync } from '@/shared/hooks/useAsync'
 import { can, deniedReason } from '@/shared/lib/auth'
@@ -328,6 +329,7 @@ export function WorklistPage() {
             onUpdateFromHis={() => setModal('HIS')}
             onAddOrder={() => setModal('ADD')}
             onClinical={() => openGated('clinical.view', 'CLINICAL')}
+            onViewImage={() => openStudyViewer(selected.study.id)}
             onReport={() => setModal('REPORT')}
             onPrint={() => openGated('report.print', 'PRINT')}
           />
