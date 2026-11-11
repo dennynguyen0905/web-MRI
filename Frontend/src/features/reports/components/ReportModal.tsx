@@ -145,7 +145,7 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
       }
     >
       <div className="flex min-h-0">
-        <div className="min-w-0 flex-1 border-r border-line p-4">
+        <div className="min-w-0 flex-1 border-r border-line p-4 desktop:p-5">
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md bg-line-soft px-3 py-2">
             <span className="text-[13px] font-semibold text-ink">{row.patient.fullName}</span>
             <span className="text-[11.5px] text-ink-3">
@@ -217,7 +217,7 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
           </div>
         </div>
 
-        <div className="w-[228px] shrink-0 overflow-y-auto p-4">
+        <div className="w-[228px] shrink-0 overflow-y-auto p-4 desktop:w-[260px] desktop:p-5">
           <div className="mb-2 section-label">Lịch sử trạng thái</div>
           {loading && <p className="text-[11.5px] text-ink-4">Đang tải…</p>}
           {!loading && history.length === 0 && (

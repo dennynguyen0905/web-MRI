@@ -52,7 +52,7 @@ export function LoginPage() {
 
   return (
     <div className="flex h-full items-center justify-center overflow-auto bg-app p-6">
-      <div className="w-full max-w-[760px]">
+      <div className="w-full max-w-[760px] desktop:max-w-[860px]">
         <div className="mb-5 flex items-center justify-center gap-2.5">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white">
             <Plus size={22} strokeWidth={2.4} />
@@ -63,8 +63,8 @@ export function LoginPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[320px_1fr]">
-          <form onSubmit={submit} className="card p-5">
+        <div className="grid gap-3 md:grid-cols-[320px_1fr] desktop:gap-4 desktop:grid-cols-[360px_1fr]">
+          <form onSubmit={submit} className="card p-5 desktop:p-6">
             <h1 className="mb-0.5 text-[14px] font-semibold text-ink">Đăng nhập</h1>
             <p className="mb-4 text-[11.5px] text-ink-4">Dùng tài khoản được cấp trong hệ thống.</p>
 
@@ -115,7 +115,7 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <div className="card p-5">
+          <div className="card p-5 desktop:p-6">
             <h2 className="mb-0.5 text-[13px] font-semibold text-ink">Tài khoản demo</h2>
             <p className="mb-3 text-[11.5px] text-ink-4">
               7 tài khoản seed của <code className="rounded bg-line-soft px-1 py-0.5 font-mono text-[11px] text-ink-2">V7</code>/<code className="rounded bg-line-soft px-1 py-0.5 font-mono text-[11px] text-ink-2">V8</code>.

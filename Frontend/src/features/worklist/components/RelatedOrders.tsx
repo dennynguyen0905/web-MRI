@@ -24,7 +24,7 @@ export function RelatedOrders({ rows, selectedId, onSelect, loading }: {
   return (
     <div className="flex h-[150px] shrink-0 flex-col overflow-hidden border-t border-line bg-white">
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse text-[12px]">
+        <table className="w-full min-w-[860px] border-collapse text-[12px] desktop:text-[13px]">
           <thead className="sticky top-0 z-10">
             <tr className="bg-[#e7eefb]">
               <th className="w-[46px] border-b border-brand-100 px-1.5 py-0 text-left">
@@ -37,7 +37,7 @@ export function RelatedOrders({ rows, selectedId, onSelect, loading }: {
                 <th
                   key={h.label}
                   style={{ width: h.w }}
-                  className="border-b border-brand-100 px-2 py-0 text-left text-[11.5px] font-semibold text-[#1e3a6b]"
+                  className="border-b border-brand-100 px-2 py-0 text-left text-[11.5px] font-semibold text-[#1e3a6b] desktop:text-[12px]"
                 >
                   <div className="flex h-[28px] items-center">{h.label}</div>
                 </th>
