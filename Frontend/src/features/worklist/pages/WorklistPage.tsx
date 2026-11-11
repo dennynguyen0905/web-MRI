@@ -6,6 +6,7 @@ import { fetchCurrentReport } from '@/features/reports/api/reportApi'
 import { AddStudyModal } from '@/features/studies/components/AddStudyModal'
 import { UpdateFromHisModal } from '@/features/studies/components/UpdateFromHisModal'
 import { UpdateStudyModal } from '@/features/studies/components/UpdateStudyModal'
+import { openStudyViewer } from '@/features/studies/api/viewerApi'
 import { useAuth, useCurrentUser } from '@/features/auth/hooks/useAuth'
 import { useAsync } from '@/shared/hooks/useAsync'
 import { can, deniedReason } from '@/shared/lib/auth'
@@ -252,14 +253,13 @@ export function WorklistPage() {
           visibleCount={total}
         />
 
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-app p-2">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-app p-2 desktop:p-3">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-white">
-            <div className="flex h-[38px] shrink-0 items-center gap-1.5 border-b border-line px-2">
+            <div className="flex min-h-[38px] shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5 desktop:h-[38px] desktop:flex-nowrap desktop:py-0">
               <TabButton active={tab === 'PENDING'} onClick={() => { setTab('PENDING'); setPage(1) }}>Chờ</TabButton>
               <TabButton active={tab === 'DONE'} onClick={() => { setTab('DONE'); setPage(1) }}>Đã thực hiện</TabButton>
 
-              <div className="flex-1" />
-
+              <div className="ml-auto flex flex-wrap items-center gap-1.5">
               <div className="w-[150px]">
                 <Select
                   value={topbar.timeField}
@@ -281,6 +281,7 @@ export function WorklistPage() {
               <Button variant="ghost" icon={<Download size={12} />} disabled={!can(user, 'list.print')}>
                 Tải danh sách
               </Button>
+              </div>
             </div>
 
             <WorklistTable
@@ -328,6 +329,7 @@ export function WorklistPage() {
             onUpdateFromHis={() => setModal('HIS')}
             onAddOrder={() => setModal('ADD')}
             onClinical={() => openGated('clinical.view', 'CLINICAL')}
+            onViewImage={() => openStudyViewer(selected.study.id)}
             onReport={() => setModal('REPORT')}
             onPrint={() => openGated('report.print', 'PRINT')}
           />
