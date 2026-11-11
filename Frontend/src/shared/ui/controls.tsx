@@ -1,5 +1,5 @@
 import {
-  type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode,
+  type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref,
   type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect, useRef, useState,
 } from 'react'
 import { ChevronDown, Search, X } from './Icon'
@@ -86,7 +86,11 @@ export function Input({ withSearchIcon, className, ...p }: InputProps) {
 
 /* ---------------------------------------------------------------- Textarea */
 
-export function Textarea({ className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  ref?: Ref<HTMLTextAreaElement>
+}
+
+export function Textarea({ className, ...p }: TextareaProps) {
   return (
     <textarea
       {...p}

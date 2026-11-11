@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Panel — OHIF (Dark Theme) · bản tham chiếu cho agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+<!--
+==========================================================================
+ HANDOFF CHO AGENT VIẾT CODE — đọc kỹ trước khi port sang OHIF
+==========================================================================
+
+NGUỒN
+  Figma: His-Pac (fileKey oJSeSp3IhgjtJuByPALM9d), trang "AI Panel — OHIF Mockup" (75:5047)
+  Spec nghiệp vụ: doc/11-ai-design.md mục 5 (AI Panel), mục 6 (audit log), mục 7 (automation bias)
+
+  Node Figma ↔ trạng thái
+    94:5047  1. Chưa xử lý (NOT_TRIGGERED)        340px
+    94:5057  2. Đang phân tích (PENDING)           340px
+    94:5105  3. Có gợi ý AI (READY) — chi tiết     360px
+    94:5083  4. AI lỗi (FAILED)                    340px
+    94:5094  5. AI không phản hồi (TIMEOUT)        340px
+    94:5203  Thu gọn (dock) — READY                300px
+    94:5212  Vị trí AI Panel trong OHIF            tab thứ 3 "AI" ở cột phải 350px
+  (Lưu ý: link bạn gửi, node 94:5149, chỉ là 1 đường Divider bên trong khung READY.)
+
+CẤU TRÚC FILE
+  1. CSS tokens (:root)            → map 1-1 với biến Figma (bg/surface, text/body, ...)
+  2. CSS component .ai-panel*      → phần cần port. KHÔNG phụ thuộc framework.
+  3. CSS .demo-* và .ohif-*        → chỉ để xem thử, KHÔNG port.
+  4. JS: AI_PANEL_SAMPLE + renderAiPanel(root, state)   → toàn bộ markup sinh từ 1 object state.
+  5. JS demo (thanh chọn trạng thái, log sự kiện)       → KHÔNG port.
+
+MODEL DỮ LIỆU (khớp doc/11 mục 3.2: ai_analysis + ai_finding)
+  state = {
+    status: 'NOT_TRIGGERED' | 'PENDING' | 'READY' | 'FAILED' | 'TIMEOUT',
+    collapsed: boolean,
+    model: 'MedAI-ChestCT v1.2',
+    metaText: string,              // dòng phụ dưới badge; server/AI Backend quyết định chữ
+    message / hint: string,        // dùng cho NOT_TRIGGERED, FAILED, TIMEOUT
+    pendingText: string,           // dùng cho PENDING
+    overlay: { on:false, opacity:65, legend:[{label,color}] },
+    findings: [{ label, level: 'high'|'medium'|'low' }],
+    draft: [{ title, text }]       // Figma có 3 mục: Kỹ thuật / Mô tả / Kết luận; spec cho tới 5 mục
+  }
+  Không hiển thị mã lỗi kỹ thuật (KHONG_LAY_DUOC_ANH...) cho bác sĩ — doc/11 mục 5.2.4.
+
+SỰ KIỆN (CustomEvent, bubbles) — host app lắng nghe để gọi OHIF / RIS / audit log
+  ai-panel:toggle-collapse   {collapsed}
+  ai-panel:suggestion-viewed {}                     → audit AI_SUGGESTION_VIEWED (mở khối gợi ý lần đầu)
+  ai-panel:overlay-toggle    {on}                   → bật/tắt DICOM SEG trong OHIF (OHIF tự vẽ)
+  ai-panel:opacity-change    {value 0..100}
+  ai-panel:refresh           {}                     → gọi lại ai_status (không poll liên tục)
+  ai-panel:accept            {}   "Dùng gợi ý này"   → chép nguyên nháp vào form báo cáo chính, CHƯA lưu
+  ai-panel:edit              {}   "Sửa trước khi dùng" → mở form đã điền sẵn, con trỏ ở ô đầu
+  ai-panel:dismiss           {}   "Bỏ qua gợi ý"    → ghi nhận lựa chọn tường minh (AI_SUGGESTION_REJECTED khi lưu)
+
+QUY TẮC CỨNG TỪ SPEC (đừng "sửa cho đẹp")
+  - Không có nút "Lưu" trong AI Panel. Lưu luôn ở form báo cáo chính để server tính report.origin.
+  - Công tắc "Hiện vùng AI đánh dấu" mặc định TẮT. Slider + chú giải chỉ hiện khi công tắc BẬT.
+  - Dòng cảnh báo vàng cố định, không có nút ẩn.
+  - Dùng chữ "gợi ý", không dùng "kết quả AI"/"chẩn đoán AI".
+  - Độ tin cậy hiển thị theo MỨC (Cao / Trung bình / Thấp), không hiện số thập phân.
+  - Khối nháp là xem trước, KHÔNG phải ô nhập.
+  - Không có nút "thử lại" cho FAILED/TIMEOUT.
+  - Dòng "chưa tự bung": khi mở ca với READY, panel ở dạng thu gọn (badge + hint), người dùng bấm mới mở.
+
+KHÁC BIỆT / CHỖ TÔI TỰ THÊM (không có trong Figma — xoá nếu không muốn)
+  - Sau khi bấm "Bỏ qua gợi ý": hiện 1 dòng muted + nút chữ "Xem lại gợi ý AI" (theo tinh thần doc/11 mục 5.3).
+  - Trạng thái thu gọn cho các status khác READY (Figma chỉ vẽ thu gọn cho READY).
+  - Overlay preview trong OHIF-mode vẽ 2 hình elip minh hoạ; thực tế OHIF tự vẽ DICOM SEG.
+  - Icon: Figma ghi là lucide 16px; file này inline SVG lucide tương đương (asset Figma hết hạn sau 7 ngày,
+    và bash không với tới figma.com). Nếu cần icon gốc, tải qua get_design_context.
+  - Màu cyan của tab "AI"/nút WW/WL trong khung OHIF ước lượng từ ảnh chụp, chỉ để minh hoạ.
+  - Chữ cuối của Figma ("Đã bỏ qua ...", v.v.) không tồn tại; mọi chuỗi UI khác lấy đúng từ Figma.
+==========================================================================
+-->
+
+<style>
+/* ======================= 1. TOKENS (Figma variables, dark theme) ======================= */
+:root {
+  --bg-surface: #0b1526;
+  --bg-tint-soft: #0f1b2e;
+  --bg-success: #113a26;
+  --bg-warning: #3a2a0c;
+  --bg-danger: #3a1414;
+
+  --border-default: #1f2b3d;
+
+  --text-primary: #f1f5f9;
+  --text-body: #cbd5e1;
+  --text-muted: #8291a8;
+  --text-on-primary: #ffffff;
+
+  --primary-600: #0ea5e9;
+  --primary-300: #1e3a5f;
+  --success-600: #4ade80;
+  --warning-600: #fbbf24;
+  --danger-500: #f87171;
+  --danger-300: #7f1d1d;
+
+  --radius-sm: 5px;
+  --radius-md: 8px;
+
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, .06);
+  --shadow-button: 0 1px 2px rgba(29, 78, 216, .2);
+
+  --overlay-coral: #f87171;   /* mask 1: nốt mờ */
+  --overlay-amber: #fbbf24;   /* mask 2: tràn dịch */
+  --overlay-stage: #141417;
+
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font);
+  background: #060d19;
+  color: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+
+/* ======================= 2. COMPONENT: .ai-panel ======================= */
+.ai-panel {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.ai-panel[data-status="READY"][data-collapsed="false"] { gap: 16px; padding: 20px; }
+.ai-panel[data-collapsed="true"] { gap: 10px; max-width: 300px; }
+.ai-panel > * { width: 100%; }
+
+/* --- header --- */
+.ai-panel__header {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 0; border: 0; background: none; cursor: pointer; text-align: left;
+}
+.ai-panel__title { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--text-primary); }
+.ai-panel__chevron { width: 16px; height: 16px; color: var(--text-muted); flex: none; }
+.ai-panel__header:focus-visible,
+.ai-btn:focus-visible,
+.ai-toggle:focus-visible,
+.ai-link:focus-visible { outline: 2px solid var(--primary-600); outline-offset: 2px; }
+
+/* --- status badge (AI Status Badge) --- */
+.ai-badge {
+  display: inline-flex; align-items: center; gap: 6px; width: fit-content;
+  padding: 5px 10px; border-radius: var(--radius-sm);
+  font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.ai-badge__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.ai-badge[data-status="NOT_TRIGGERED"] { background: var(--bg-surface); border-color: var(--border-default); color: var(--text-muted); }
+.ai-badge[data-status="PENDING"]       { background: var(--bg-warning); color: var(--warning-600); }
+.ai-badge[data-status="READY"]         { background: var(--bg-success); color: var(--success-600); }
+.ai-badge[data-status="FAILED"]        { background: var(--bg-danger);  color: var(--danger-500); }
+.ai-badge[data-status="TIMEOUT"]       { background: var(--bg-surface); border-color: var(--danger-300); color: var(--danger-300); }
+
+/* --- text --- */
+.ai-text-body  { margin: 0; font-size: 13px; line-height: 18px; color: var(--text-body); }
+.ai-text-muted { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-muted); }
+.ai-divider    { width: 100%; height: 1px; background: var(--border-default); flex: none; }
+.ai-section-title { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--text-primary); }
+
+/* --- pending --- */
+.ai-pending { display: flex; align-items: center; gap: 10px; }
+.ai-spinner { width: 28px; height: 28px; color: var(--warning-600); flex: none; animation: ai-spin 1s linear infinite; }
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ai-spinner { animation-duration: 3s; } }
+
+/* --- buttons --- */
+.ai-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 39px; padding: 0 15px; border-radius: var(--radius-md);
+  font-size: 13px; line-height: 18px; font-weight: 600; cursor: pointer;
+  background: var(--bg-surface); border: 1px solid var(--border-default); color: var(--text-body);
+  transition: filter .12s, background-color .12s;
+}
+.ai-btn svg { width: 16px; height: 16px; flex: none; }
+.ai-btn:hover { background: var(--bg-tint-soft); }
+.ai-btn--primary { background: var(--primary-600); border-color: var(--primary-600); color: var(--text-on-primary); box-shadow: var(--shadow-button); width: 100%; }
+.ai-btn--primary:hover { background: var(--primary-600); filter: brightness(1.08); }
+.ai-btn--outline { border-color: var(--primary-300); color: var(--primary-600); flex: 1 1 0; min-width: 0; }
+.ai-btn--ghost { flex: 1 1 0; min-width: 0; }
+.ai-btn--sm { height: 28px; padding: 0 10px; gap: 6px; font-size: 12px; line-height: 16px; border-radius: var(--radius-sm); width: fit-content; }
+.ai-btn--sm svg { width: 14px; height: 14px; }
+.ai-link { background: none; border: 0; padding: 0; width: fit-content; cursor: pointer; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--primary-600); }
+
+/* --- READY blocks --- */
+.ai-block { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+.ai-overlay-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ai-overlay-head__label { display: flex; flex-direction: column; gap: 2px; }
+.ai-overlay-head__label strong { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text-primary); }
+.ai-overlay-head__label span { font-size: 12px; line-height: 16px; color: var(--text-muted); }
+
+.ai-toggle {
+  position: relative; width: 36px; height: 20px; flex: none; padding: 0; cursor: pointer;
+  border: 0; border-radius: 10px; background: var(--border-default); transition: background-color .15s;
+}
+.ai-toggle::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--text-muted); transition: transform .15s, background-color .15s;
+}
+.ai-toggle[aria-checked="true"] { background: var(--primary-600); }
+.ai-toggle[aria-checked="true"]::after { transform: translateX(16px); background: #fff; }
+
+.ai-overlay-preview {
+  position: relative; width: 100%; height: 150px; border-radius: 6px; overflow: hidden;
+  background: var(--overlay-stage);
+}
+.ai-overlay-preview__note { position: absolute; left: 8px; top: 8px; right: 8px; margin: 0; font-size: 12px; line-height: 16px; color: #fff; z-index: 1; }
+.ai-mask { position: absolute; border-radius: 50%; }
+.ai-mask--1 { left: 70px; top: 40px; width: 60px; height: 46px; background: var(--overlay-coral); }
+.ai-mask--2 { left: 170px; top: 92px; width: 90px; height: 34px; background: var(--overlay-amber); }
+
+.ai-slider { display: flex; flex-direction: column; gap: 6px; }
+.ai-slider__row { display: flex; justify-content: space-between; font-size: 12px; line-height: 16px; font-weight: 600; }
+.ai-slider__row span:first-child { color: var(--text-body); }
+.ai-slider__row span:last-child { color: var(--primary-600); }
+.ai-slider input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 0; background: transparent; cursor: pointer;
+  --fill: 65%;
+}
+.ai-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, var(--primary-600) var(--fill), var(--border-default) var(--fill));
+}
+.ai-slider input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--border-default); }
+.ai-slider input[type="range"]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--primary-600); }
+.ai-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%;
+  background: var(--bg-surface); border: 2px solid var(--primary-600);
+}
+.ai-slider input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--bg-surface); border: 2px solid var(--primary-600); }
+
+.ai-legend { display: flex; flex-direction: column; gap: 6px; }
+.ai-legend__item { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--text-body); }
+.ai-legend__dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+/* findings */
+.ai-finding { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ai-finding__label { margin: 0; flex: 1 1 auto; min-width: 0; max-width: 190px; font-size: 13px; line-height: 18px; color: var(--text-body); }
+.ai-conf {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  padding: 3px 8px; border-radius: var(--radius-sm);
+  font-size: 11px; line-height: 14px; font-weight: 600; white-space: nowrap;
+}
+.ai-conf__bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 10px; }
+.ai-conf__bars i { display: block; width: 4px; border-radius: 1px; background: var(--border-default); }
+.ai-conf__bars i:nth-child(1) { height: 4px; }
+.ai-conf__bars i:nth-child(2) { height: 7px; }
+.ai-conf__bars i:nth-child(3) { height: 10px; }
+.ai-conf[data-level="high"]   { background: var(--bg-success);   color: var(--success-600); }
+.ai-conf[data-level="medium"] { background: var(--bg-warning);   color: var(--warning-600); }
+.ai-conf[data-level="low"]    { background: var(--bg-tint-soft); color: var(--text-muted); }
+.ai-conf[data-level="high"]   i:nth-child(-n+3) { background: var(--success-600); }
+.ai-conf[data-level="medium"] i:nth-child(-n+2) { background: var(--warning-600); }
+.ai-conf[data-level="low"]    i:nth-child(1)    { background: var(--text-muted); }
+
+/* draft preview */
+.ai-draft-head { display: flex; flex-direction: column; gap: 2px; }
+.ai-draft {
+  display: flex; flex-direction: column; gap: 12px; padding: 14px;
+  background: var(--bg-tint-soft); border-radius: var(--radius-sm);
+  user-select: text;
+}
+.ai-draft__item { display: flex; flex-direction: column; gap: 3px; }
+.ai-draft__item h4 { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-muted); }
+.ai-draft__item p { margin: 0; font-size: 13px; line-height: 18px; color: var(--text-body); }
+
+/* fixed warning */
+.ai-warning {
+  display: flex; align-items: center; gap: 10px; padding: 12px;
+  background: var(--bg-warning); border: 1px solid var(--warning-600); border-radius: var(--radius-sm);
+}
+.ai-warning__icon {
+  width: 20px; height: 20px; border-radius: 10px; flex: none;
+  display: grid; place-items: center; background: var(--warning-600); color: #fff;
+  font-size: 13px; font-weight: 700; line-height: 1;
+}
+.ai-warning p { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--warning-600); }
+
+.ai-actions { display: flex; flex-direction: column; gap: 8px; }
+.ai-actions__row { display: flex; gap: 8px; }
+
+[hidden] { display: none !important; }
+
+/* ======================= 3. DEMO CHROME (không port) ======================= */
+.demo-bar {
+  position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+  padding: 10px 16px; background: #09111f; border-bottom: 1px solid var(--border-default);
+  font-size: 12px; color: var(--text-muted);
+}
+.demo-group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.demo-group > span { margin-right: 4px; }
+.demo-chip {
+  padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border-default);
+  background: transparent; color: var(--text-body); font-size: 12px; cursor: pointer;
+}
+.demo-chip[aria-pressed="true"] { background: var(--primary-600); border-color: var(--primary-600); color: #fff; }
+.demo-stage { padding: 24px 16px 40px; }
+.demo-single { display: flex; justify-content: center; }
+.demo-log {
+  margin: 20px auto 0; max-width: 720px; min-height: 76px; padding: 10px 12px;
+  background: #09111f; border: 1px dashed var(--border-default); border-radius: 6px;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-muted);
+}
+.demo-log b { color: var(--text-body); font-weight: 600; }
+
+/* OHIF shell (minh hoạ vị trí — node 94:5212) */
+.ohif { display: none; height: 640px; max-width: 1480px; margin: 0 auto; border: 1px solid var(--border-default); border-radius: 6px; overflow: hidden; background: var(--bg-surface); flex-direction: column; }
+.ohif.is-on { display: flex; }
+.ohif__top { height: 44px; flex: none; display: flex; align-items: center; gap: 24px; padding: 0 16px; border-bottom: 1px solid var(--border-default); font-size: 13px; color: var(--text-muted); }
+.ohif__top strong { color: var(--text-primary); font-weight: 600; margin-right: 80px; }
+.ohif__top .is-active { background: #22d3ee; color: #04222b; padding: 5px 8px; border-radius: 4px; font-weight: 600; }
+.ohif__body { flex: 1; display: grid; grid-template-columns: 150px 1fr 350px; min-height: 0; }
+.ohif__studies { padding: 12px 8px; border-right: 1px solid var(--border-default); font-size: 12px; }
+.ohif__studies h5 { margin: 0 4px 10px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-muted); }
+.ohif__studycard { padding: 8px; border-radius: 4px; background: #14233d; color: var(--text-primary); font-size: 12px; font-weight: 600; }
+.ohif__studycard small { display: block; margin-top: 2px; font-weight: 400; color: var(--text-muted); font-size: 11px; }
+.ohif__viewport { position: relative; background: #000; }
+.ohif__viewport .vp { position: absolute; width: 120px; height: 100px; border-radius: 50%; background: #0f1620; }
+.ohif__viewport .vp:nth-child(1) { left: 14%; top: 22%; }
+.ohif__viewport .vp:nth-child(2) { right: 14%; top: 22%; }
+.ohif__viewport .vp:nth-child(3) { left: 14%; bottom: 18%; }
+.ohif__viewport .vp:nth-child(4) { right: 14%; bottom: 18%; }
+.ohif__viewport .vp-mask { position: absolute; border-radius: 50%; pointer-events: none; }
+.ohif__side { border-left: 1px solid var(--border-default); padding: 8px; overflow-y: auto; }
+.ohif__tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 10px; background: var(--bg-tint-soft); border-radius: 6px; font-size: 11px; }
+.ohif__tabs span { padding: 6px; color: var(--text-muted); border-radius: 6px; }
+.ohif__tabs .is-active { min-width: 70px; text-align: center; color: #22d3ee; border: 1px solid #22d3ee; font-weight: 600; }
+.ohif__side .ai-panel { max-width: none; background: transparent; border: 0; box-shadow: none; padding: 8px; }
+.ohif__side .ai-panel[data-collapsed="true"] { max-width: none; }
+@media (max-width: 900px) { .ohif__body { grid-template-columns: 1fr 350px; } .ohif__studies { display: none; } }
+</style>
+</head>
+
+<body>
+
+<!-- ===== DEMO BAR (không port) ===== -->
+<div class="demo-bar" role="toolbar" aria-label="Điều khiển demo">
+  <div class="demo-group" id="demo-view">
+    <span>Chế độ xem</span>
+    <button class="demo-chip" data-view="single" aria-pressed="true">Panel riêng</button>
+    <button class="demo-chip" data-view="ohif" aria-pressed="false">Trong OHIF</button>
+  </div>
+  <div class="demo-group" id="demo-status">
+    <span>Trạng thái</span>
+    <button class="demo-chip" data-status="NOT_TRIGGERED" aria-pressed="false">1. Chưa xử lý</button>
+    <button class="demo-chip" data-status="PENDING" aria-pressed="false">2. Đang phân tích</button>
+    <button class="demo-chip" data-status="READY" aria-pressed="true">3. Có gợi ý (READY)</button>
+    <button class="demo-chip" data-status="FAILED" aria-pressed="false">4. AI lỗi</button>
+    <button class="demo-chip" data-status="TIMEOUT" aria-pressed="false">5. Không phản hồi</button>
+  </div>
+</div>
+
+<main class="demo-stage">
+  <!-- Chế độ 1: panel đứng riêng -->
+  <div class="demo-single" id="stage-single">
+    <div class="ai-panel" id="panel-single"></div>
+  </div>
+
+  <!-- Chế độ 2: trong OHIF (tab "AI" ở cột phải 350px) -->
+  <div class="ohif" id="stage-ohif" aria-label="Minh hoạ vị trí AI Panel trong OHIF">
+    <div class="ohif__top">
+      <strong>Open Health Imaging Foundation</strong>
+      <span>⌕ Zoom</span><span>✛ Pan</span><span>Đo đạc</span><span class="is-active">◐ WW/WL</span><span>↕ Flip</span><span>⟳ Rotate</span>
+    </div>
+    <div class="ohif__body">
+      <aside class="ohif__studies">
+        <h5>STUDIES</h5>
+        <div class="ohif__studycard">21-Nov-2022<small>CERVEAU DATSCAN</small></div>
+      </aside>
+      <section class="ohif__viewport" id="ohif-viewport">
+        <div class="vp"></div><div class="vp"></div><div class="vp"></div><div class="vp"></div>
+      </section>
+      <aside class="ohif__side">
+        <div class="ohif__tabs"><span>Segmentation</span><span>Measurements</span><span class="is-active">AI</span></div>
+        <div class="ai-panel" id="panel-ohif"></div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="demo-log" id="demo-log" aria-live="polite"><b>Sự kiện</b> — tương tác với panel để xem CustomEvent phát ra.</div>
+</main>
+
+<script>
+/* =====================================================================
+   4. COMPONENT JS — renderAiPanel(root, state)
+   Port phần này. Mọi thứ sinh từ object `state`; host app giữ state và gọi lại renderAiPanel khi đổi.
+   ===================================================================== */
+
+const ICON = {
+  chevronDown:  '<svg class="ai-panel__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+  chevronRight: '<svg class="ai-panel__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
+  check:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+  edit:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>',
+  x:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
+  spinner: '<svg class="ai-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>'
+};
+
+const BADGE_LABEL = {
+  NOT_TRIGGERED: 'Chưa xử lý',
+  PENDING: 'Đang phân tích…',
+  READY: 'Có gợi ý AI',
+  FAILED: 'AI lỗi',
+  TIMEOUT: 'AI không phản hồi'
+};
+const LEVEL_LABEL = { high: 'Cao', medium: 'Trung bình', low: 'Thấp' };
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* Dữ liệu mẫu — chuỗi lấy nguyên văn từ Figma */
+const AI_PANEL_SAMPLE = {
+  NOT_TRIGGERED: {
+    status: 'NOT_TRIGGERED', collapsed: false,
+    message: 'Chưa có kết quả AI cho ca này.',
+    hint: 'Loại ảnh này chưa được AI hỗ trợ cho ca này.'
+  },
+  PENDING: {
+    status: 'PENDING', collapsed: false,
+    pendingText: 'Đang phân tích ảnh (ước tính còn vài phút)'
+  },
+  READY: {
+    status: 'READY', collapsed: false,
+    metaText: 'MedAI-ChestCT v1.2 · hoàn tất 09/08/2026 23:02',
+    overlay: {
+      on: false, opacity: 65,
+      legend: [
+        { label: 'Nốt mờ thuỳ trên phổi (P)', color: 'var(--overlay-coral)' },
+        { label: 'Tràn dịch màng phổi (T)',   color: 'var(--overlay-amber)' }
+      ]
+    },
+    findings: [
+      { label: 'Nốt mờ thuỳ trên phổi (P), ~8mm',  level: 'high' },
+      { label: 'Dày thành phế quản hai bên',        level: 'medium' },
+      { label: 'Tràn dịch màng phổi (T), lượng ít', level: 'low' }
+    ],
+    draft: [
+      { title: 'Kỹ thuật', text: 'Chụp X-quang ngực thẳng, tư thế đứng, hít sâu.' },
+      { title: 'Mô tả',    text: 'Nốt mờ ranh giới rõ, đường kính khoảng 8mm ở thuỳ trên phổi phải. Thành phế quản hai bên dày nhẹ. Góc sườn hoành (T) hơi tù, nghi tràn dịch màng phổi lượng ít.' },
+      { title: 'Kết luận', text: 'Nốt mờ thuỳ trên phổi (P) cần theo dõi thêm. Nghi tràn dịch màng phổi (T) mức độ ít.' }
+    ],
+    warning: 'Đây là gợi ý AI, không phải chẩn đoán chính thức. AI chỉ đánh dấu một số vùng nghi ngờ, không thay thế việc đọc toàn bộ ảnh. Bác sĩ chịu trách nhiệm xác nhận.',
+    dismissed: false
+  },
+  FAILED: {
+    status: 'FAILED', collapsed: false,
+    metaText: 'MedAI-ChestCT v1.2 · 09/08/2026 23:05',
+    message: 'AI không trả được kết quả cho ca này.',
+    hint: 'Vui lòng đọc ảnh như bình thường.'
+  },
+  TIMEOUT: {
+    status: 'TIMEOUT', collapsed: false,
+    metaText: 'MedAI-ChestCT v1.2 · hết hạn sau 120s',
+    message: 'AI không phản hồi cho ca này.',
+    hint: 'Vui lòng đọc ảnh như bình thường.'
+  }
+};
+
+function renderReadyBody(s) {
+  const o = s.overlay || { on: false, opacity: 65, legend: [] };
+
+  if (s.dismissed) {
+    return `
+      <div class="ai-divider"></div>
+      <p class="ai-text-muted">Đã bỏ qua gợi ý AI cho lượt đọc này.</p>
+      <button class="ai-link" type="button" data-act="restore">Xem lại gợi ý AI</button>`;
+  }
+
+  return `
+    <div class="ai-divider"></div>
+
+    <section class="ai-block" aria-label="Vùng AI đánh dấu">
+      <div class="ai-overlay-head">
+        <div class="ai-overlay-head__label">
+          <strong id="ai-ovl-label">Hiện vùng AI đánh dấu</strong>
+          <span>Mặc định TẮT</span>
+        </div>
+        <button class="ai-toggle" type="button" role="switch" aria-labelledby="ai-ovl-label"
+                aria-checked="${o.on}" data-act="overlay"></button>
+      </div>
+
+      <div ${o.on ? '' : 'hidden'} data-ovl-extra>
+        <div class="ai-block">
+          <div class="ai-overlay-preview">
+            <p class="ai-overlay-preview__note">Minh hoạ: mask DICOM SEG chồng lên ảnh gốc (OHIF tự vẽ)</p>
+            <span class="ai-mask ai-mask--1" style="opacity:${o.opacity / 100}"></span>
+            <span class="ai-mask ai-mask--2" style="opacity:${o.opacity / 100}"></span>
+          </div>
+          <div class="ai-slider">
+            <div class="ai-slider__row"><span>Độ trong suốt</span><span data-opacity-val>${o.opacity}%</span></div>
+            <input type="range" min="0" max="100" value="${o.opacity}" style="--fill:${o.opacity}%"
+                   aria-label="Độ trong suốt vùng AI đánh dấu" data-act="opacity">
+          </div>
+          <div class="ai-legend">
+            ${(o.legend || []).map((l) => `
+              <div class="ai-legend__item"><span class="ai-legend__dot" style="background:${l.color}"></span>${esc(l.label)}</div>`).join('')}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="ai-divider"></div>
+
+    <section class="ai-block" aria-label="Nhãn AI đề xuất">
+      <h3 class="ai-section-title">Nhãn AI đề xuất</h3>
+      ${(s.findings || []).map((f) => `
+        <div class="ai-finding">
+          <p class="ai-finding__label">${esc(f.label)}</p>
+          <span class="ai-conf" data-level="${f.level}">
+            <span class="ai-conf__bars" aria-hidden="true"><i></i><i></i><i></i></span>${LEVEL_LABEL[f.level]}
+          </span>
+        </div>`).join('')}
+    </section>
+
+    <div class="ai-divider"></div>
+
+    <section class="ai-block" style="gap:8px" aria-label="Nội dung nháp cho báo cáo">
+      <div class="ai-draft-head">
+        <h3 class="ai-section-title">Nội dung nháp cho báo cáo</h3>
+        <p class="ai-text-muted">Xem trước — không phải ô nhập</p>
+      </div>
+      <div class="ai-draft">
+        ${(s.draft || []).map((d) => `
+          <div class="ai-draft__item"><h4>${esc(d.title)}</h4><p>${esc(d.text)}</p></div>`).join('')}
+      </div>
+    </section>
+
+    <div class="ai-warning" role="note">
+      <span class="ai-warning__icon" aria-hidden="true">!</span>
+      <p>${esc(s.warning)}</p>
+    </div>
+
+    <div class="ai-actions">
+      <button class="ai-btn ai-btn--primary" type="button" data-act="accept">${ICON.check}Dùng gợi ý này</button>
+      <div class="ai-actions__row">
+        <button class="ai-btn ai-btn--outline" type="button" data-act="edit">${ICON.edit}Sửa trước khi dùng</button>
+        <button class="ai-btn ai-btn--ghost" type="button" data-act="dismiss">${ICON.x}Bỏ qua gợi ý</button>
+      </div>
+    </div>`;
+}
+
+function renderAiPanel(root, s) {
+  const collapsed = !!s.collapsed;
+  root.dataset.status = s.status;
+  root.dataset.collapsed = String(collapsed);
+  root.__state = s;
+
+  let body = '';
+  if (collapsed) {
+    body = s.status === 'READY' ? `<p class="ai-text-muted">Bấm để mở — khối gợi ý chưa tự bung</p>` : '';
+  } else if (s.status === 'NOT_TRIGGERED') {
+    body = `<p class="ai-text-body">${esc(s.message)}</p><p class="ai-text-muted">${esc(s.hint)}</p>`;
+  } else if (s.status === 'PENDING') {
+    body = `
+      <div class="ai-pending">${ICON.spinner}<p class="ai-text-body" style="width:auto">${esc(s.pendingText)}</p></div>
+      <button class="ai-btn ai-btn--ghost ai-btn--sm" type="button" data-act="refresh" style="flex:none">${ICON.refresh}Làm mới</button>`;
+  } else if (s.status === 'READY') {
+    body = `<p class="ai-text-muted">${esc(s.metaText)}</p>` + renderReadyBody(s);
+  } else { // FAILED | TIMEOUT
+    body = `<p class="ai-text-muted">${esc(s.metaText)}</p>
+            <p class="ai-text-body">${esc(s.message)}</p>
+            <p class="ai-text-muted">${esc(s.hint)}</p>`;
+  }
+
+  root.innerHTML = `
+    <button class="ai-panel__header" type="button" data-act="collapse" aria-expanded="${!collapsed}">
+      <span class="ai-panel__title">AI Panel</span>
+      ${collapsed ? ICON.chevronRight : ICON.chevronDown}
+    </button>
+    <span class="ai-badge" data-status="${s.status}"><span class="ai-badge__dot"></span>${BADGE_LABEL[s.status]}</span>
+    ${body}`;
+}
+
+/* Gắn event delegation một lần; panel phát CustomEvent cho host app */
+function bindAiPanel(root, onChange) {
+  const emit = (name, detail = {}) =>
+    root.dispatchEvent(new CustomEvent('ai-panel:' + name, { bubbles: true, detail }));
+
+  root.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-act]');
+    if (!el || !root.contains(el)) return;
+    const s = root.__state;
+    switch (el.dataset.act) {
+      case 'collapse':
+        s.collapsed = !s.collapsed;
+        emit('toggle-collapse', { collapsed: s.collapsed });
+        if (!s.collapsed && s.status === 'READY' && !s.__viewed) { s.__viewed = true; emit('suggestion-viewed'); }
+        renderAiPanel(root, s); break;
+      case 'overlay':
+        s.overlay.on = !s.overlay.on;
+        emit('overlay-toggle', { on: s.overlay.on });
+        renderAiPanel(root, s); break;
+      case 'refresh': emit('refresh'); break;
+      case 'accept':  emit('accept');  break;
+      case 'edit':    emit('edit');    break;
+      case 'dismiss': s.dismissed = true;  emit('dismiss');  renderAiPanel(root, s); break;
+      case 'restore': s.dismissed = false; emit('suggestion-viewed'); renderAiPanel(root, s); break;
+    }
+    onChange && onChange();
+  });
+
+  // Slider: cập nhật tại chỗ để không mất focus khi kéo
+  root.addEventListener('input', (e) => {
+    if (e.target.dataset.act !== 'opacity') return;
+    const v = +e.target.value, s = root.__state;
+    s.overlay.opacity = v;
+    e.target.style.setProperty('--fill', v + '%');
+    root.querySelector('[data-opacity-val]').textContent = v + '%';
+    root.querySelectorAll('.ai-mask').forEach((m) => (m.style.opacity = v / 100));
+    emit('opacity-change', { value: v });
+    onChange && onChange();
+  });
+}
+
+/* =====================================================================
+   5. DEMO WIRING (không port)
+   ===================================================================== */
+(function demo() {
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const single = document.getElementById('panel-single');
+  const ohifPanel = document.getElementById('panel-ohif');
+  const ohifStage = document.getElementById('stage-ohif');
+  const singleStage = document.getElementById('stage-single');
+  const vp = document.getElementById('ohif-viewport');
+  const log = document.getElementById('demo-log');
+
+  let view = 'single';
+  let status = 'READY';
+
+  function active() { return view === 'ohif' ? ohifPanel : single; }
+
+  function syncViewport() {
+    vp.querySelectorAll('.vp-mask').forEach((n) => n.remove());
+    const s = ohifPanel.__state;
+    if (view !== 'ohif' || !s || s.status !== 'READY' || s.collapsed || s.dismissed || !s.overlay || !s.overlay.on) return;
+    [['--overlay-coral', '16%', '30%', 70, 52], ['--overlay-amber', '14%', '36%', 100, 38]].forEach(([c, l, t, w, h], i) => {
+      const m = document.createElement('div');
+      m.className = 'vp-mask';
+      m.style.cssText = `background:var(${c});left:calc(${l} + ${i * 20}px);top:calc(${t} + ${i * 26}px);width:${w}px;height:${h}px;opacity:${s.overlay.opacity / 100}`;
+      vp.appendChild(m);
+    });
+  }
+
+  function load() {
+    const s = clone(AI_PANEL_SAMPLE[status]);
+    if (view === 'ohif' && status === 'READY') s.collapsed = true;   // doc/11 mục 5.2.6: mở ca → thu gọn, chưa tự bung
+    renderAiPanel(active(), s);
+    syncViewport();
+  }
+
+  bindAiPanel(single, syncViewport);
+  bindAiPanel(ohifPanel, syncViewport);
+
+  [single, ohifPanel].forEach((p) => {
+    ['toggle-collapse', 'suggestion-viewed', 'overlay-toggle', 'opacity-change', 'refresh', 'accept', 'edit', 'dismiss'].forEach((n) => {
+      p.addEventListener('ai-panel:' + n, (e) => {
+        const d = Object.keys(e.detail || {}).length ? ' ' + JSON.stringify(e.detail) : '';
+        log.innerHTML = `<b>ai-panel:${n}</b>${d}<br>` + log.innerHTML.split('<br>').slice(0, 4).join('<br>');
+        console.log('ai-panel:' + n, e.detail);
+      });
+    });
+  });
+
+  document.getElementById('demo-view').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-view]'); if (!b) return;
+    view = b.dataset.view;
+    document.querySelectorAll('#demo-view .demo-chip').forEach((c) => c.setAttribute('aria-pressed', String(c === b)));
+    singleStage.style.display = view === 'single' ? '' : 'none';
+    ohifStage.classList.toggle('is-on', view === 'ohif');
+    load();
+  });
+  document.getElementById('demo-status').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-status]'); if (!b) return;
+    status = b.dataset.status;
+    document.querySelectorAll('#demo-status .demo-chip').forEach((c) => c.setAttribute('aria-pressed', String(c === b)));
+    load();
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
