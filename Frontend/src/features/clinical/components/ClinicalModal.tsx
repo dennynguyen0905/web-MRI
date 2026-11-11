@@ -54,7 +54,7 @@ export function ClinicalModal({ open, onClose, row }: {
     <div className="fixed inset-0 z-50 bg-[rgba(16,24,40,.45)] p-5" onMouseDown={onClose}>
       <div
         onMouseDown={e => e.stopPropagation()}
-        className="mx-auto flex h-full max-w-[1180px] flex-col overflow-hidden rounded-lg bg-white shadow-[0_20px_60px_rgba(16,24,40,.3)]"
+        className="mx-auto flex h-full max-w-[1180px] flex-col overflow-hidden rounded-lg bg-white shadow-[0_20px_60px_rgba(16,24,40,.3)] desktop:max-w-[1320px]"
       >
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4">
           <Stethoscope size={14} className="text-brand-600" />
@@ -65,13 +65,13 @@ export function ClinicalModal({ open, onClose, row }: {
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <nav className="w-[228px] shrink-0 overflow-y-auto border-r border-line p-2.5">
+          <nav className="w-[228px] shrink-0 overflow-y-auto border-r border-line p-2.5 desktop:w-[260px] desktop:p-3">
             {CLINICAL_SECTIONS.map((s, i) => (
               <button
                 key={s.key}
                 onClick={() => setTab(i)}
                 className={cx(
-                  'mb-1 block w-full rounded-md px-2.5 py-2 text-left text-[11px] font-semibold leading-snug transition-colors',
+                  'mb-1 block w-full rounded-md px-2.5 py-2 text-left text-[11px] font-semibold leading-snug transition-colors desktop:text-[12px]',
                   i === tab
                     ? 'border-l-[3px] border-brand-600 bg-brand-50 text-brand-700'
                     : 'text-ink-3 hover:bg-line-soft',
@@ -82,7 +82,7 @@ export function ClinicalModal({ open, onClose, row }: {
             ))}
           </nav>
 
-          <div className="min-h-0 flex-1 overflow-y-auto bg-app p-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-app p-4 desktop:p-5">
             <PatientCard row={row} />
 
             {snapshot.loading && (

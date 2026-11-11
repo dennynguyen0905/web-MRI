@@ -30,14 +30,13 @@ export function Pagination({ page, pageSize, total, onPage, onPageSize }: Props)
   const end = Math.min(total, page * pageSize)
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-3 border-t border-line bg-white px-3">
-      <span className="text-[11.5px] text-ink-3">
+    <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-t border-line bg-white px-3 py-1.5 desktop:flex-nowrap desktop:gap-3 desktop:py-0">
+      <span className="text-[11.5px] text-ink-3 desktop:text-[12px]">
         Hiển thị {start}–{end} trên {total} ca chụp
       </span>
 
-      <div className="flex-1" />
-
-      <div className="flex items-center gap-0.5">
+      <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+        <div className="flex items-center gap-0.5">
         <PageBtn disabled={page === 1} onClick={() => onPage(page - 1)}>
           <ChevronLeft size={13} />
         </PageBtn>
@@ -60,9 +59,10 @@ export function Pagination({ page, pageSize, total, onPage, onPageSize }: Props)
         <PageBtn disabled={page === last} onClick={() => onPage(page + 1)}>
           <ChevronRight size={13} />
         </PageBtn>
+        </div>
       </div>
 
-      <div className="w-[88px]">
+      <div className="w-[88px] shrink-0">
         <Select
           value={String(pageSize)}
           onChange={e => onPageSize(Number(e.target.value))}

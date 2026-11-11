@@ -2,7 +2,7 @@ import { type Permission, can, deniedReason } from '@/shared/lib/auth'
 import { dash, formatAge, formatDateTime, formatDob, genderLabel } from '@/shared/lib/format'
 import type { AppUser, Report, WorklistRow } from '@/shared/lib/types'
 import { Button } from '@/shared/ui/controls'
-import { ChevronRight, Edit, FileText, Printer, Stethoscope, Sync, User } from '@/shared/ui/Icon'
+import { ChevronRight, Edit, Eye, FileText, Printer, Stethoscope, Sync, User } from '@/shared/ui/Icon'
 
 interface Props {
   row: WorklistRow
@@ -13,6 +13,7 @@ interface Props {
   onUpdateFromHis: () => void
   onAddOrder: () => void
   onClinical: () => void
+  onViewImage: () => void
   onReport: () => void
   onPrint: () => void
 }
@@ -23,14 +24,20 @@ interface Props {
  * để bảng chiếm hết chiều ngang (Task 6).
  */
 export function PatientPanel({
-  row, user, report, onClose, onUpdate, onUpdateFromHis, onAddOrder, onClinical, onReport, onPrint,
+  row, user, report, onClose, onUpdate, onUpdateFromHis, onAddOrder, onClinical, onViewImage, onReport, onPrint,
 }: Props) {
   // Kỹ thuật và kết luận lấy từ báo cáo hiện hành — nguồn duy nhất (`doc/02-erd.md` mục 10).
   const technique = report?.technique ?? row.reportSummary?.technique ?? null
   const conclusion = report?.conclusion ?? row.reportSummary?.conclusion ?? null
 
+  // Cùng cơ chế mà icon con mắt trước đây dùng trong WorklistTable: chưa có ảnh trong
+  // PACS hoặc không đủ quyền → disabled kèm tooltip, không ẩn nút.
+  const hasImage = Boolean(row.study.studyInstanceUid)
+  const canViewImage = can(user, 'study.viewImage')
+  const viewImageDenied = !hasImage ? 'Chưa có ảnh chụp' : !canViewImage ? deniedReason('study.viewImage') : undefined
+
   return (
-    <aside className="flex w-[268px] shrink-0 flex-col overflow-hidden border-l border-line bg-white">
+    <aside className="flex w-[260px] shrink-0 flex-col overflow-hidden border-l border-line bg-white desktop:w-[300px]">
       <div className="flex h-[30px] shrink-0 items-center gap-1.5 border-b border-line bg-[#e7eefb] px-2 text-[11.5px] font-semibold text-[#1e3a6b]">
         <User size={12} />
         <span className="flex-1">Thông tin bệnh nhân</span>
@@ -48,11 +55,20 @@ export function PatientPanel({
         <Gated user={user} need="order.sync" icon={<Sync size={12} />} onClick={onUpdateFromHis}>Cập nhật từ HIS</Gated>
         <Gated user={user} need="patient.create" icon={<FileText size={12} />} onClick={onAddOrder}>Thêm chỉ định</Gated>
         <Gated user={user} need="clinical.view" icon={<Stethoscope size={12} />} onClick={onClinical}>Lâm sàng</Gated>
-        <Button variant="primary" icon={<Edit size={12} />} onClick={onReport}>Báo cáo</Button>
+        <Button
+          variant="primary"
+          icon={<Eye size={12} />}
+          disabled={Boolean(viewImageDenied)}
+          title={viewImageDenied}
+          onClick={onViewImage}
+        >
+          Xem ảnh chụp
+        </Button>
+        <Button variant="outline" icon={<Edit size={12} />} onClick={onReport}>Báo cáo</Button>
         <Gated user={user} need="report.print" icon={<Printer size={12} />} onClick={onPrint}>In</Gated>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5 desktop:px-4 desktop:py-3">
         <Group>
           <Field label="Họ tên" value={row.patient.fullName} strong />
           <Field label="Năm sinh" value={formatDob(row.patient.dateOfBirth, row.patient.dobPrecision)} />
@@ -126,8 +142,8 @@ function Field({ label, value, strong, multiline, hint }: {
   hint?: string
 }) {
   return (
-    <div className="flex gap-2 text-[11.5px] leading-snug">
-      <span className="w-[92px] shrink-0 text-ink-4">{label}</span>
+    <div className="flex gap-2 text-[11.5px] leading-snug desktop:text-[12px]">
+      <span className="w-[92px] shrink-0 text-ink-4 desktop:w-[104px]">{label}</span>
       <span className={multiline ? 'flex-1 break-words' : 'flex-1 truncate'} title={hint ?? value}>
         <span className={strong ? 'font-semibold text-ink' : 'text-ink-2'}>{value}</span>
       </span>

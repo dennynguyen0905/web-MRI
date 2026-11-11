@@ -36,7 +36,7 @@ export function TopBar({ state, onChange, onReset, onReload, onAddPatient, user,
   const account = usePopover()
 
   return (
-    <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line bg-white px-3">
+    <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-white px-3 py-2 desktop:h-[52px] desktop:flex-nowrap desktop:py-0">
       {/* Thương hiệu */}
       <div className="flex shrink-0 items-center gap-2 pr-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
@@ -50,21 +50,21 @@ export function TopBar({ state, onChange, onReset, onReload, onAddPatient, user,
 
       {/* Ô tìm kiếm nhanh */}
       <div className="flex shrink-0 items-center gap-1.5">
-        <div className="w-[118px]">
+        <div className="w-[108px] desktop:w-[118px]">
           <Input
             placeholder="Mã bệnh nhân"
             value={state.patientCode}
             onChange={e => onChange({ patientCode: e.target.value })}
           />
         </div>
-        <div className="w-[132px]">
+        <div className="w-[120px] desktop:w-[132px]">
           <Input
             placeholder="Họ tên bệnh nhân"
             value={state.patientName}
             onChange={e => onChange({ patientName: e.target.value })}
           />
         </div>
-        <div className="w-[96px]">
+        <div className="w-[88px] desktop:w-[96px]">
           <Input
             placeholder="Mã LSVV"
             value={state.visitCode}
@@ -116,9 +116,7 @@ export function TopBar({ state, onChange, onReset, onReload, onAddPatient, user,
         </div>
       </div>
 
-      <div className="flex-1" />
-
-      <div className="relative">
+      <div className="relative ml-auto">
         <button
           onClick={account.toggle}
           className="focus-ring flex h-7 items-center gap-1.5 rounded-md border border-line px-1.5 pr-2 transition-colors hover:bg-line-soft"

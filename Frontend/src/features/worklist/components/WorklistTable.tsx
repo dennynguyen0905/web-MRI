@@ -3,10 +3,7 @@ import { dash, formatAge, formatDob, formatTimeShort, genderLabel } from '@/shar
 import type { WorklistRow } from '@/shared/lib/types'
 import { StatusChip } from '@/shared/ui/StatusChip'
 import { Checkbox, EmptyState, Input, Popover, Tag, cx, usePopover } from '@/shared/ui/controls'
-import { Eye, Pin, Settings, Sort } from '@/shared/ui/Icon'
-import { useAuth } from '@/features/auth/hooks/useAuth'
-import { can, deniedReason } from '@/shared/lib/auth'
-import { openStudyViewer } from '@/features/studies/api/viewerApi'
+import { Pin, Settings, Sort } from '@/shared/ui/Icon'
 
 export type ColumnKey =
   | 'index' | 'status' | 'patientCode' | 'patientInfo' | 'fullName' | 'dob' | 'age' | 'gender'
@@ -185,8 +182,6 @@ export function WorklistTable({
   columnFilterMode, onToggleColumnFilterMode,
   columnFilters, onColumnFilter, sort, onSort,
 }: Props) {
-  const { user } = useAuth()
-  const canViewImage = can(user, 'study.viewImage')
   const colMenu = usePopover()
   const cols = columns
     .filter(k => !OPTIONAL_COLUMNS.some(o => o.key === k) || visibleOptional.has(k))
@@ -202,11 +197,11 @@ export function WorklistTable({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full min-w-[920px] border-collapse text-[12px]">
+        <table className="w-full min-w-[920px] border-collapse text-[12px] desktop:text-[13px]">
           <thead className="sticky top-0 z-20">
             <tr className="bg-[#e7eefb]">
               <th className="w-[46px] border-b border-brand-100 px-1.5 py-0 text-left">
-                <div className="relative flex h-[30px] items-center gap-0.5">
+                <div className="relative flex h-[30px] items-center gap-0.5 desktop:h-[34px]">
                   <button
                     onClick={colMenu.toggle}
                     title="Cột hiển thị"
@@ -232,7 +227,7 @@ export function WorklistTable({
                   key={c.key}
                   style={{ width: c.width }}
                   className={cx(
-                    'border-b border-brand-100 px-2 py-0 text-[11.5px] font-semibold text-[#1e3a6b]',
+                    'border-b border-brand-100 px-2 py-0 text-[11.5px] font-semibold text-[#1e3a6b] desktop:text-[12px]',
                     c.align === 'center' ? 'text-center' : 'text-left',
                   )}
                 >
@@ -240,7 +235,7 @@ export function WorklistTable({
                     disabled={!c.sortField}
                     onClick={() => c.sortField && onSort(c.sortField)}
                     className={cx(
-                      'flex h-[30px] w-full items-center gap-1',
+                      'flex h-[30px] w-full items-center gap-1 desktop:h-[34px]',
                       c.align === 'center' && 'justify-center',
                       c.sortField && 'cursor-pointer hover:text-brand-700',
                     )}
@@ -258,13 +253,6 @@ export function WorklistTable({
                   </button>
                 </th>
               ))}
-              <th
-                style={{ width: '56px' }}
-                className="w-[56px] border-b border-brand-100 px-1 py-0 text-center text-[11.5px] font-semibold text-[#1e3a6b]"
-                title="Xem ảnh trong OHIF (IN-19, IN-23)"
-              >
-                <span className="sr-only">Xem ảnh</span>
-              </th>
             </tr>
 
             {columnFilterMode && (
@@ -282,7 +270,6 @@ export function WorklistTable({
                     ) : null}
                   </td>
                 ))}
-                <td className="border-b border-line px-1.5 py-1" />
               </tr>
             )}
           </thead>
@@ -306,53 +293,11 @@ export function WorklistTable({
                   {cols.map(c => (
                     <td
                       key={c.key}
-                      className={cx('px-2 py-1.5 align-top', c.align === 'center' && 'text-center')}
+                      className={cx('px-2 py-1.5 align-top desktop:py-2', c.align === 'center' && 'text-center')}
                     >
                       {c.render(row, i)}
                     </td>
                   ))}
-                  <td
-                    className="w-[56px] px-1 py-1 text-center align-middle"
-                    onClick={e => e.stopPropagation()}
-                  >
-                    {(() => {
-                      const hasUid = Boolean(row.study.studyInstanceUid)
-                      if (!hasUid) {
-                        return (
-                          <button
-                            type="button"
-                            disabled
-                            title="Ca chưa có ảnh trong PACS"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded text-ink-4 opacity-40 cursor-not-allowed"
-                          >
-                            <Eye size={13} />
-                          </button>
-                        )
-                      }
-                      if (!canViewImage) {
-                        return (
-                          <button
-                            type="button"
-                            disabled
-                            title={deniedReason('study.viewImage')}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded text-ink-4 opacity-40 cursor-not-allowed"
-                          >
-                            <Eye size={13} />
-                          </button>
-                        )
-                      }
-                      return (
-                        <button
-                          type="button"
-                          title="Xem ảnh trong OHIF"
-                          onClick={() => openStudyViewer(row.study.id)}
-                          className="inline-flex h-6 w-6 items-center justify-center rounded text-brand-600 transition-colors hover:bg-brand-50 hover:text-brand-700 focus-ring cursor-pointer"
-                        >
-                          <Eye size={13} />
-                        </button>
-                      )
-                    })()}
-                  </td>
                 </tr>
               )
             })}
