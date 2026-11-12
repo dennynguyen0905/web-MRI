@@ -8,6 +8,7 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Root;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -26,5 +27,16 @@ public class ReportDaoImpl extends AbstractHibernateDao<Report, Long> implements
                 .where(cb.equal(root.get("studyId"), studyId))
                 .orderBy(cb.desc(root.get("version")));
         return entityManager.createQuery(query).setMaxResults(1).getResultStream().findFirst();
+    }
+
+    @Override
+    public List<Report> findAllByStudyId(Long studyId) {
+        CriteriaBuilder cb = criteriaBuilder();
+        CriteriaQuery<Report> query = cb.createQuery(Report.class);
+        Root<Report> root = query.from(Report.class);
+        query.select(root)
+                .where(cb.equal(root.get("studyId"), studyId))
+                .orderBy(cb.desc(root.get("version")));
+        return entityManager.createQuery(query).getResultList();
     }
 }
