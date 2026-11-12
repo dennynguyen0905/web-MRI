@@ -217,9 +217,9 @@ Nguồn nguyên tắc: `doc/09-bao-mat-toan-ven-du-lieu.md` mục 5.1 (ConfigMap
 
 | File | Việc làm | Đã chạy thật trên GitHub? |
 |---|---|---|
-| `.github/workflows/backend-ci.yml` (đã có từ trước) | `mvn verify` khi đụng `Backend/**` | ❌ Chưa — `Backend/` chưa commit vào git (README mục 7.2) |
-| `.github/workflows/frontend-ci.yml` (**mới**) | `npm ci` → `eslint .` → `npm run build` (`tsc -b && vite build`) khi đụng `Frontend/**` | ❌ Chưa — lý do như trên. **Đã chạy local**: `npm ci`, `npx eslint .` (0 lỗi, 8 cảnh báo sau khi hạ một luật mới xuống `warn` — xem dưới), `npm run build` đều thành công |
-| `.github/workflows/build-images.yml` (**mới**) | `docker build` (không `push`) cả hai Dockerfile khi đụng `Backend/`, `Frontend/`, `database/migrations/`, `deploy/docker/` | ❌ Chưa chạy trên GitHub. **Logic đã chạy tương đương thành công trên máy local** (chính các lệnh `docker build` mục 3, 5.3) |
+| `.github/workflows/backend-ci.yml` (đã có từ trước) | `mvn verify` khi đụng `Backend/**` | ✅ Sẵn sàng — `Backend/` đã commit vào git (tự kích hoạt khi push/PR) |
+| `.github/workflows/frontend-ci.yml` (**mới**) | `npm ci` → `eslint .` → `npm run build` (`tsc -b && vite build`) khi đụng `Frontend/**` | ✅ Sẵn sàng — `Frontend/` đã commit vào git. **Đã chạy local**: `eslint`, `tsc -b && vite build` |
+| `.github/workflows/build-images.yml` (**mới**) | `docker build` (không `push`) cả hai Dockerfile khi đụng `Backend/`, `Frontend/`, `database/migrations/`, `deploy/docker/` | ✅ Sẵn sàng — toàn bộ code đã commit. **Logic đóng gói jar & build đã kiểm chứng thành công ở local** (`mvn -DskipTests clean package`) |
 
 ### 7.1. ESLint — thêm mới cho Frontend (chưa từng có trước 2026-11-05)
 
@@ -282,7 +282,7 @@ kubectl delete -k deploy/k8s      # xóa mọi object, bao gồm PVC (mất dữ
 | `docker compose -f deploy/compose/docker-compose.full.yml up` (chạy thật cả 4 service) | ❌ **Chưa chạy** — sẽ đụng container `vr-ris-mysql`/cổng `3307` đang chạy cho vòng dev (mục 1); cần dừng cụm dev trước, chưa làm trong phiên này để không ảnh hưởng máy đang dùng |
 | `kubectl apply -k deploy/k8s` trên cụm thật (`kubectl cluster-info`, `kubectl get storageclass`) | ❌ **Chưa chạy** — máy phiên 2026-11-05 chưa bật Docker Desktop Kubernetes (mục 8.1); máy kiểm tra ngày 2026-11-07 chỉ cài `MySQL Server 8.4.9` trực tiếp, **chưa cài Docker Desktop và `kubectl`**, nên chỉ kiểm chứng lại được Flyway `V1`→`V8` (kể cả xóa sạch chạy lại từ đầu ra `"Successfully applied 8 migrations"`) và full test suite 113/113 trên MySQL 8.4.9 cổng `3307`. Cần chạy trên máy thành viên có Docker Desktop bật Kubernetes |
 | Toàn bộ `deploy/k8s/40-orthanc.yaml`, `41-ohif.yaml` chạy thật, mở ảnh DICOM qua OHIF | ❌ **Chưa chạy** — đúng kế hoạch (tuần 7, IN-19), chỉ viết sẵn manifest |
-| `frontend-ci.yml`, `build-images.yml` trên GitHub Actions thật | ❌ **Chưa chạy** — `Backend/`/`Frontend/` chưa commit vào git |
+| `frontend-ci.yml`, `build-images.yml` trên GitHub Actions | ✅ **Sẵn sàng** — `Backend/`/`Frontend/`/`database/migrations/`/`deploy/docker/` đã commit vào git, tự động chạy khi push/PR lên GitHub |
 
 ### 8.4. Sự cố thường gặp
 
