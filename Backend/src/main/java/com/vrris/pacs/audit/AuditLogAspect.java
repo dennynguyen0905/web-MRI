@@ -90,7 +90,19 @@ public class AuditLogAspect {
         if (fromContext != null) {
             return fromContext;
         }
-        return extractLongProperty(result, "patientId");
+        Long fromResult = extractLongProperty(result, "patientId");
+        if (fromResult != null) {
+            return fromResult;
+        }
+        if (joinPoint.getArgs() != null) {
+            for (Object arg : joinPoint.getArgs()) {
+                Long fromArg = extractLongProperty(arg, "patientId");
+                if (fromArg != null) {
+                    return fromArg;
+                }
+            }
+        }
+        return null;
     }
 
     private Long resolveEntityId(ProceedingJoinPoint joinPoint, Audited audited, Object result) {

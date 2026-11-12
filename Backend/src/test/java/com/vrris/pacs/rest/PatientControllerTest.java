@@ -10,17 +10,22 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,6 +48,9 @@ class PatientControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private String adminToken;
     private String radiologistToken;
@@ -200,6 +208,78 @@ class PatientControllerTest extends AbstractIntegrationTest {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("PATIENT_NOT_FOUND"));
+    }
+
+    @Test
+    void export_tra_file_csv_co_utf8_bom_va_ghi_audit_log_EXPORT_null_khi_nhieu_benh_nhan() throws Exception {
+        byte[] bytes = mockMvc.perform(get("/patients/export")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + radiologistToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        org.hamcrest.Matchers.containsString("danh-sach-benh-nhan_")))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+
+        String csv = new String(bytes, StandardCharsets.UTF_8);
+        assertThat(csv).startsWith("\uFEFFSTT,Mã bệnh nhân,Mã HIS,Họ tên,");
+        assertThat(csv).contains("TEST0001");
+        assertThat(csv).contains("TEST0002");
+
+        Integer auditCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'EXPORT' AND entity_type = 'PATIENT' "
+                        + "AND patient_id IS NULL AND actor_username = 'bs.cdha'",
+                Integer.class);
+        assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void export_loc_1_benh_nhan_ghi_audit_log_EXPORT_kem_patient_id() throws Exception {
+        Long p1Id = patientDao.findByPatientCode("TEST0001").orElseThrow().getId();
+
+        mockMvc.perform(get("/patients/export")
+                        .param("patient_code", "TEST0001")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        Integer auditCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'EXPORT' AND entity_type = 'PATIENT' "
+                        + "AND patient_id = ? AND actor_username = 'admin'",
+                Integer.class, p1Id);
+        assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void export_tra_401_khi_khong_co_token() throws Exception {
+        mockMvc.perform(get("/patients/export"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void export_tra_400_khi_sort_khong_hop_le() throws Exception {
+        mockMvc.perform(get("/patients/export")
+                        .param("sort", "khong_ton_tai,asc")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void export_events_ghi_audit_log_EXPORT_tra_204() throws Exception {
+        Long p1Id = patientDao.findByPatientCode("TEST0001").orElseThrow().getId();
+
+        mockMvc.perform(post("/patients/export-events")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + radiologistToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"target\":\"PATIENTS\",\"mode\":\"EXPORT\",\"row_count\":1,\"patient_id\":" + p1Id + "}"))
+                .andExpect(status().isNoContent());
+
+        Integer auditCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'EXPORT' AND entity_type = 'PATIENT' "
+                        + "AND patient_id = ? AND actor_username = 'bs.cdha'",
+                Integer.class, p1Id);
+        assertThat(auditCount).isEqualTo(1);
     }
 
     private Patient save(String code, String fullName, String socialInsuranceNo) {

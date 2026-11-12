@@ -1,5 +1,6 @@
 package com.vrris.pacs.rest;
 
+import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.StatusCountsResponse;
 import com.vrris.pacs.dto.response.StudyDetailResponse;
 import com.vrris.pacs.dto.response.StudyPageResponse;
@@ -9,14 +10,20 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -99,6 +106,36 @@ public class StudyController {
     ) {
         return studyService.getStatusCounts(departmentId, deviceId, modality, patientClass, timeField,
                 dateFrom, dateTo, patientCode, fullName, visitCode, orderCode);
+    }
+
+    @GetMapping(path = "/studies/export", produces = "text/csv;charset=UTF-8")
+    @Operation(
+            summary = "Xuat danh sach ca chup / benh nhan tren worklist dang CSV (UTF-8 kem BOM)",
+            description = "De xuat IN-25 (doc/01-scope.md muc 3.1 & muc 9, doc/06-rbac-matrix.md muc 3). "
+                    + "Ghi audit_log action EXPORT (patient_id co neu 1 benh nhan, NULL neu nhieu - doc/09 muc 2.2).")
+    @ApiResponse(responseCode = "200", description = "File CSV (UTF-8 kem BOM)")
+    @PreAuthorize(READ_ROLES)
+    public ResponseEntity<Resource> exportStudies(
+            @Parameter(description = "Loc theo chi dinh") @RequestParam(name = "order_id", required = false) Long orderId,
+            @Parameter(description = "Loc theo trang thai") @RequestParam(required = false) String status,
+            @Parameter(description = "Loc theo may") @RequestParam(name = "device_id", required = false) Long deviceId,
+            @Parameter(description = "Tim tu do tren ma benh nhan, ho ten, ma phieu, ma ho so") @RequestParam(required = false) String q,
+            @Parameter(description = "Loc theo ma benh nhan") @RequestParam(name = "patient_code", required = false) String patientCode,
+            @Parameter(description = "Loc theo ho ten") @RequestParam(name = "full_name", required = false) String fullName,
+            @Parameter(description = "<field>,<asc|desc>, vi du scheduled_at,asc") @RequestParam(required = false) String sort
+    ) {
+        ExportDocumentResponse document = studyService.exportCsv(
+                orderId, status, deviceId, q, patientCode, fullName, sort);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(document.fileName(), StandardCharsets.UTF_8)
+                .build());
+        return ResponseEntity.ok()
+                .headers(headers)
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .contentLength(document.content().length)
+                .body(new ByteArrayResource(document.content()));
     }
 
     @GetMapping(path = "/studies/{studyId}", produces = MediaType.APPLICATION_JSON_VALUE)

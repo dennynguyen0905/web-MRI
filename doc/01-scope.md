@@ -73,6 +73,7 @@ flowchart TB
 | IN-10 | Báo cáo kết quả: kỹ thuật, mô tả, chẩn đoán, kết luận, khuyến nghị; nháp → chính thức → duyệt | Đầy đủ | 5–6 |
 | IN-11 | Modal thông tin lâm sàng | **Rút gọn** — xem 3.3 | 6 |
 | IN-24 | Kiến trúc phân tầng backend + ArchUnit + Testcontainers + test theo tầng (R-05, `03-architecture.md` → `15-kien-truc-backend.md`) | Áp dụng xuyên suốt, không phải một màn hình riêng | 2–3 |
+| IN-25 | Xuất / tải file danh sách bệnh nhân và danh sách ca chụp (CSV UTF-8 kèm BOM) + in danh sách trên giao diện, kèm ghi `audit_log` `EXPORT` (`09-…` mục 2.2) | **Đề xuất ❓** — tách từ H-05, xem bảng thay đổi phạm vi (mục 9) | 6 |
 
 ### 3.2. Bộ lọc — cắt gọn có chủ ý
 
@@ -279,7 +280,7 @@ Cột "Quyết định" lấy từ nhóm; **trống hoặc ❓ nghĩa là nhóm 
 |---|---|---|---|---|
 | 2026-10-31 | **Frontend làm thừa so với scope.** Bộ lọc “Trạng thái đồng bộ HIS” và “Vi phạm BHYT” (mục 3.2 để HOÃN) | | ❓ giữ hay cắt | |
 | 2026-10-31 | **Thừa.** Nút “Danh sách ca chụp quá hạn” (mục 3.2 HOÃN, chưa định nghĩa “quá hạn”) | | ❓ giữ hay cắt | |
-| 2026-10-31 | **Thừa.** Nút “Duyệt toàn bộ danh sách” (H-05); ngoài ra có nút “In danh sách”, “Tải danh sách” chưa có chức năng | | ❓ giữ hay cắt | |
+| 2026-10-31 | **Thừa.** Nút “Duyệt toàn bộ danh sách” (H-05); ngoài ra có nút “In danh sách”, “Tải danh sách” chưa có chức năng | Xem dòng `2026-11-07` (`IN-25`) bên dưới | Đề xuất tách: giữ “In danh sách” + “Tải danh sách” (`IN-25`), đẩy hẳn “Duyệt toàn bộ danh sách” sang HOÃN ❓ | |
 | 2026-10-31 | **Thừa.** Tab lâm sàng 3 và 4 hiển thị dữ liệu giả; mục 3.3 yêu cầu bảng rỗng + ghi chú “chờ tích hợp HIS” | | ❓ giữ hay cắt | |
 | 2026-10-31 | **Thừa.** Cột mã đoàn khám, tên đoàn khám, mã hồ sơ, mã bệnh phẩm, mã lưu trữ nằm trong tập cột mặc định (mục 3.2 HOÃN) | | ❓ giữ hay cắt | |
 | 2026-10-31 | **Thừa.** Popover “Cấu hình hệ thống” (README 3.5) không thuộc danh mục IN | | ❓ giữ hay cắt | |
@@ -287,6 +288,7 @@ Cột "Quyết định" lấy từ nhóm; **trống hoặc ❓ nghĩa là nhóm 
 | 2026-10-31 | **Thiếu so với IN-12.** Khoảng thời gian, loại thời gian lọc và cây máy có trên giao diện nhưng trang worklist chưa áp dụng vào lọc dữ liệu | | — không phải đổi phạm vi, là việc còn thiếu | |
 | 2026-11-05 | **Thêm vào IN: IN-24** — kiến trúc phân tầng backend (R-05): package-by-layer, ArchUnit, Testcontainers, test theo tầng. Áp dụng xuyên suốt từ tuần 2 | **Đẩy sang HOÃN:** bộ lọc "Tùy chỉnh cột hiển thị" (mục 3.2, trước đây nằm trong IN-12) | ❓ chờ nhóm xác nhận | |
 | 2026-11-05 | **Thêm vào IN: IN-23** — nút “Xem ảnh” mở OHIF bằng `study_instance_uid` ở hàng worklist và ở tab 3 modal lâm sàng; ẩn/disable khi study chưa có `study_instance_uid` (tuần 6–7). Kéo theo: mục 3.3 tab 3 đổi từ “bảng rỗng” sang hiển thị tên dịch vụ + kết luận từ dữ liệu RIS | **Chuyển hẳn sang HOÃN:** bộ lọc “Lọc theo Bác sĩ chỉ định / Chỉ định / Bộ phận chụp / Kết luận” (mục 3.2) — trước đây là “làm nếu tuần 6 còn thời gian”, giờ **không làm trong 8 tuần** | ❓ chờ nhóm xác nhận | |
+| 2026-11-07 | **Thêm vào IN: IN-25** — Xuất/tải file danh sách bệnh nhân (`GET /patients/export`), danh sách ca chụp worklist (`GET /studies/export`) dạng CSV UTF-8 kèm BOM và in danh sách trên UI (`POST /patients/export-events`), bắt buộc ghi `audit_log` action `EXPORT` (`patient_id` có nếu 1 bệnh nhân, `NULL` nếu nhiều — `09-…` mục 2.2) | **Đẩy hẳn sang HOÃN:** nút “Duyệt toàn bộ danh sách” (H-05), các tùy chọn cấu hình phụ trong popover “Cấu hình hệ thống” (Loại màn, Màn hình, Tổng hợp, Giải mã tải về) và 5 nút khoảng thời gian nhanh trên thanh lọc (giữ lọc `date_from`/`date_to`) | ❓ chờ nhóm xác nhận | |
 
 ## 10. Việc tiếp theo
 

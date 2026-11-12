@@ -1,7 +1,9 @@
 package com.vrris.pacs.service;
 
+import com.vrris.pacs.dto.request.ListExportEventRequest;
 import com.vrris.pacs.dto.request.PatientCreateRequest;
 import com.vrris.pacs.dto.request.PatientUpdateRequest;
+import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.PatientPageResponse;
 import com.vrris.pacs.dto.response.PatientResponse;
 
@@ -32,4 +34,16 @@ public interface PatientService {
      * (PATIENT_SUSPECTED_DUPLICATE, 409) - ap dung lai cung quy tac nhu create.
      */
     PatientResponse update(Long id, PatientUpdateRequest request);
+
+    /**
+     * Xuat danh sach benh nhan ra file CSV UTF-8 kem BOM (IN-25, GET /patients/export).
+     * Ghi audit_log action EXPORT (patient_id co neu ket qua chi co 1 benh nhan, NULL neu nhieu -
+     * doc/09-bao-mat-toan-ven-du-lieu.md muc 2.2).
+     */
+    ExportDocumentResponse exportCsv(String q, String patientCode, String fullName, String sort);
+
+    /**
+     * Ghi nhan mot lan xuat hoac in danh sach tu trinh duyet (IN-25, POST /patients/export-events).
+     */
+    void recordExportEvent(ListExportEventRequest request);
 }

@@ -9,6 +9,7 @@ import com.vrris.pacs.dao.ReportDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dto.request.StudyCreateRequest;
+import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.ImagingOrderResponse;
 import com.vrris.pacs.dto.response.PatientResponse;
 import com.vrris.pacs.dto.response.StatusCountsResponse;
@@ -38,6 +39,7 @@ import com.vrris.pacs.model.Study;
 import com.vrris.pacs.rule.AccessionNumberGenerator;
 import com.vrris.pacs.rule.AgeCalculator;
 import com.vrris.pacs.rule.DepartmentTreeExpander;
+import com.vrris.pacs.rule.PatientListCsvExporter;
 import com.vrris.pacs.service.StudyService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -50,6 +52,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -90,6 +93,7 @@ public class StudyServiceImpl implements StudyService {
     private static final String TAB_DONE = "DONE";
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 200;
+    private static final int MAX_EXPORT_ROWS = 5000;
 
     private final StudyDao studyDao;
     private final ImagingOrderDao imagingOrderDao;
@@ -109,10 +113,10 @@ public class StudyServiceImpl implements StudyService {
     private String ohifBaseUrl = "http://localhost:8043";
 
     public StudyServiceImpl(StudyDao studyDao, ImagingOrderDao imagingOrderDao, ServiceItemDao serviceItemDao,
-                             DeviceDao deviceDao, DepartmentDao departmentDao, PatientDao patientDao,
-                             ReportDao reportDao, StudyMapper studyMapper, ImagingOrderMapper imagingOrderMapper,
-                             ServiceItemMapper serviceItemMapper, DeviceMapper deviceMapper,
-                             PatientMapper patientMapper, ReportMapper reportMapper) {
+                            DeviceDao deviceDao, DepartmentDao departmentDao, PatientDao patientDao,
+                            ReportDao reportDao, StudyMapper studyMapper, ImagingOrderMapper imagingOrderMapper,
+                            ServiceItemMapper serviceItemMapper, DeviceMapper deviceMapper,
+                            PatientMapper patientMapper, ReportMapper reportMapper) {
         this.studyDao = studyDao;
         this.imagingOrderDao = imagingOrderDao;
         this.serviceItemDao = serviceItemDao;
@@ -398,6 +402,123 @@ public class StudyServiceImpl implements StudyService {
 
         Study saved = studyDao.save(entity);
         return studyMapper.toResponse(saved);
+    }
+
+    @Override
+    // KHONG readOnly: AuditLogAspect ghi mot dong audit_log action EXPORT (IN-15, doc/09 muc 2.2).
+    @Transactional
+    @Audited(action = AuditAction.EXPORT, entityType = "STUDY")
+    public ExportDocumentResponse exportCsv(Long orderId, String status, Long deviceId,
+                                            String q, String patientCode, String fullName, String sort) {
+        SortSpec sortSpec = parseSort(sort);
+        String normalizedStatus = parseStatus(status);
+        List<String> statuses = normalizedStatus == null ? null : List.of(normalizedStatus);
+        List<Long> deviceIds = deviceId == null ? null : List.of(deviceId);
+
+        StudyDao.SearchCriteria criteria = new StudyDao.SearchCriteria(
+                statuses, null, deviceIds, null, null,
+                blankToNull(patientCode), blankToNull(fullName), null, null,
+                DEFAULT_TIME_FIELD, null, null,
+                1, MAX_EXPORT_ROWS, sortSpec.field(), sortSpec.ascending());
+        StudyDao.SearchResult result = studyDao.search(criteria);
+
+        String normQ = normalizeFilter(q);
+        String normCode = normalizeFilter(patientCode);
+        String normName = normalizeFilter(fullName);
+
+        List<PatientListCsvExporter.StudyWorklistRow> rows = new ArrayList<>();
+        Set<Long> distinctPatientIds = new LinkedHashSet<>();
+
+        for (Study study : result.items()) {
+            if (orderId != null && !orderId.equals(study.getOrderId())) {
+                continue;
+            }
+            ImagingOrder order = imagingOrderDao.findById(study.getOrderId()).orElse(null);
+            Patient patient = (order == null || order.getPatientId() == null)
+                    ? null
+                    : patientDao.findById(order.getPatientId()).orElse(null);
+
+            if (!matchesPatientFilters(study, order, patient, normQ, normCode, normName)) {
+                continue;
+            }
+
+            if (patient != null && patient.getId() != null) {
+                distinctPatientIds.add(patient.getId());
+            }
+
+            ServiceItem service = study.getServiceItemId() == null
+                    ? null
+                    : serviceItemDao.findById(study.getServiceItemId()).orElse(null);
+            Device device = study.getDeviceId() == null
+                    ? null
+                    : deviceDao.findById(study.getDeviceId()).orElse(null);
+            Report report = reportDao.findCurrentByStudyId(study.getId()).orElse(null);
+
+            rows.add(new PatientListCsvExporter.StudyWorklistRow(
+                    study.getAccessionNumber(),
+                    study.getStatus(),
+                    order == null ? null : order.getOrderCode(),
+                    order == null ? null : order.getVisitCode(),
+                    order == null ? null : order.getPatientClass(),
+                    patient == null ? null : patient.getPatientCode(),
+                    patient == null ? null : patient.getFullName(),
+                    patient == null ? null : patient.getDateOfBirth(),
+                    patient == null || patient.getDobPrecision() == null
+                            ? DobPrecision.DAY
+                            : DobPrecision.valueOf(patient.getDobPrecision()),
+                    patient == null ? null : patient.getGender(),
+                    patient == null ? null : patient.getSocialInsuranceNo(),
+                    service == null ? null : service.getName(),
+                    service == null ? null : service.getModality(),
+                    service == null ? null : service.getBodyPart(),
+                    device == null ? null : device.getName(),
+                    order == null ? null : order.getOrderingDoctorName(),
+                    order == null ? null : order.getClinicalDiagnosis(),
+                    report == null ? null : report.getConclusion(),
+                    study.getScheduledAt(),
+                    study.getStartedAt(),
+                    study.getCompletedAt()
+            ));
+        }
+
+        Long singlePatientId = distinctPatientIds.size() == 1 ? distinctPatientIds.iterator().next() : null;
+        LocalDate today = LocalDate.now();
+        byte[] content = PatientListCsvExporter.exportStudies(rows, today);
+        return new ExportDocumentResponse(
+                PatientListCsvExporter.studyListFileName(today),
+                "text/csv;charset=UTF-8",
+                content,
+                rows.size(),
+                singlePatientId
+        );
+    }
+
+    private boolean matchesPatientFilters(Study study, ImagingOrder order, Patient patient,
+                                          String normQ, String normCode, String normName) {
+        String pCode = patient == null || patient.getPatientCode() == null
+                ? "" : patient.getPatientCode().toLowerCase(Locale.ROOT);
+        String pName = patient == null || patient.getFullName() == null
+                ? "" : patient.getFullName().toLowerCase(Locale.ROOT);
+        String oCode = order == null || order.getOrderCode() == null
+                ? "" : order.getOrderCode().toLowerCase(Locale.ROOT);
+        String accNo = study.getAccessionNumber() == null
+                ? "" : study.getAccessionNumber().toLowerCase(Locale.ROOT);
+
+        if (normCode != null && !pCode.contains(normCode)) {
+            return false;
+        }
+        if (normName != null && !pName.contains(normName)) {
+            return false;
+        }
+        if (normQ != null) {
+            return pCode.contains(normQ) || pName.contains(normQ)
+                    || oCode.contains(normQ) || accNo.contains(normQ);
+        }
+        return true;
+    }
+
+    private String normalizeFilter(String value) {
+        return (value == null || value.isBlank()) ? null : value.trim().toLowerCase(Locale.ROOT);
     }
 
     private Study findOrThrow(Long id) {
