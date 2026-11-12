@@ -46,7 +46,7 @@ info:
     | `POST /studies/{id}/transitions` | Theo `to_status`, xem `03-state-machine.md` mục 2.5 | | | | |
     | `PUT /studies/{id}/reports/current` | — | — | — | ✔ (người đang đọc) | — |
     | `GET /studies/{id}/reports*` | ✔ | ✔ | ✔ | ✔ | ✔ |
-    | `GET /imaging-orders/{id}/clinical-snapshot` | ✔ | ✔ | ✔ | ✔ | ✔ |
+    | `GET /imaging-orders/{id}/clinical-snapshot` | ✔ | ✔ (chỉ chỉ định mình chỉ định, D34) | ✔ | ✔ | ✔ |
     | `GET/POST /identity-conflicts*` | ✔ | — | ✔ | — | — |
     | `GET /audit-logs` | ✔ | — | — | — | — |
     | `GET /departments`, `/devices`, `/service-items` | ✔ | ✔ | ✔ | ✔ | ✔ |
@@ -417,8 +417,14 @@ paths:
       operationId: getClinicalSnapshot
       summary: Thông tin lâm sàng của chỉ định (JSON)
       description: |
-        Trả bản snapshot `clinical_snapshot` (JSON, 5 tab, IN-11). Trong 8 tuần là dữ liệu giả (`source = SEED`).
-        Tab 3, 4, 5 chỉ có khung rỗng + ghi chú “chờ tích hợp HIS” (`01-scope.md` mục 3.3). Ghi `audit_log` (`READ`).
+        Trả bản snapshot `clinical_snapshot` (JSON, IN-11). Trong 8 tuần là dữ liệu giả (`source = SEED`).
+        Tab 1 (tổng quan khám), tab 2 (xét nghiệm) đọc đầy đủ từ `payload` trả về ở đây. Tab 3 (chẩn
+        đoán chức năng) **không** đọc từ snapshot — Frontend tự ghép từ `service_item`/`report` hiện
+        hành (RIS tự sinh, `01-scope.md` mục 3.3). Tab 4, 5 luôn là bảng rỗng + ghi chú “chờ tích hợp
+        HIS”, bất kể `payload` có gì. `CLINICIAN` chỉ gọi được chỉ định do chính mình chỉ định —
+        `imaging_order.ordering_doctor_name` khớp `app_user.full_name` của người gọi (D34,
+        `06-rbac-matrix.md` mục 5); không khớp → `403`. Không có snapshot cho chỉ định này → `404`.
+        Ghi `audit_log` (`READ`).
       x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
       x-audit: READ
       responses:

@@ -3,6 +3,7 @@ package com.vrris.pacs.rest;
 import com.vrris.pacs.dto.request.ImagingOrderCreateRequest;
 import com.vrris.pacs.dto.request.ImagingOrderUpdateRequest;
 import com.vrris.pacs.dto.request.StudyCreateRequest;
+import com.vrris.pacs.dto.response.ClinicalSnapshotResponse;
 import com.vrris.pacs.dto.response.ImagingOrderPageResponse;
 import com.vrris.pacs.dto.response.ImagingOrderResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
@@ -89,6 +90,14 @@ public class ImagingOrderController {
     @PreAuthorize(WRITE_ROLES)
     public ImagingOrderResponse updateImagingOrder(@PathVariable Long orderId, @Valid @RequestBody ImagingOrderUpdateRequest request) {
         return imagingOrderService.update(orderId, request);
+    }
+
+    @GetMapping(path = "/imaging-orders/{orderId}/clinical-snapshot", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Thong tin lam sang cua chi dinh (JSON)", description = "Snapshot clinical_snapshot (IN-11). CLINICIAN chi xem duoc chi dinh do minh chi dinh (D34).")
+    @ApiResponse(responseCode = "200", description = "Snapshot lam sang")
+    @PreAuthorize(READ_ROLES)
+    public ClinicalSnapshotResponse getClinicalSnapshot(@PathVariable Long orderId) {
+        return imagingOrderService.getClinicalSnapshot(orderId);
     }
 
     @PostMapping(path = "/imaging-orders/{orderId}/studies", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)

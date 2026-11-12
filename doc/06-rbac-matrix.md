@@ -84,7 +84,7 @@ Nguồn: `03-state-machine.md` mục 2.2 và 2.5. Backend kiểm theo thứ tự
 
 | Quy tắc | Áp dụng cho | Trạng thái | Ghi chú cài đặt |
 |---|---|---|---|
-| `CLINICIAN` chỉ thấy bệnh nhân/chỉ định/ca do mình chỉ định | Mọi `GET` ở mục 3 có dấu `*` cho `CLINICIAN` | ❓ D34, **chưa dùng được** | `ordering_doctor_name` là tên tự do (D10), không phải khóa tới `app_user`. Tạm thời lọc `ordering_doctor_name = app_user.full_name`. Dữ liệu seed hiện không khớp (user là "BS. Lâm Sàng (demo)", chỉ định là "BS. Chỉ Định A (giả)") nên `bslamsang` sẽ không thấy gì. Chọn một: sửa seed cho khớp, hoặc bỏ giới hạn này trong 8 tuần và ghi nợ kỹ thuật |
+| `CLINICIAN` chỉ thấy bệnh nhân/chỉ định/ca do mình chỉ định | Mọi `GET` ở mục 3 có dấu `*` cho `CLINICIAN` | **Đã làm cho `GET /imaging-orders/{id}/clinical-snapshot` (IN-11, 2026-11-12)**; ❓ D34 **vẫn chưa dùng được** cho các endpoint `GET` còn lại | `ordering_doctor_name` là tên tự do (D10), không phải khóa tới `app_user`. `ImagingOrderServiceImpl.enforceClinicianScope` lọc `ordering_doctor_name = app_user.full_name` (username lấy từ JWT subject qua `AppUserDao.findByUsername`), không khớp → `403`. Dữ liệu seed hiện không khớp (user là "BS. Lâm Sàng (demo)", chỉ định là "BS. Chỉ Định A (giả)") nên `bslamsang` sẽ không gọi được endpoint này cho tới khi seed được sửa cho khớp — ghi nợ kỹ thuật, chưa sửa trong IN-11. Mở rộng quy tắc này sang `GET /imaging-orders`, `GET /imaging-orders/{id}`, `GET /patients*`, `GET /studies*` là ngoài phạm vi IN-11 |
 | Chỉ người đang giữ ca (`reading_user_id`) được lưu báo cáo và chốt đọc | T4, T5, `PUT …/reports/current` | ❓ (khóa mềm, D20) | Kiểm `reading_user_id = người gọi`, nếu không trả `403` |
 | Chỉ người đã mở duyệt (`approving_user_id`) được duyệt hoặc trả lại | T7, T8 | ❓ | Như trên |
 | Người duyệt ≠ người đọc | T6, T7 | ❓ D15 | So `approving_user_id` với `reading_user_id` của version báo cáo hiện hành; áp dụng cả khi người gọi có nhiều vai trò |
@@ -154,6 +154,6 @@ Gộp chung với migration V8 nếu V8 được tạo (T16).
 | D20 | Khóa mềm: thời hạn và ai giải phóng | Chưa chốt; tạm: `ADMIN` giải phóng được |
 | D22 | Ai xử lý identity-conflict | `ADMIN`, `TECHNICIAN` |
 | D24 | Ai được sửa tay trường định danh; cờ "đã sửa tay" lưu ở đâu | `TECHNICIAN`, `ADMIN`; nơi lưu chưa chọn |
-| D34 | `CLINICIAN` chỉ thấy bệnh nhân mình chỉ định, dựa vào đâu | Chưa dùng được vì D10; cần chọn: sửa seed, hoặc bỏ giới hạn và ghi nợ kỹ thuật |
+| D34 | `CLINICIAN` chỉ thấy bệnh nhân mình chỉ định, dựa vào đâu | **Đã chọn** (IN-11): lọc `ordering_doctor_name = app_user.full_name`, áp dụng cho `GET /imaging-orders/{id}/clinical-snapshot`. Vẫn còn D10 (seed chưa khớp tên) và chưa mở rộng sang các `GET` khác — xem mục 5 |
 | (mới) | Một người có nhiều vai trò: quyền là hợp của các vai trò, nhưng "người duyệt ≠ người đọc" vẫn áp dụng | Đề xuất áp dụng |
 | (mới) | Có cần endpoint quản lý người dùng, máy, phân quyền (`config.system`) trong 8 tuần không | Không; seed bằng migration, ghi nợ kỹ thuật |
