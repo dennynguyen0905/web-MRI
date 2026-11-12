@@ -445,6 +445,12 @@ paths:
         Các khoảng thời gian có sẵn trên giao diện (Hôm nay, Hôm qua, −3, −7, −30 ngày) do client quy đổi thành `date_from`/`date_to`.
         `time_field` chọn loại thời gian để lọc. Bộ lọc “quá hạn”, “đồng bộ HIS”, “BHYT” **không có** (hoãn, `01-scope.md` mục 3.2).
         Ghi `audit_log` (`READ`).
+        **Hiện trạng (IN-07, 2026-11-12):** mọi tham số lọc/sắp xếp/phân trang ở dưới đã chạy đúng trên backend
+        thật. Phần ghép `patient`/`imaging_order`/`service_item`/`device`/`report` hiện hành thành `WorklistRow`
+        (schema `WorklistPage` bên dưới) **chưa làm** - response thật vẫn là `Study` rút gọn (`StudyPageResponse`,
+        `items[].study_id|accession_number|...`), chưa có `items[].patient`/`order`/`department`/`report_summary`
+        như mô tả `WorklistPage` - việc ghép là IN-07 phần 2, ngoài phạm vi lần sửa này (xem Javadoc
+        `rest.StudyController`/`service.StudyService` trong code).
       x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
       x-audit: READ
       parameters:
@@ -1305,12 +1311,15 @@ components:
       name: time_field
       in: query
       description: |
-        Loại thời gian để lọc `date_from`/`date_to`: `PERFORMED` (thời gian thực hiện), `ORDERED` (thời gian chỉ định),
-        `APPROVED` (thời gian duyệt). Danh sách đủ các lựa chọn của dropdown ở UI tham chiếu ❓ (README Phần 9 câu 4).
+        Loại thời gian để lọc `date_from`/`date_to`: `SCHEDULED` (`study.scheduled_at` - thời gian chụp dự kiến),
+        `ORDERED` (`imaging_order.ordered_at` - thời gian chỉ định), `COMPLETED` (`study.completed_at` - thời gian
+        thực hiện xong; ca chưa có `completed_at` bị loại khi lọc theo trường này). Khớp đúng 3 lựa chọn dropdown
+        của Frontend (`Frontend/src/shared/lib/types.ts` - `TimeField`), sửa lại so với bản nháp trước (từng ghi
+        `PERFORMED`/`APPROVED` - hai giá trị FE không gửi) khi làm IN-07.
       schema:
         type: string
-        enum: [PERFORMED, ORDERED, APPROVED]
-        default: PERFORMED
+        enum: [SCHEDULED, ORDERED, COMPLETED]
+        default: SCHEDULED
     DateFrom:
       name: date_from
       in: query
