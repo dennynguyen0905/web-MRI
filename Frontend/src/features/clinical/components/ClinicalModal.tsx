@@ -2,8 +2,11 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { useAsync } from '@/shared/hooks/useAsync'
 import { dash, formatAge, formatDateTime, formatDob, genderLabel } from '@/shared/lib/format'
 import type { WorklistRow } from '@/shared/lib/types'
-import { EmptyState, cx } from '@/shared/ui/controls'
-import { FileText, Stethoscope, X } from '@/shared/ui/Icon'
+import { Button, EmptyState, cx } from '@/shared/ui/controls'
+import { Eye, FileText, Stethoscope, X } from '@/shared/ui/Icon'
+import { useAuth } from '@/features/auth/hooks/useAuth'
+import { can, deniedReason } from '@/shared/lib/auth'
+import { openStudyViewer } from '@/features/studies/api/viewerApi'
 import { fetchClinicalSnapshot } from '../api/clinicalApi'
 
 /** 5 tab lâm sàng. Thứ tự và tên đúng bản thiết kế. */
@@ -28,6 +31,8 @@ export function ClinicalModal({ open, onClose, row }: {
   row: WorklistRow | null
 }) {
   const [tab, setTab] = useState(0)
+  const { user } = useAuth()
+  const canViewImage = can(user, 'study.viewImage')
 
   useEffect(() => {
     if (!open) return
@@ -49,7 +54,7 @@ export function ClinicalModal({ open, onClose, row }: {
     <div className="fixed inset-0 z-50 bg-[rgba(16,24,40,.45)] p-5" onMouseDown={onClose}>
       <div
         onMouseDown={e => e.stopPropagation()}
-        className="mx-auto flex h-full max-w-[1180px] flex-col overflow-hidden rounded-lg bg-white shadow-[0_20px_60px_rgba(16,24,40,.3)]"
+        className="mx-auto flex h-full max-w-[1180px] flex-col overflow-hidden rounded-lg bg-white shadow-[0_20px_60px_rgba(16,24,40,.3)] desktop:max-w-[1320px]"
       >
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4">
           <Stethoscope size={14} className="text-brand-600" />
@@ -60,13 +65,13 @@ export function ClinicalModal({ open, onClose, row }: {
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <nav className="w-[228px] shrink-0 overflow-y-auto border-r border-line p-2.5">
+          <nav className="w-[228px] shrink-0 overflow-y-auto border-r border-line p-2.5 desktop:w-[260px] desktop:p-3">
             {CLINICAL_SECTIONS.map((s, i) => (
               <button
                 key={s.key}
                 onClick={() => setTab(i)}
                 className={cx(
-                  'mb-1 block w-full rounded-md px-2.5 py-2 text-left text-[11px] font-semibold leading-snug transition-colors',
+                  'mb-1 block w-full rounded-md px-2.5 py-2 text-left text-[11px] font-semibold leading-snug transition-colors desktop:text-[12px]',
                   i === tab
                     ? 'border-l-[3px] border-brand-600 bg-brand-50 text-brand-700'
                     : 'text-ink-3 hover:bg-line-soft',
@@ -77,7 +82,7 @@ export function ClinicalModal({ open, onClose, row }: {
             ))}
           </nav>
 
-          <div className="min-h-0 flex-1 overflow-y-auto bg-app p-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-app p-4 desktop:p-5">
             <PatientCard row={row} />
 
             {snapshot.loading && (
@@ -128,14 +133,72 @@ export function ClinicalModal({ open, onClose, row }: {
 
                 {tab === 2 && (
                   <Card title="KẾT QUẢ CHẨN ĐOÁN CHỨC NĂNG CHÍNH">
-                    {snapshot.data.functional.length === 0
-                      ? <PendingHis />
-                      : (
-                        <DataTable
-                          headers={['Tên dịch vụ', 'Kết quả']}
-                          rows={snapshot.data.functional.map(f => [f.ten_dich_vu, f.ket_qua])}
-                        />
-                      )}
+                    <div className="overflow-hidden rounded-md border border-line-soft">
+                      <table className="w-full border-collapse text-[11.5px]">
+                        <thead>
+                          <tr className="bg-[#e7eefb] text-left text-[11px] font-semibold text-[#1e3a6b]">
+                            <th className="border-b border-brand-100 px-3 py-2">Tên dịch vụ</th>
+                            <th className="border-b border-brand-100 px-3 py-2">Bộ phận</th>
+                            <th className="border-b border-brand-100 px-3 py-2">Kết luận</th>
+                            <th className="border-b border-brand-100 px-3 py-2 text-right">Xem ảnh</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b border-line-soft last:border-0 hover:bg-[#f8fafd]">
+                            <td className="px-3 py-2.5 font-medium text-ink">
+                              {row.service.name}
+                              <div className="text-[10.5px] text-ink-4">{row.service.modality} · {row.service.code}</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-ink-3">{row.service.bodyPart}</td>
+                            <td className="px-3 py-2.5 text-ink-2">
+                              {row.reportSummary?.conclusion || <span className="italic text-ink-4">Chưa có kết luận</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              {(() => {
+                                const hasUid = Boolean(row.study.studyInstanceUid)
+                                if (!hasUid) {
+                                  return (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled
+                                      icon={<Eye size={12} />}
+                                      title="Ca chưa có ảnh trong PACS"
+                                    >
+                                      Xem ảnh
+                                    </Button>
+                                  )
+                                }
+                                if (!canViewImage) {
+                                  return (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled
+                                      icon={<Eye size={12} />}
+                                      title={deniedReason('study.viewImage')}
+                                    >
+                                      Xem ảnh
+                                    </Button>
+                                  )
+                                }
+                                return (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    icon={<Eye size={12} />}
+                                    title="Xem ảnh trong OHIF"
+                                    onClick={() => openStudyViewer(row.study.id)}
+                                  >
+                                    Xem ảnh
+                                  </Button>
+                                )
+                              })()}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </Card>
                 )}
 

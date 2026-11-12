@@ -1,5 +1,5 @@
 import {
-  type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode,
+  type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref,
   type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect, useRef, useState,
 } from 'react'
 import { ChevronDown, Search, X } from './Icon'
@@ -86,7 +86,11 @@ export function Input({ withSearchIcon, className, ...p }: InputProps) {
 
 /* ---------------------------------------------------------------- Textarea */
 
-export function Textarea({ className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  ref?: Ref<HTMLTextAreaElement>
+}
+
+export function Textarea({ className, ...p }: TextareaProps) {
   return (
     <textarea
       {...p}
@@ -302,21 +306,21 @@ export function Modal({ open, onClose, title, icon, width = 520, children, foote
 
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(16,24,40,.45)] p-6" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(16,24,40,.45)] p-4 desktop:p-6" onMouseDown={onClose}>
       <div
         onMouseDown={e => e.stopPropagation()}
         style={{ width, maxWidth: '100%' }}
         className="flex max-h-full flex-col overflow-hidden rounded-lg bg-white shadow-[0_20px_60px_rgba(16,24,40,.3)]"
       >
-        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4">
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 desktop:h-12">
           {icon}
           <div className="flex-1 text-[13px] font-semibold text-ink">{title}</div>
           <button onClick={onClose} className="focus-ring rounded p-1 text-ink-4 transition-colors hover:bg-line-soft hover:text-ink">
             <X size={15} />
           </button>
         </div>
-        <div className={cx('min-h-0 flex-1 overflow-auto', bodyClass ?? 'p-4')}>{children}</div>
-        {footer && <div className="flex shrink-0 items-center justify-end gap-2 border-t border-line px-4 py-2.5">{footer}</div>}
+        <div className={cx('min-h-0 flex-1 overflow-auto', bodyClass ?? 'p-4 desktop:p-5')}>{children}</div>
+        {footer && <div className="flex shrink-0 items-center justify-end gap-2 border-t border-line px-4 py-2.5 desktop:py-3">{footer}</div>}
       </div>
     </div>
   )

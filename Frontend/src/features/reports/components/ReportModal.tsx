@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { can, deniedReason } from '@/shared/lib/auth'
 import { formatAge, formatDateTime, formatDob, genderLabel } from '@/shared/lib/format'
 import { STATUS_META } from '@/shared/lib/status'
@@ -8,6 +8,7 @@ import { StatusChip } from '@/shared/ui/StatusChip'
 import { Button, Modal, Tag, Textarea } from '@/shared/ui/controls'
 import { Check, Clock, FileText, Warning } from '@/shared/ui/Icon'
 import { type ReportDraft, draftFromReport, useStudyReport } from '../hooks/useStudyReport'
+import { type AiDraftFieldKey, attachAiDraftBridge } from '../integration/aiDraftBridge'
 
 const FIELDS: { key: keyof ReportDraft; label: string; rows: number; placeholder: string }[] = [
   { key: 'technique', label: 'Kỹ thuật', rows: 2, placeholder: 'Tư thế chụp, thông số máy, thuốc cản quang…' },
@@ -49,6 +50,42 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
     setReason('')
     setDirty(false)
   }, [open, studyId, report])
+
+  /* -------------------------------------- Kênh AI Panel (OHIF) → form báo cáo (postMessage) */
+  // Ref giữ state mới nhất để listener (gắn 1 lần ở mount) không bị "đóng kín" giá trị cũ —
+  // component này luôn được WorklistPage mount (chỉ ẩn render khi `!open`), nên effect gắn
+  // listener chạy đúng 1 lần là đủ, không phụ thuộc open/row/draft (doc/11-ai-design.md mục 4,
+  // 5.2.5.d — chi tiết thiết kế kênh ở báo cáo cuối của task nối kênh này).
+  const aiBridgeStateRef = useRef({ open, studyInstanceUid: row?.study.studyInstanceUid ?? null, draft })
+  useEffect(() => {
+    aiBridgeStateRef.current = { open, studyInstanceUid: row?.study.studyInstanceUid ?? null, draft }
+  }, [open, row, draft])
+
+  const fieldRefs = useRef<Partial<Record<keyof ReportDraft, HTMLTextAreaElement>>>({})
+
+  useEffect(() => {
+    return attachAiDraftBridge({
+      getState: () => aiBridgeStateRef.current,
+      applyFields: (fields, focusFirst) => {
+        setDraft(d => ({ ...d, ...fields }))
+        setDirty(true)
+        if (focusFirst) {
+          const firstKey = FIELDS.find(f => fields[f.key] !== undefined)?.key
+          // Chờ 1 tick cho React render lại draft mới rồi mới focus.
+          requestAnimationFrame(() => fieldRefs.current[firstKey as keyof ReportDraft]?.focus())
+        }
+      },
+      confirmOverwrite: (keys: AiDraftFieldKey[]) => {
+        const labels = keys.map(k => FIELDS.find(f => f.key === k)?.label ?? k).join(', ')
+        // Quyết định an toàn thêm ngoài tài liệu gốc (chưa có nút xác nhận ghi đè trong thiết kế
+        // Figma) — dùng confirm() có sẵn của trình duyệt thay vì tự vẽ modal mới, cần nhóm duyệt
+        // lại UX (xem báo cáo cuối của task nối kênh).
+        return window.confirm(
+          `Các trường sau đã có nội dung bác sĩ nhập: ${labels}. Ghi đè bằng gợi ý AI?`,
+        )
+      },
+    })
+  }, [])
 
   if (!open || !row) return null
 
@@ -108,7 +145,7 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
       }
     >
       <div className="flex min-h-0">
-        <div className="min-w-0 flex-1 border-r border-line p-4">
+        <div className="min-w-0 flex-1 border-r border-line p-4 desktop:p-5">
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md bg-line-soft px-3 py-2">
             <span className="text-[13px] font-semibold text-ink">{row.patient.fullName}</span>
             <span className="text-[11.5px] text-ink-3">
@@ -156,6 +193,7 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
               <label key={f.key} className="block">
                 <div className="mb-1 text-[11.5px] font-medium text-ink-3">{f.label}</div>
                 <Textarea
+                  ref={(el: HTMLTextAreaElement | null) => { fieldRefs.current[f.key] = el ?? undefined }}
                   rows={f.rows}
                   disabled={!editable || saving}
                   placeholder={f.placeholder}
@@ -179,7 +217,7 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
           </div>
         </div>
 
-        <div className="w-[228px] shrink-0 overflow-y-auto p-4">
+        <div className="w-[228px] shrink-0 overflow-y-auto p-4 desktop:w-[260px] desktop:p-5">
           <div className="mb-2 section-label">Lịch sử trạng thái</div>
           {loading && <p className="text-[11.5px] text-ink-4">Đang tải…</p>}
           {!loading && history.length === 0 && (

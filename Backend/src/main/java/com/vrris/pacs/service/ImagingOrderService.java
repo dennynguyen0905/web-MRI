@@ -2,6 +2,7 @@ package com.vrris.pacs.service;
 
 import com.vrris.pacs.dto.request.ImagingOrderCreateRequest;
 import com.vrris.pacs.dto.request.ImagingOrderUpdateRequest;
+import com.vrris.pacs.dto.response.ClinicalSnapshotResponse;
 import com.vrris.pacs.dto.response.ImagingOrderPageResponse;
 import com.vrris.pacs.dto.response.ImagingOrderResponse;
 
@@ -28,4 +29,12 @@ public interface ImagingOrderService {
 
     /** Khong tim thay -> ApiException (IMAGING_ORDER_NOT_FOUND, 404). */
     ImagingOrderResponse update(Long id, ImagingOrderUpdateRequest request);
+
+    /**
+     * Snapshot lam sang (clinical_snapshot, IN-11, operationId getClinicalSnapshot). Chi dinh
+     * khong ton tai -> ApiException (IMAGING_ORDER_NOT_FOUND, 404); chi dinh ton tai nhung chua co
+     * snapshot -> ApiException (CLINICAL_SNAPSHOT_NOT_FOUND, 404). CLINICIAN goi chi dinh khong
+     * phai do minh chi dinh (D34, doc/06-rbac-matrix.md muc 5) -> ApiException (FORBIDDEN, 403).
+     */
+    ClinicalSnapshotResponse getClinicalSnapshot(Long orderId);
 }

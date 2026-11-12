@@ -1,2 +1,6 @@
 # Thư mục theo dõi dự án (file Excel quản lý), chỉ để dùng cục bộ, không đưa lên GitHub.
 process/
+
+# Dữ liệu ảnh test tay (NIfTI gốc, ~146MB) dùng để tự kiểm luồng OHIF — không phải code, không đưa
+# vào git (xem doc/07-pacs-dicom.md mục 9.1). Giữ cục bộ, không xoá.
+dataTesting/

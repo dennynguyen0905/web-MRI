@@ -1,0 +1,10 @@
+{
+  "study_instance_uid": "1.2.826.0.1.3680043.8.498.90000003",
+  "model_name": "MedAI-ChestCT",
+  "model_version": "1.2",
+  "status": "FAILED",
+  "triggered_at": "2026-11-08T09:50:00+07:00",
+  "completed_at": "2026-11-08T09:50:40+07:00",
+  "error_reason": "SUY_LUAN_LOI",
+  "findings": []
+}

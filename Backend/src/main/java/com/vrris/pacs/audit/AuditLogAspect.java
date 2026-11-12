@@ -1,5 +1,7 @@
 package com.vrris.pacs.audit;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.dao.AuditLogDao;
 import com.vrris.pacs.model.AuditLog;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,33 +22,47 @@ import java.time.LocalDateTime;
  * trong service.impl (quy uoc 7 muc 5 cua doc/15-kien-truc-backend.md).
  *
  * patient_id / entity_id / ip_address: da trich duoc (patient_id va entity_id lay tu tham so
- * method theo Audited.patientIdArg/entityIdArg).
- * No ky thuat con lai: before_value / after_value chua trich - can khi lam cac luong sua du lieu.
+ * method theo Audited.patientIdArg/entityIdArg, hoac tu audit.AuditContext khi method khong co
+ * tham so phu hop - xem Javadoc AuditContext).
+ * before_value / after_value (IN-10): lay tu audit.AuditContext.recordBefore/recordAfter, serialize
+ * JSON bang ObjectMapper co san cua Spring Boot. Method @Audited nao khong goi AuditContext thi hai
+ * cot nay van la null nhu truoc (tuong thich nguoc voi Patient/ImagingOrder/Study/Print dang dung).
  */
 @Aspect
 @Component
 public class AuditLogAspect {
 
     private final AuditLogDao auditLogDao;
+    private final ObjectMapper objectMapper;
 
-    public AuditLogAspect(AuditLogDao auditLogDao) {
+    public AuditLogAspect(AuditLogDao auditLogDao, ObjectMapper objectMapper) {
         this.auditLogDao = auditLogDao;
+        this.objectMapper = objectMapper;
     }
 
     @Around("@annotation(audited)")
     public Object around(ProceedingJoinPoint joinPoint, Audited audited) throws Throwable {
-        Object result = joinPoint.proceed();
+        Object result;
+        try {
+            result = joinPoint.proceed();
+        } catch (Throwable ex) {
+            // Khong ghi audit cho hanh vi khong thanh cong (giu dung hanh vi cu) - nhung van phai
+            // don AuditContext de khong de sot gia tri sang request sau tren thread bi tai su dung.
+            AuditContext.consumeBefore();
+            AuditContext.consumeAfter();
+            AuditContext.consumePatientId();
+            AuditContext.consumeEntityId();
+            throw ex;
+        }
 
         AuditLog entry = new AuditLog();
         entry.setActorUsername(currentUsername());
         entry.setAction(audited.action().name());
         entry.setEntityType(audited.entityType());
-        Long patientId = longArg(joinPoint, audited.patientIdArg());
-        if (patientId == null) {
-            patientId = extractPatientId(result, joinPoint.getArgs());
-        }
-        entry.setPatientId(patientId);
-        entry.setEntityId(longArg(joinPoint, audited.entityIdArg()));
+        entry.setPatientId(resolvePatientId(joinPoint, audited, result));
+        entry.setEntityId(resolveEntityId(joinPoint, audited, result));
+        entry.setBeforeValue(toJson(AuditContext.consumeBefore()));
+        entry.setAfterValue(toJson(AuditContext.consumeAfter()));
         entry.setIpAddress(currentIpAddress());
         entry.setOccurredAt(LocalDateTime.now());
         auditLogDao.save(entry);
@@ -54,19 +70,33 @@ public class AuditLogAspect {
         return result;
     }
 
-    /**
-     * Trich patientId() tu ket qua tra ve hoac tham so request (vi du ExportDocumentResponse,
-     * ListExportEventRequest) khi method khong nhan patientId truc tiep qua tham so kieu Long.
-     * Phuc vu quy tac doc/09 muc 2.2: EXPORT ghi patient_id neu 1 benh nhan, NULL neu nhieu.
-     */
-    private Long extractPatientId(Object result, Object[] args) {
-        Long fromResult = invokePatientIdAccessor(result);
+    private String toJson(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException ex) {
+            return null;
+        }
+    }
+
+    private Long resolvePatientId(ProceedingJoinPoint joinPoint, Audited audited, Object result) {
+        Long id = longArg(joinPoint, audited.patientIdArg());
+        if (id != null) {
+            return id;
+        }
+        Long fromContext = AuditContext.consumePatientId();
+        if (fromContext != null) {
+            return fromContext;
+        }
+        Long fromResult = extractLongProperty(result, "patientId");
         if (fromResult != null) {
             return fromResult;
         }
-        if (args != null) {
-            for (Object arg : args) {
-                Long fromArg = invokePatientIdAccessor(arg);
+        if (joinPoint.getArgs() != null) {
+            for (Object arg : joinPoint.getArgs()) {
+                Long fromArg = extractLongProperty(arg, "patientId");
                 if (fromArg != null) {
                     return fromArg;
                 }
@@ -75,17 +105,42 @@ public class AuditLogAspect {
         return null;
     }
 
-    private Long invokePatientIdAccessor(Object target) {
+    private Long resolveEntityId(ProceedingJoinPoint joinPoint, Audited audited, Object result) {
+        Long id = longArg(joinPoint, audited.entityIdArg());
+        if (id != null) {
+            return id;
+        }
+        Long fromContext = AuditContext.consumeEntityId();
+        if (fromContext != null) {
+            return fromContext;
+        }
+        return extractLongProperty(result, "entityId", "studyId", "id");
+    }
+
+    private Long extractLongProperty(Object target, String... methodNames) {
         if (target == null) {
             return null;
         }
-        try {
-            Object val = target.getClass().getMethod("patientId").invoke(target);
-            if (val instanceof Number number) {
-                return number.longValue();
+        Class<?> clazz = target.getClass();
+        for (String name : methodNames) {
+            try {
+                var method = clazz.getMethod(name);
+                Object val = method.invoke(target);
+                if (val instanceof Number n) {
+                    return n.longValue();
+                }
+            } catch (NoSuchMethodException ignored) {
+                String getter = "get" + Character.toUpperCase(name.charAt(0)) + name.substring(1);
+                try {
+                    var method = clazz.getMethod(getter);
+                    Object val = method.invoke(target);
+                    if (val instanceof Number n) {
+                        return n.longValue();
+                    }
+                } catch (Exception ignored2) {
+                }
+            } catch (Exception ignored) {
             }
-        } catch (ReflectiveOperationException ignored) {
-            // Doi tuong khong co accessor patientId() -> bo qua.
         }
         return null;
     }

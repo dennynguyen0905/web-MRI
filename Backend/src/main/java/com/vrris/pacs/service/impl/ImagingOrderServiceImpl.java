@@ -1,11 +1,17 @@
 package com.vrris.pacs.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.audit.Audited;
+import com.vrris.pacs.dao.AppUserDao;
+import com.vrris.pacs.dao.ClinicalSnapshotDao;
 import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.ImagingOrderDao;
 import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dto.request.ImagingOrderCreateRequest;
 import com.vrris.pacs.dto.request.ImagingOrderUpdateRequest;
+import com.vrris.pacs.dto.response.ClinicalSnapshotResponse;
 import com.vrris.pacs.dto.response.ImagingOrderPageResponse;
 import com.vrris.pacs.dto.response.ImagingOrderResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
@@ -14,11 +20,15 @@ import com.vrris.pacs.enu.OrderSource;
 import com.vrris.pacs.enu.SyncStatus;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.mapper.ImagingOrderMapper;
+import com.vrris.pacs.model.AppUser;
+import com.vrris.pacs.model.ClinicalSnapshot;
 import com.vrris.pacs.model.ImagingOrder;
 import com.vrris.pacs.rule.OrderCodeGenerator;
 import com.vrris.pacs.service.ImagingOrderService;
 import com.vrris.pacs.service.StudyService;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,15 +66,22 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
     private final DepartmentDao departmentDao;
     private final ImagingOrderMapper imagingOrderMapper;
     private final StudyService studyService;
+    private final ClinicalSnapshotDao clinicalSnapshotDao;
+    private final AppUserDao appUserDao;
+    private final ObjectMapper objectMapper;
 
     public ImagingOrderServiceImpl(ImagingOrderDao imagingOrderDao, PatientDao patientDao,
                                     DepartmentDao departmentDao, ImagingOrderMapper imagingOrderMapper,
-                                    StudyService studyService) {
+                                    StudyService studyService, ClinicalSnapshotDao clinicalSnapshotDao,
+                                    AppUserDao appUserDao, ObjectMapper objectMapper) {
         this.imagingOrderDao = imagingOrderDao;
         this.patientDao = patientDao;
         this.departmentDao = departmentDao;
         this.imagingOrderMapper = imagingOrderMapper;
         this.studyService = studyService;
+        this.clinicalSnapshotDao = clinicalSnapshotDao;
+        this.appUserDao = appUserDao;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -143,6 +160,56 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
 
         ImagingOrder saved = imagingOrderDao.save(order);
         return toResponseWithStudies(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    // entityIdArg=0 (orderId): ClinicalSnapshotResponse khong co field ten "id"/"entityId" khop
+    // openapi ClinicalSnapshot (chi order_id/source/fetched_at/payload) nen AuditLogAspect khong
+    // tu doan duoc tu ket qua tra ve - phai chi ro tham so. patient_id KHONG lay duoc vi ly do
+    // tuong tu (schema khong co patient_id) - no ky thuat nho, giong cach PrintServiceImpl ghi nhan.
+    @Audited(action = AuditAction.READ, entityType = "CLINICAL_SNAPSHOT", entityIdArg = 0)
+    public ClinicalSnapshotResponse getClinicalSnapshot(Long orderId) {
+        ImagingOrder order = findOrThrow(orderId);
+        enforceClinicianScope(order);
+
+        ClinicalSnapshot snapshot = clinicalSnapshotDao.findByOrderId(orderId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "CLINICAL_SNAPSHOT_NOT_FOUND",
+                        "Chi dinh id=" + orderId + " chua co du lieu lam sang."));
+
+        return new ClinicalSnapshotResponse(
+                snapshot.getOrderId(), snapshot.getSource(), snapshot.getFetchedAt(), readPayload(snapshot));
+    }
+
+    /**
+     * D34 (doc/06-rbac-matrix.md muc 5, 9): CLINICIAN chi xem duoc chi dinh do chinh minh chi dinh.
+     * ordering_doctor_name la ten tu do (D10), khong phai khoa toi app_user - de dung duoc, so sanh
+     * voi full_name cua tai khoan dang goi (lay tu username trong JWT subject qua AppUserDao). Ap
+     * dung CHI cho endpoint nay (IN-11) - CHUA mo rong sang GET /imaging-orders, GET /imaging-orders/{id}
+     * (ngoai pham vi ticket nay, xem bang muc 3 cua 06-rbac-matrix.md).
+     */
+    private void enforceClinicianScope(ImagingOrder order) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        boolean isClinician = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_CLINICIAN"));
+        if (!isClinician) {
+            return;
+        }
+        String username = String.valueOf(authentication.getPrincipal());
+        String fullName = appUserDao.findByUsername(username).map(AppUser::getFullName).orElse(null);
+        if (fullName == null || !fullName.equals(order.getOrderingDoctorName())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                    "Chi dinh id=" + order.getId() + " khong thuoc pham vi cua CLINICIAN dang dang nhap.");
+        }
+    }
+
+    private JsonNode readPayload(ClinicalSnapshot snapshot) {
+        try {
+            return objectMapper.readTree(snapshot.getPayload());
+        } catch (JsonProcessingException e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
+                    "clinical_snapshot cua chi dinh id=" + snapshot.getOrderId() + " khong phai JSON hop le.");
+        }
     }
 
     private ImagingOrder findOrThrow(Long id) {

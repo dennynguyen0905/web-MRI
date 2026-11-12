@@ -345,6 +345,36 @@ export function createMockClient(): HttpClient {
       return applyTransition(Number(m.id), req.body as TransitionRequestDto)
     }
 
+    if ((m = matchPath('/studies/:id/viewer-link', path)) && method === 'GET') {
+      const id = Number(m.id)
+      const s = studies.find(x => x.id === id)
+      if (!s) throw new ApiError(404, 'STUDY_NOT_FOUND', 'Không tìm thấy ca chụp.')
+      if (!s.study_instance_uid) {
+        throw new ApiError(422, 'STUDY_NO_DICOM_IMAGE', 'Ca chụp chưa có ảnh trong PACS (study_instance_uid is null).')
+      }
+      const base = import.meta.env.VITE_OHIF_BASE_URL || 'http://localhost:8043'
+      // UID phai nam trong PATH ("/viewer/<uid>"), KHONG phai query string ("?StudyInstanceUIDs=").
+      // Ban OHIF dang chay (ohif/viewer:v4.12.51.21579) dung route cu "ConnectedStandaloneRouting"
+      // (schema "servers.dicomWeb", xem deploy/docker/ohif-app-config.js) - route nay chi khop path
+      // "/viewer/:studyInstanceUids"; dang "?StudyInstanceUIDs=" roi ve route khac (doc file don le
+      // qua "?url="), gay loi "No URL was specified" (phat hien bang tay 2026-11-09, xem
+      // doc/07-pacs-dicom.md).
+      const viewerUrl = `${base.replace(/\/$/, '')}/viewer/${s.study_instance_uid}`
+      const order = IMAGING_ORDERS.find(o => o.id === s.order_id)
+      console.info('[mock] audit_log VIEW_IMAGE', {
+        study_id: s.id,
+        patient_id: order?.patient_id ?? 1,
+        study_instance_uid: s.study_instance_uid,
+        viewer_url: viewerUrl,
+      })
+      return {
+        study_id: s.id,
+        patient_id: order?.patient_id ?? 1,
+        study_instance_uid: s.study_instance_uid,
+        viewer_url: viewerUrl,
+      }
+    }
+
     if ((m = matchPath('/studies/:id', path)) && method === 'GET') {
       const s = studies.find(x => x.id === Number(m!.id))
       if (!s) throw new ApiError(404, 'STUDY_NOT_FOUND', 'Không tìm thấy ca chụp.')

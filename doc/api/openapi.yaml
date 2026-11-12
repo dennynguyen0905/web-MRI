@@ -47,7 +47,7 @@ info:
     | `POST /studies/{id}/transitions` | Theo `to_status`, xem `03-state-machine.md` mục 2.5 | | | | |
     | `PUT /studies/{id}/reports/current` | — | — | — | ✔ (người đang đọc) | — |
     | `GET /studies/{id}/reports*` | ✔ | ✔ | ✔ | ✔ | ✔ |
-    | `GET /imaging-orders/{id}/clinical-snapshot` | ✔ | ✔ | ✔ | ✔ | ✔ |
+    | `GET /imaging-orders/{id}/clinical-snapshot` | ✔ | ✔ (chỉ chỉ định mình chỉ định, D34) | ✔ | ✔ | ✔ |
     | `GET/POST /identity-conflicts*` | ✔ | — | ✔ | — | — |
     | `GET /audit-logs` | ✔ | — | — | — | — |
     | `GET /departments`, `/devices`, `/service-items` | ✔ | ✔ | ✔ | ✔ | ✔ |
@@ -493,8 +493,14 @@ paths:
       operationId: getClinicalSnapshot
       summary: Thông tin lâm sàng của chỉ định (JSON)
       description: |
-        Trả bản snapshot `clinical_snapshot` (JSON, 5 tab, IN-11). Trong 8 tuần là dữ liệu giả (`source = SEED`).
-        Tab 3, 4, 5 chỉ có khung rỗng + ghi chú “chờ tích hợp HIS” (`01-scope.md` mục 3.3). Ghi `audit_log` (`READ`).
+        Trả bản snapshot `clinical_snapshot` (JSON, IN-11). Trong 8 tuần là dữ liệu giả (`source = SEED`).
+        Tab 1 (tổng quan khám), tab 2 (xét nghiệm) đọc đầy đủ từ `payload` trả về ở đây. Tab 3 (chẩn
+        đoán chức năng) **không** đọc từ snapshot — Frontend tự ghép từ `service_item`/`report` hiện
+        hành (RIS tự sinh, `01-scope.md` mục 3.3). Tab 4, 5 luôn là bảng rỗng + ghi chú “chờ tích hợp
+        HIS”, bất kể `payload` có gì. `CLINICIAN` chỉ gọi được chỉ định do chính mình chỉ định —
+        `imaging_order.ordering_doctor_name` khớp `app_user.full_name` của người gọi (D34,
+        `06-rbac-matrix.md` mục 5); không khớp → `403`. Không có snapshot cho chỉ định này → `404`.
+        Ghi `audit_log` (`READ`).
       x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
       x-audit: READ
       responses:
@@ -521,6 +527,12 @@ paths:
         Các khoảng thời gian có sẵn trên giao diện (Hôm nay, Hôm qua, −3, −7, −30 ngày) do client quy đổi thành `date_from`/`date_to`.
         `time_field` chọn loại thời gian để lọc. Bộ lọc “quá hạn”, “đồng bộ HIS”, “BHYT” **không có** (hoãn, `01-scope.md` mục 3.2).
         Ghi `audit_log` (`READ`).
+        **Hiện trạng (IN-07, 2026-11-12):** mọi tham số lọc/sắp xếp/phân trang ở dưới đã chạy đúng trên backend
+        thật. Phần ghép `patient`/`imaging_order`/`service_item`/`device`/`report` hiện hành thành `WorklistRow`
+        (schema `WorklistPage` bên dưới) **chưa làm** - response thật vẫn là `Study` rút gọn (`StudyPageResponse`,
+        `items[].study_id|accession_number|...`), chưa có `items[].patient`/`order`/`department`/`report_summary`
+        như mô tả `WorklistPage` - việc ghép là IN-07 phần 2, ngoài phạm vi lần sửa này (xem Javadoc
+        `rest.StudyController`/`service.StudyService` trong code).
       x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
       x-audit: READ
       parameters:
@@ -782,6 +794,37 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /studies/{studyId}/viewer-link:
+    parameters:
+      - $ref: '#/components/parameters/StudyId'
+    get:
+      tags: [studies]
+      operationId: getStudyViewerLink
+      summary: Lấy link xem ảnh OHIF cho ca chụp
+      description: |
+        Kiểm tra ca chụp đã có `study_instance_uid` chưa, ghép base URL OHIF từ cấu hình hệ thống
+        (ConfigMap APP_OHIF_BASE_URL) và sinh deep-link. Ghi `audit_log` (`VIEW_IMAGE`) trước khi trả URL.
+      x-allowed-roles: [ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER]
+      x-audit: VIEW_IMAGE
+      responses:
+        '200':
+          description: Link mở OHIF Viewer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Ca chụp chưa có ảnh DICOM trong PACS (study_instance_uid là null)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /studies/{studyId}/transitions:
     parameters:
       - $ref: '#/components/parameters/StudyId'
@@ -1410,12 +1453,15 @@ components:
       name: time_field
       in: query
       description: |
-        Loại thời gian để lọc `date_from`/`date_to`: `PERFORMED` (thời gian thực hiện), `ORDERED` (thời gian chỉ định),
-        `APPROVED` (thời gian duyệt). Danh sách đủ các lựa chọn của dropdown ở UI tham chiếu ❓ (README Phần 9 câu 4).
+        Loại thời gian để lọc `date_from`/`date_to`: `SCHEDULED` (`study.scheduled_at` - thời gian chụp dự kiến),
+        `ORDERED` (`imaging_order.ordered_at` - thời gian chỉ định), `COMPLETED` (`study.completed_at` - thời gian
+        thực hiện xong; ca chưa có `completed_at` bị loại khi lọc theo trường này). Khớp đúng 3 lựa chọn dropdown
+        của Frontend (`Frontend/src/shared/lib/types.ts` - `TimeField`), sửa lại so với bản nháp trước (từng ghi
+        `PERFORMED`/`APPROVED` - hai giá trị FE không gửi) khi làm IN-07.
       schema:
         type: string
-        enum: [PERFORMED, ORDERED, APPROVED]
-        default: PERFORMED
+        enum: [SCHEDULED, ORDERED, COMPLETED]
+        default: SCHEDULED
     DateFrom:
       name: date_from
       in: query
@@ -2006,6 +2052,25 @@ components:
                 - $ref: '#/components/schemas/Report'
               type: object
               nullable: true
+    ViewerLink:
+      type: object
+      description: Thông tin deep-link mở OHIF Viewer cho ca chụp
+      required: [study_id, patient_id, study_instance_uid, viewer_url]
+      properties:
+        study_id:
+          type: integer
+          format: int64
+          example: 1
+        patient_id:
+          type: integer
+          format: int64
+          example: 1
+        study_instance_uid:
+          type: string
+          example: '1.2.826.0.1.3680043.8.498.10000001'
+        viewer_url:
+          type: string
+          example: 'http://localhost:8043/viewer/1.2.826.0.1.3680043.8.498.10000001'
     WorklistRow:
       type: object
       description: Một hàng worklist, đã ghép sẵn các bảng liên quan
