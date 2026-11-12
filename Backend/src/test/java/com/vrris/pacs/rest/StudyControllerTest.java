@@ -2,11 +2,13 @@ package com.vrris.pacs.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.dao.DepartmentDao;
+import com.vrris.pacs.dao.DeviceDao;
 import com.vrris.pacs.dao.ImagingOrderDao;
 import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.model.Department;
+import com.vrris.pacs.model.Device;
 import com.vrris.pacs.model.ImagingOrder;
 import com.vrris.pacs.model.Patient;
 import com.vrris.pacs.model.ServiceItem;
@@ -29,8 +31,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * /studies (ban rut gon - xem rest.StudyController). Cung mau voi PatientControllerTest: MockMvc
- * that qua filter chain JWT thuc, MySQL thuc qua Testcontainers (AbstractIntegrationTest).
+ * /studies. listStudies (IN-07, worklist): xem Javadoc rest.StudyController/service.StudyService -
+ * moi bo loc FE gui (tab, status[], department_id[] gom nhanh con, device_id[], modality,
+ * patient_class, khoang thoi gian theo time_field, patient_code/full_name/visit_code/order_code,
+ * phan trang, sap xep) co mot test tich hop rieng o day, tren MySQL thuc qua Testcontainers
+ * (AbstractIntegrationTest) - khop tieu chi chap nhan cua phieu viec IN-07.
+ *
+ * getStatusCounts (IN-09): cac test statusCounts_* ben duoi - chi test lai dai dien mot vai bo loc
+ * (device_id, department_id) vi logic chuan hoa/loc giong het listStudies (da test ky o tren); tap
+ * trung vao phan rieng cua IN-09 la dien 0 cho nhom khong co ca va tong du 7 nhom (ke ca CANCELLED).
  */
 @Transactional
 class StudyControllerTest extends AbstractIntegrationTest {
@@ -46,6 +55,9 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private ServiceItemDao serviceItemDao;
+
+    @Autowired
+    private DeviceDao deviceDao;
 
     @Autowired
     private ImagingOrderDao imagingOrderDao;
@@ -67,16 +79,19 @@ class StudyControllerTest extends AbstractIntegrationTest {
     private Long patientId;
     private Long orderId;
     private Long serviceItemId;
+    private Long deviceId;
+    private Long departmentId;
 
     @BeforeEach
     void seed() {
         adminToken = jwtService.generateToken("admin", List.of("ADMIN"));
 
-        patientId = savePatient("TEST0001").getId();
-        Long departmentId = saveDepartment("K01").getId();
-        serviceItemId = saveServiceItem("CT_SO_NAO").getId();
-        orderId = saveOrder("PH20261031001", patientId, departmentId).getId();
-        studyId = saveStudy("2026103100001", orderId, serviceItemId, "SCHEDULED").getId();
+        patientId = savePatient("TEST0001", "Benh nhan TEST0001").getId();
+        departmentId = saveDepartment("K01", null).getId();
+        serviceItemId = saveServiceItem("CT_SO_NAO", "CT").getId();
+        deviceId = saveDevice("CT01", departmentId, "CT").getId();
+        orderId = saveOrder("PH20261031001", patientId, departmentId, "OUTPATIENT", null).getId();
+        studyId = saveStudy("2026103100001", orderId, serviceItemId, deviceId, "SCHEDULED", null, null).getId();
     }
 
     @Test
@@ -106,6 +121,17 @@ class StudyControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void list_loc_theo_nhieu_status() throws Exception {
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, deviceId, "READING", null, null);
+
+        mockMvc.perform(get("/studies").param("status", "UNREAD", "READING")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
+    }
+
+    @Test
     void list_tra_400_khi_status_khong_hop_le() throws Exception {
         mockMvc.perform(get("/studies").param("status", "KHONG_HOP_LE")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -117,6 +143,297 @@ class StudyControllerTest extends AbstractIntegrationTest {
     void list_tra_401_khi_khong_co_token() throws Exception {
         mockMvc.perform(get("/studies"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void list_tab_PENDING_chi_tra_SCHEDULED() throws Exception {
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
+
+        mockMvc.perform(get("/studies").param("tab", "PENDING")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].status").value("SCHEDULED"));
+    }
+
+    @Test
+    void list_tab_DONE_tra_cac_trang_thai_con_lai_theo_state_machine() throws Exception {
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, deviceId, "READ", null, null);
+
+        mockMvc.perform(get("/studies").param("tab", "DONE")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
+    }
+
+    @Test
+    void list_tab_DONE_ket_hop_voi_status_bang_AND() throws Exception {
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, deviceId, "READ", null, null);
+
+        mockMvc.perform(get("/studies").param("tab", "DONE").param("status", "UNREAD")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].accession_number").value("2026103100002"));
+    }
+
+    @Test
+    void list_tra_400_khi_tab_khong_hop_le() throws Exception {
+        mockMvc.perform(get("/studies").param("tab", "KHONG_HOP_LE")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void list_loc_theo_nhieu_device_id() throws Exception {
+        Long device2Id = saveDevice("CT02", departmentId, "CT").getId();
+        saveStudy("2026103100002", orderId, serviceItemId, device2Id, "SCHEDULED", null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, null, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies").param("device_id", deviceId.toString(), device2Id.toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
+    }
+
+    @Test
+    void list_loc_theo_modality_qua_join_service_item() throws Exception {
+        Long mrServiceItemId = saveServiceItem("MR_SO_NAO", "MR").getId();
+        saveStudy("2026103100002", orderId, mrServiceItemId, null, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies").param("modality", "MR")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].accession_number").value("2026103100002"));
+    }
+
+    @Test
+    void list_tra_400_khi_modality_khong_hop_le() throws Exception {
+        mockMvc.perform(get("/studies").param("modality", "KHONG_HOP_LE")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void list_loc_theo_patient_class_qua_join_order() throws Exception {
+        Long inpatientOrderId = saveOrder("PH20261031002", patientId, departmentId, "INPATIENT", null).getId();
+        saveStudy("2026103100002", inpatientOrderId, serviceItemId, null, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies").param("patient_class", "INPATIENT")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].accession_number").value("2026103100002"));
+    }
+
+    @Test
+    void list_tim_theo_patient_code_khong_phan_biet_hoa_thuong_qua_join_patient() throws Exception {
+        mockMvc.perform(get("/studies").param("patient_code", "test000")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1));
+    }
+
+    @Test
+    void list_tim_theo_full_name_khong_phan_biet_hoa_thuong_qua_join_patient() throws Exception {
+        Long patient2Id = savePatient("TEST0002", "Nguyen Van An").getId();
+        Long order2Id = saveOrder("PH20261031003", patient2Id, departmentId, "OUTPATIENT", null).getId();
+        saveStudy("2026103100002", order2Id, serviceItemId, null, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies").param("full_name", "nguyen van")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].accession_number").value("2026103100002"));
+    }
+
+    @Test
+    void list_loc_theo_visit_code_qua_join_order() throws Exception {
+        Long order2Id = saveOrder("PH20261031004", patientId, departmentId, "OUTPATIENT", "LSVV0099").getId();
+        saveStudy("2026103100002", order2Id, serviceItemId, null, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies").param("visit_code", "0099")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].accession_number").value("2026103100002"));
+    }
+
+    @Test
+    void list_loc_theo_order_code_qua_join_order() throws Exception {
+        mockMvc.perform(get("/studies").param("order_code", "PH20261031001")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1));
+
+        mockMvc.perform(get("/studies").param("order_code", "KHONG_KHOP")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+    }
+
+    @Test
+    void list_loc_theo_department_id_gom_ca_nhanh_con() throws Exception {
+        Long nhomId = saveDepartment("N01", departmentId).getId();
+        Long orderDuoiNhomId = saveOrder("PH20261031005", patientId, nhomId, "OUTPATIENT", null).getId();
+        saveStudy("2026103100002", orderDuoiNhomId, serviceItemId, null, "SCHEDULED", null, null);
+
+        // Loc theo khoa cha (K01) phai lay luon ca chi dinh o nhom con (N01).
+        mockMvc.perform(get("/studies").param("department_id", departmentId.toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
+    }
+
+    @Test
+    void list_loc_theo_department_id_khop_qua_may_thuc_hien() throws Exception {
+        Long khoaKhacId = saveDepartment("K02", null).getId();
+        Long deviceKhacId = saveDevice("CT02", khoaKhacId, "CT").getId();
+        Long orderKhoaK01Id = saveOrder("PH20261031006", patientId, departmentId, "OUTPATIENT", null).getId();
+        // Chi dinh o K01 nhung may thuc hien lai thuoc K02.
+        saveStudy("2026103100002", orderKhoaK01Id, serviceItemId, deviceKhacId, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies").param("department_id", khoaKhacId.toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].accession_number").value("2026103100002"));
+    }
+
+    @Test
+    void list_loc_theo_khoang_thoi_gian_voi_time_field_mac_dinh_SCHEDULED() throws Exception {
+        // Dat scheduled_at cua ca da seed ve mot ngay co dinh trong khoang loc - khong dua vao
+        // LocalDateTime.now() (seed() dat scheduled_at = now) vi "hom nay" thay doi theo ngay chay test.
+        jdbcTemplate.update("UPDATE study SET scheduled_at = ? WHERE id = ?",
+                LocalDateTime.of(2026, 10, 15, 8, 0), studyId);
+        saveStudy("2026103100002", orderId, serviceItemId, null, "SCHEDULED",
+                LocalDateTime.of(2026, 1, 1, 8, 0), null);
+
+        mockMvc.perform(get("/studies")
+                        .param("date_from", "2026-10-01").param("date_to", "2026-10-31")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].accession_number").value("2026103100001"));
+    }
+
+    @Test
+    void list_loc_theo_khoang_thoi_gian_voi_time_field_ORDERED() throws Exception {
+        Long order2Id = saveOrder("PH20270101001", patientId, departmentId, "OUTPATIENT", null).getId();
+        jdbcTemplate.update("UPDATE imaging_order SET ordered_at = ? WHERE id = ?",
+                LocalDateTime.of(2027, 1, 1, 8, 0), order2Id);
+        saveStudy("2026103100002", order2Id, serviceItemId, null, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies").param("time_field", "ORDERED")
+                        .param("date_from", "2027-01-01").param("date_to", "2027-01-31")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].accession_number").value("2026103100002"));
+    }
+
+    @Test
+    void list_tra_400_khi_time_field_khong_hop_le() throws Exception {
+        mockMvc.perform(get("/studies").param("time_field", "KHONG_HOP_LE")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void list_sap_xep_theo_full_name_qua_join_patient() throws Exception {
+        Long patientBId = savePatient("TEST0002", "An Nguyen").getId();
+        Long orderBId = saveOrder("PH20261031007", patientBId, departmentId, "OUTPATIENT", null).getId();
+        saveStudy("2026103100002", orderBId, serviceItemId, null, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies").param("sort", "full_name,asc")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].accession_number").value("2026103100002"))
+                .andExpect(jsonPath("$.items[1].accession_number").value("2026103100001"));
+    }
+
+    @Test
+    void list_phan_trang_dung_page_size() throws Exception {
+        saveStudy("2026103100002", orderId, serviceItemId, null, "SCHEDULED", null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, null, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies").param("page", "2").param("page_size", "2")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(2))
+                .andExpect(jsonPath("$.total").value(3))
+                .andExpect(jsonPath("$.items.length()").value(1));
+    }
+
+    @Test
+    void statusCounts_dem_dung_va_dien_0_cho_nhom_khong_co_ca() throws Exception {
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, deviceId, "UNREAD", null, null);
+
+        mockMvc.perform(get("/studies/status-counts")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(3))
+                .andExpect(jsonPath("$.by_status.SCHEDULED").value(1))
+                .andExpect(jsonPath("$.by_status.UNREAD").value(2))
+                .andExpect(jsonPath("$.by_status.READING").value(0))
+                .andExpect(jsonPath("$.by_status.READ").value(0))
+                .andExpect(jsonPath("$.by_status.APPROVING").value(0))
+                .andExpect(jsonPath("$.by_status.APPROVED").value(0))
+                .andExpect(jsonPath("$.by_status.CANCELLED").value(0));
+    }
+
+    @Test
+    void statusCounts_ap_dung_cung_bo_loc_voi_listStudies_theo_device_id() throws Exception {
+        Long device2Id = saveDevice("CT02", departmentId, "CT").getId();
+        saveStudy("2026103100002", orderId, serviceItemId, device2Id, "UNREAD", null, null);
+
+        mockMvc.perform(get("/studies/status-counts").param("device_id", deviceId.toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.by_status.SCHEDULED").value(1))
+                .andExpect(jsonPath("$.by_status.UNREAD").value(0));
+    }
+
+    @Test
+    void statusCounts_ap_dung_cung_bo_loc_theo_department_id_gom_nhanh_con() throws Exception {
+        Long nhomId = saveDepartment("N01", departmentId).getId();
+        Long orderDuoiNhomId = saveOrder("PH20261031005", patientId, nhomId, "OUTPATIENT", null).getId();
+        saveStudy("2026103100002", orderDuoiNhomId, serviceItemId, null, "UNREAD", null, null);
+
+        mockMvc.perform(get("/studies/status-counts").param("department_id", departmentId.toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
+    }
+
+    @Test
+    void statusCounts_tra_400_khi_modality_khong_hop_le() throws Exception {
+        mockMvc.perform(get("/studies/status-counts").param("modality", "KHONG_HOP_LE")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void statusCounts_tra_401_khi_khong_co_token() throws Exception {
+        mockMvc.perform(get("/studies/status-counts"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void statusCounts_tra_403_khi_vai_tro_khong_hop_le() throws Exception {
+        String guestToken = jwtService.generateToken("guest", List.of("GUEST"));
+        mockMvc.perform(get("/studies/status-counts")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + guestToken))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -188,28 +505,32 @@ class StudyControllerTest extends AbstractIntegrationTest {
         return studyDao.save(study);
     }
 
-    private Study saveStudy(String accessionNumber, Long orderId, Long serviceItemId, String status) {
+    private Study saveStudy(String accessionNumber, Long orderId, Long serviceItemId, Long deviceId, String status,
+                             LocalDateTime scheduledAt, LocalDateTime completedAt) {
         Study study = new Study();
         study.setAccessionNumber(accessionNumber);
         study.setOrderId(orderId);
         study.setServiceItemId(serviceItemId);
+        study.setDeviceId(deviceId);
         study.setStatus(status);
+        study.setScheduledAt(scheduledAt != null ? scheduledAt : LocalDateTime.now());
+        study.setCompletedAt(completedAt);
         LocalDateTime now = LocalDateTime.now();
-        study.setScheduledAt(now);
         study.setCreatedAt(now);
         study.setUpdatedAt(now);
         return studyDao.save(study);
     }
 
-    private ImagingOrder saveOrder(String orderCode, Long patientId, Long departmentId) {
+    private ImagingOrder saveOrder(String orderCode, Long patientId, Long departmentId, String patientClass, String visitCode) {
         ImagingOrder order = new ImagingOrder();
         order.setOrderCode(orderCode);
         order.setPatientId(patientId);
+        order.setVisitCode(visitCode);
         order.setSource("MANUAL");
         order.setSyncStatus("NOT_SYNCED");
         order.setOrderingDepartmentId(departmentId);
         order.setOrderingDoctorName("BS Test");
-        order.setPatientClass("OUTPATIENT");
+        order.setPatientClass(patientClass);
         LocalDateTime now = LocalDateTime.now();
         order.setOrderedAt(now);
         order.setCreatedAt(now);
@@ -217,10 +538,10 @@ class StudyControllerTest extends AbstractIntegrationTest {
         return imagingOrderDao.save(order);
     }
 
-    private Patient savePatient(String code) {
+    private Patient savePatient(String code, String fullName) {
         Patient p = new Patient();
         p.setPatientCode(code);
-        p.setFullName("Benh nhan " + code);
+        p.setFullName(fullName);
         p.setDobPrecision("DAY");
         p.setGender("U");
         LocalDateTime now = LocalDateTime.now();
@@ -229,22 +550,33 @@ class StudyControllerTest extends AbstractIntegrationTest {
         return patientDao.save(p);
     }
 
-    private Department saveDepartment(String code) {
+    private Department saveDepartment(String code, Long parentId) {
         Department d = new Department();
         d.setCode(code);
         d.setName("Khoa " + code);
+        d.setParentId(parentId);
         d.setType("KHOA");
         d.setSortOrder(1);
         d.setIsActive(true);
         return departmentDao.save(d);
     }
 
-    private ServiceItem saveServiceItem(String code) {
+    private ServiceItem saveServiceItem(String code, String modality) {
         ServiceItem s = new ServiceItem();
         s.setCode(code);
         s.setName("Chup " + code);
-        s.setModality("CT");
+        s.setModality(modality);
         s.setIsActive(true);
         return serviceItemDao.save(s);
+    }
+
+    private Device saveDevice(String code, Long departmentId, String modality) {
+        Device device = new Device();
+        device.setCode(code);
+        device.setName("May " + code);
+        device.setModality(modality);
+        device.setDepartmentId(departmentId);
+        device.setIsActive(true);
+        return deviceDao.save(device);
     }
 }
