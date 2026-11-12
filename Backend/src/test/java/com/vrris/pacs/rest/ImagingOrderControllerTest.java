@@ -1,9 +1,13 @@
 package com.vrris.pacs.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vrris.pacs.dao.AuditLogDao;
+import com.vrris.pacs.dao.ClinicalSnapshotDao;
 import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dao.ServiceItemDao;
+import com.vrris.pacs.model.AuditLog;
+import com.vrris.pacs.model.ClinicalSnapshot;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.Patient;
 import com.vrris.pacs.model.ServiceItem;
@@ -14,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -52,6 +58,15 @@ class ImagingOrderControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private ClinicalSnapshotDao clinicalSnapshotDao;
+
+    @Autowired
+    private AuditLogDao auditLogDao;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private String adminToken;
     private String radiologistToken;
@@ -259,6 +274,110 @@ class ImagingOrderControllerTest extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.studies.length()").value(2));
+    }
+
+    /* -------------------------------------------------- GET /imaging-orders/{id}/clinical-snapshot (IN-11) */
+
+    @Test
+    void getClinicalSnapshot_tra_200_kem_payload_va_ghi_audit_log() throws Exception {
+        Long orderId = createOrder(adminToken, "BS Nguyen Van A");
+        saveClinicalSnapshot(orderId, "{\"overview\":{\"chieu_cao\":\"170\"},\"labs\":[],\"drugs\":[],\"surgery\":[]}");
+
+        mockMvc.perform(get("/imaging-orders/" + orderId + "/clinical-snapshot")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.order_id").value(orderId))
+                .andExpect(jsonPath("$.source").value("SEED"))
+                .andExpect(jsonPath("$.payload.overview.chieu_cao").value("170"))
+                .andExpect(jsonPath("$.payload.labs").isArray());
+
+        boolean audited = auditLogDao.findAll().stream().anyMatch(log ->
+                "READ".equals(log.getAction())
+                        && "CLINICAL_SNAPSHOT".equals(log.getEntityType())
+                        && orderId.equals(log.getEntityId())
+                        && "admin".equals(log.getActorUsername()));
+        assertThat(audited).isTrue();
+    }
+
+    @Test
+    void getClinicalSnapshot_tra_404_khi_chi_dinh_chua_co_snapshot() throws Exception {
+        Long orderId = createOrder(adminToken, "BS Nguyen Van A");
+
+        mockMvc.perform(get("/imaging-orders/" + orderId + "/clinical-snapshot")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CLINICAL_SNAPSHOT_NOT_FOUND"));
+    }
+
+    @Test
+    void getClinicalSnapshot_tra_404_khi_khong_tim_thay_chi_dinh() throws Exception {
+        mockMvc.perform(get("/imaging-orders/999999/clinical-snapshot")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("IMAGING_ORDER_NOT_FOUND"));
+    }
+
+    @Test
+    void getClinicalSnapshot_CLINICIAN_tra_200_khi_la_nguoi_chi_dinh() throws Exception {
+        // D34 (06-rbac-matrix.md muc 5): ordering_doctor_name khop full_name cua app_user goi API.
+        saveAppUser("bslamsang.test", "BS. Lam Sang (test D34)");
+        String clinicianToken = jwtService.generateToken("bslamsang.test", List.of("CLINICIAN"));
+        Long orderId = createOrder(adminToken, "BS. Lam Sang (test D34)");
+        saveClinicalSnapshot(orderId, "{\"overview\":{},\"labs\":[],\"drugs\":[],\"surgery\":[]}");
+
+        mockMvc.perform(get("/imaging-orders/" + orderId + "/clinical-snapshot")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + clinicianToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.order_id").value(orderId));
+    }
+
+    @Test
+    void getClinicalSnapshot_CLINICIAN_tra_403_khi_khong_phai_nguoi_chi_dinh() throws Exception {
+        saveAppUser("bslamsang.khac", "BS. Lam Sang Khac (test D34)");
+        String clinicianToken = jwtService.generateToken("bslamsang.khac", List.of("CLINICIAN"));
+        Long orderId = createOrder(adminToken, "BS Nguyen Van A");
+
+        mockMvc.perform(get("/imaging-orders/" + orderId + "/clinical-snapshot")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + clinicianToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    private Long createOrder(String token, String orderingDoctorName) throws Exception {
+        Map<String, Object> study = new LinkedHashMap<>();
+        study.put("service_item_id", serviceItemId);
+        study.put("scheduled_at", "2026-11-10T08:00:00");
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("patient_id", patientId);
+        body.put("ordering_department_id", departmentId);
+        body.put("ordering_doctor_name", orderingDoctorName);
+        body.put("patient_class", "OUTPATIENT");
+        body.put("studies", List.of(study));
+
+        String response = mockMvc.perform(post("/imaging-orders")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) objectMapper.readValue(response, Map.class).get("id")).longValue();
+    }
+
+    private void saveClinicalSnapshot(Long orderId, String payloadJson) {
+        ClinicalSnapshot snapshot = new ClinicalSnapshot();
+        snapshot.setOrderId(orderId);
+        snapshot.setPayload(payloadJson);
+        snapshot.setFetchedAt(LocalDateTime.now());
+        snapshot.setSource("SEED");
+        clinicalSnapshotDao.save(snapshot);
+    }
+
+    /** Chua co model.AppUser day du luc viet test nay nen them bang SQL - giong PrintControllerTest. */
+    private void saveAppUser(String username, String fullName) {
+        jdbcTemplate.update(
+                "INSERT INTO app_user (username, password_hash, full_name, email) VALUES (?, ?, ?, ?)",
+                username, "khong-dung-trong-test", fullName, username + "@vr-ris.local");
     }
 
     private Patient savePatient(String code) {
