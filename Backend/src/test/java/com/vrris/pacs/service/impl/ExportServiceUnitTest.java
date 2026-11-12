@@ -1,7 +1,9 @@
 package com.vrris.pacs.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.audit.AuditLogAspect;
 import com.vrris.pacs.dao.AuditLogDao;
+import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.DeviceDao;
 import com.vrris.pacs.dao.ImagingOrderDao;
 import com.vrris.pacs.dao.PatientDao;
@@ -10,7 +12,11 @@ import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dto.request.ListExportEventRequest;
 import com.vrris.pacs.dto.response.ExportDocumentResponse;
+import com.vrris.pacs.mapper.DeviceMapper;
+import com.vrris.pacs.mapper.ImagingOrderMapper;
 import com.vrris.pacs.mapper.PatientMapper;
+import com.vrris.pacs.mapper.ReportMapper;
+import com.vrris.pacs.mapper.ServiceItemMapper;
 import com.vrris.pacs.mapper.StudyMapper;
 import com.vrris.pacs.model.AuditLog;
 import com.vrris.pacs.model.Device;
@@ -75,7 +81,7 @@ class ExportServiceUnitTest {
         deviceDao = mock(DeviceDao.class);
         reportDao = mock(ReportDao.class);
 
-        AuditLogAspect aspect = new AuditLogAspect(auditLogDao);
+        AuditLogAspect aspect = new AuditLogAspect(auditLogDao, new ObjectMapper());
 
         PatientServiceImpl rawPatientService = new PatientServiceImpl(patientDao, mock(PatientMapper.class));
         AspectJProxyFactory patientProxyFactory = new AspectJProxyFactory(rawPatientService);
@@ -83,7 +89,10 @@ class ExportServiceUnitTest {
         proxiedPatientService = patientProxyFactory.getProxy();
 
         StudyServiceImpl rawStudyService = new StudyServiceImpl(
-                studyDao, imagingOrderDao, patientDao, serviceItemDao, deviceDao, reportDao, mock(StudyMapper.class));
+                studyDao, imagingOrderDao, serviceItemDao, deviceDao, mock(DepartmentDao.class),
+                patientDao, reportDao, mock(StudyMapper.class), mock(ImagingOrderMapper.class),
+                mock(ServiceItemMapper.class), mock(DeviceMapper.class), mock(PatientMapper.class),
+                mock(ReportMapper.class));
         AspectJProxyFactory studyProxyFactory = new AspectJProxyFactory(rawStudyService);
         studyProxyFactory.addAspect(aspect);
         proxiedStudyService = studyProxyFactory.getProxy();

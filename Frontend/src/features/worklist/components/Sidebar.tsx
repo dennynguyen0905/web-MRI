@@ -45,7 +45,7 @@ interface Props {
  */
 export function Sidebar({ filters, onChange, departments, devices, serviceItems, counts, visibleCount }: Props) {
   return (
-    <aside className="flex w-[232px] shrink-0 flex-col overflow-hidden border-r border-line bg-white">
+    <aside className="flex w-[240px] shrink-0 flex-col overflow-hidden border-r border-line bg-white desktop:w-[300px]">
       <DeviceTree
         filters={filters}
         onChange={onChange}
@@ -55,15 +55,15 @@ export function Sidebar({ filters, onChange, departments, devices, serviceItems,
         visibleCount={visibleCount}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3 desktop:px-3 desktop:pb-4">
         <StatusFilter filters={filters} onChange={onChange} counts={counts} />
 
-        <div className="mt-3 mb-1.5 flex items-center justify-between">
+        <div className="mt-3 mb-1.5 flex items-center justify-between desktop:mt-4">
           <span className="section-label">Thông tin ca chụp</span>
           <Settings size={12} className="text-brand-500" />
         </div>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 desktop:space-y-2">
           <Select
             placeholder="Chọn loại bệnh nhân"
             value={filters.patientClass}
@@ -72,18 +72,21 @@ export function Sidebar({ filters, onChange, departments, devices, serviceItems,
               { value: 'INPATIENT', label: 'Nội trú' },
               { value: 'OUTPATIENT', label: 'Ngoại trú' },
             ]}
+            className="desktop:h-8 desktop:text-[12.5px]"
           />
           <Select
             placeholder="Chỉ định"
             value={filters.serviceItemId}
             onChange={e => onChange({ serviceItemId: e.target.value })}
             options={serviceItems.map(s => ({ value: String(s.id), label: s.name }))}
+            className="desktop:h-8 desktop:text-[12.5px]"
           />
           <Select
             placeholder="Bộ phận chụp"
             value={filters.bodyPart}
             onChange={e => onChange({ bodyPart: e.target.value })}
             options={[...new Set(serviceItems.map(s => s.bodyPart))].map(b => ({ value: b, label: b }))}
+            className="desktop:h-8 desktop:text-[12.5px]"
           />
         </div>
       </div>
@@ -123,13 +126,13 @@ function DeviceTree({ filters, onChange, departments, devices, total, visibleCou
     <div className="shrink-0 border-b border-line px-2.5 pb-2.5 pt-3">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="section-label">Danh sách máy</span>
-        <span className="text-[10.5px] font-semibold text-ink-3">
+        <span className="text-[10.5px] font-semibold text-ink-3 desktop:text-[11.5px]">
           {visibleCount} <span className="text-ink-4">| {formatThousands(total)}</span>
         </span>
       </div>
 
-      <div className="mb-2 flex items-center gap-1.5">
-        <span className="flex h-6 items-center rounded-md border border-line bg-line-soft px-1.5 text-[10.5px] font-semibold text-ink-3">
+      <div className="mb-2 flex items-center gap-1.5 desktop:gap-2">
+        <span className="flex h-6 items-center rounded-md border border-line bg-line-soft px-1.5 text-[10.5px] font-semibold text-ink-3 desktop:h-7 desktop:px-2 desktop:text-[11.5px]">
           ALL
         </span>
         <Select
@@ -137,11 +140,11 @@ function DeviceTree({ filters, onChange, departments, devices, total, visibleCou
           value={filters.modality}
           onChange={e => onChange({ modality: e.target.value as Modality | '' })}
           options={MODALITIES.map(m => ({ value: m, label: m }))}
-          className="h-6"
+          className="h-6 desktop:h-7"
         />
       </div>
 
-      <div className="max-h-[164px] space-y-px overflow-y-auto pr-0.5">
+      <div className="max-h-[164px] space-y-px overflow-y-auto pr-0.5 desktop:max-h-[220px]">
         {roots.map(khoa => {
           const groups = departments.filter(d => d.parentId === khoa.id)
           const open = !collapsed.has(khoa.id)
@@ -150,11 +153,11 @@ function DeviceTree({ filters, onChange, departments, devices, total, visibleCou
             <div key={khoa.id}>
               <button
                 onClick={() => toggleNode(khoa.id)}
-                className="flex h-[22px] w-full items-center gap-1 rounded px-0.5 text-left transition-colors hover:bg-line-soft"
+                className="flex h-[22px] w-full items-center gap-1 rounded px-0.5 text-left transition-colors hover:bg-line-soft desktop:h-[26px] desktop:gap-1.5"
               >
                 {open ? <ChevronDown size={11} className="text-ink-4" /> : <ChevronRight size={11} className="text-ink-4" />}
                 <Lock size={11} className="text-brand-500" />
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-ink">{khoa.name}</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-ink desktop:text-[12px]">{khoa.name}</span>
               </button>
 
               {open && direct.map(dev => (
@@ -168,11 +171,11 @@ function DeviceTree({ filters, onChange, departments, devices, total, visibleCou
                   <div key={nhom.id} className="pl-3">
                     <button
                       onClick={() => toggleNode(nhom.id)}
-                      className="flex h-[22px] w-full items-center gap-1 rounded px-0.5 text-left transition-colors hover:bg-line-soft"
+                      className="flex h-[22px] w-full items-center gap-1 rounded px-0.5 text-left transition-colors hover:bg-line-soft desktop:h-[26px] desktop:gap-1.5"
                     >
                       {gopen ? <ChevronDown size={11} className="text-ink-4" /> : <ChevronRight size={11} className="text-ink-4" />}
                       <Folder size={11} className="text-ink-4" />
-                      <span className="text-[11px] text-ink-2">{nhom.name}</span>
+                      <span className="text-[11px] text-ink-2 desktop:text-[12px]">{nhom.name}</span>
                     </button>
                     {gopen && groupDevices.map(dev => (
                       <DeviceRow key={dev.id} device={dev} checked={filters.deviceIds.includes(dev.id)} onToggle={toggleDevice} indent="pl-6" />
@@ -195,11 +198,11 @@ function DeviceRow({ device, checked, onToggle, indent }: {
   indent: string
 }) {
   return (
-    <div className={`flex h-[22px] items-center ${indent}`}>
+    <div className={`flex h-[22px] items-center desktop:h-[26px] ${indent}`}>
       <Checkbox
         checked={checked}
         onChange={() => onToggle(device.id)}
-        label={<span className="text-[10.5px] text-ink-3">{device.name}</span>}
+        label={<span className="text-[10.5px] text-ink-3 desktop:text-[11.5px]">{device.name}</span>}
       />
     </div>
   )
@@ -226,29 +229,29 @@ function StatusFilter({ filters, onChange, counts }: {
       <div className="mt-3 mb-1 section-label">Trạng thái ca chụp</div>
 
       {/* Tab "Chờ" đã là SCHEDULED nên dòng này chỉ để đối chiếu, không bật/tắt được. */}
-      <div className="flex h-[23px] items-center gap-2 rounded px-0.5">
+      <div className="flex h-[23px] items-center gap-2 rounded px-0.5 desktop:h-[27px]">
         <span className="w-3.5" />
         <StatusGlyph status="SCHEDULED" />
-        <span className="flex-1 text-[11.5px] text-ink-2">{STATUS_META.SCHEDULED.label}</span>
-        <span className="text-[10px] tabular-nums text-ink-4">({compactNumber(counts?.byStatus.SCHEDULED ?? 0)})</span>
+        <span className="flex-1 text-[11.5px] text-ink-2 desktop:text-[12px]">{STATUS_META.SCHEDULED.label}</span>
+        <span className="text-[10px] tabular-nums text-ink-4 desktop:text-[11px]">({compactNumber(counts?.byStatus.SCHEDULED ?? 0)})</span>
       </div>
 
       {DONE_STATUSES.map(s => (
-        <div key={s} className="flex h-[23px] items-center gap-2 rounded px-0.5 transition-colors hover:bg-line-soft">
+        <div key={s} className="flex h-[23px] items-center gap-2 rounded px-0.5 transition-colors hover:bg-line-soft desktop:h-[27px]">
           <Checkbox checked={filters.statuses.includes(s)} onChange={() => toggle(s)} />
           <StatusGlyph status={s} />
-          <span className="flex-1 text-[11.5px] text-ink-2">{STATUS_META[s].label}</span>
-          <span className="text-[10px] tabular-nums text-ink-4">({compactNumber(counts?.byStatus[s] ?? 0)})</span>
+          <span className="flex-1 text-[11.5px] text-ink-2 desktop:text-[12px]">{STATUS_META[s].label}</span>
+          <span className="text-[10px] tabular-nums text-ink-4 desktop:text-[11px]">({compactNumber(counts?.byStatus[s] ?? 0)})</span>
         </div>
       ))}
 
-      <div className="flex h-[23px] items-center gap-2 rounded px-0.5 transition-colors hover:bg-line-soft">
+      <div className="flex h-[23px] items-center gap-2 rounded px-0.5 transition-colors hover:bg-line-soft desktop:h-[27px]">
         <Checkbox
           checked={allOn}
           onChange={v => onChange({ statuses: v ? [...DONE_STATUSES] : [] })}
         />
         <span className="w-3" />
-        <span className="flex-1 text-[11.5px] text-ink-2">Tất cả</span>
+        <span className="flex-1 text-[11.5px] text-ink-2 desktop:text-[12px]">Tất cả</span>
       </div>
     </>
   )

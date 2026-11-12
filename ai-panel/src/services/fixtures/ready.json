@@ -1,0 +1,41 @@
+{
+  "study_instance_uid": "1.2.826.0.1.3680043.8.498.90000002",
+  "model_name": "MedAI-ChestCT",
+  "model_version": "1.2",
+  "status": "READY",
+  "triggered_at": "2026-11-08T09:35:00+07:00",
+  "completed_at": "2026-11-08T09:42:00+07:00",
+  "error_reason": null,
+  "findings": [
+    {
+      "label": "Nốt mờ thuỳ trên phổi (P), ~8mm",
+      "confidence": 0.87,
+      "seg_sop_instance_uid": "1.2.826.0.1.3680043.8.498.90000002.1",
+      "draft_technique": "Chụp X-quang ngực thẳng, tư thế đứng, hít sâu.",
+      "draft_findings": "Nốt mờ ranh giới rõ, đường kính khoảng 8mm ở thuỳ trên phổi phải. Thành phế quản hai bên dày nhẹ. Góc sườn hoành (T) hơi tù, nghi tràn dịch màng phổi lượng ít.",
+      "draft_diagnosis": "Nốt mờ thuỳ trên phổi (P) nghi tổn thương khu trú. Nghi tràn dịch màng phổi (T) mức độ ít.",
+      "draft_conclusion": "Nốt mờ thuỳ trên phổi (P) cần theo dõi thêm. Nghi tràn dịch màng phổi (T) mức độ ít.",
+      "draft_recommendation": "Đề nghị chụp CT ngực để đánh giá thêm nốt mờ; theo dõi lâm sàng tràn dịch màng phổi."
+    },
+    {
+      "label": "Dày thành phế quản hai bên",
+      "confidence": 0.63,
+      "seg_sop_instance_uid": "1.2.826.0.1.3680043.8.498.90000002.2",
+      "draft_technique": "Chụp X-quang ngực thẳng, tư thế đứng, hít sâu.",
+      "draft_findings": "Thành phế quản hai bên dày nhẹ, gợi ý viêm phế quản mạn.",
+      "draft_diagnosis": "Viêm phế quản mạn.",
+      "draft_conclusion": "Dày thành phế quản hai bên, phù hợp viêm phế quản mạn.",
+      "draft_recommendation": "Theo dõi lâm sàng, không cần chụp thêm."
+    },
+    {
+      "label": "Tràn dịch màng phổi (T), lượng ít",
+      "confidence": 0.41,
+      "seg_sop_instance_uid": "1.2.826.0.1.3680043.8.498.90000002.3",
+      "draft_technique": "Chụp X-quang ngực thẳng, tư thế đứng, hít sâu.",
+      "draft_findings": "Góc sườn hoành (T) hơi tù, nghi tràn dịch màng phổi lượng ít.",
+      "draft_diagnosis": "Nghi tràn dịch màng phổi (T) mức độ ít.",
+      "draft_conclusion": "Tràn dịch màng phổi (T) lượng ít, cần theo dõi.",
+      "draft_recommendation": "Theo dõi lâm sàng, chụp lại nếu triệu chứng tăng."
+    }
+  ]
+}

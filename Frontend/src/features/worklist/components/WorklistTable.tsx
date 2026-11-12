@@ -42,7 +42,7 @@ const cellMuted = 'text-ink-3'
 
 export const COLUMNS: Record<ColumnKey, Column> = {
   index: {
-    key: 'index', label: '#', width: '36px', align: 'center',
+    key: 'index', label: 'STT', width: '36px', align: 'center',
     render: (_r, i) => <span className="tabular-nums text-ink-4">{i + 1}</span>,
   },
   status: {
@@ -197,11 +197,11 @@ export function WorklistTable({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full min-w-[920px] border-collapse text-[12px]">
+        <table className="w-full min-w-[920px] border-collapse text-[12px] desktop:text-[13px]">
           <thead className="sticky top-0 z-20">
             <tr className="bg-[#e7eefb]">
               <th className="w-[46px] border-b border-brand-100 px-1.5 py-0 text-left">
-                <div className="relative flex h-[30px] items-center gap-0.5">
+                <div className="relative flex h-[30px] items-center gap-0.5 desktop:h-[34px]">
                   <button
                     onClick={colMenu.toggle}
                     title="Cột hiển thị"
@@ -227,7 +227,7 @@ export function WorklistTable({
                   key={c.key}
                   style={{ width: c.width }}
                   className={cx(
-                    'border-b border-brand-100 px-2 py-0 text-[11.5px] font-semibold text-[#1e3a6b]',
+                    'border-b border-brand-100 px-2 py-0 text-[11.5px] font-semibold text-[#1e3a6b] desktop:text-[12px]',
                     c.align === 'center' ? 'text-center' : 'text-left',
                   )}
                 >
@@ -235,7 +235,7 @@ export function WorklistTable({
                     disabled={!c.sortField}
                     onClick={() => c.sortField && onSort(c.sortField)}
                     className={cx(
-                      'flex h-[30px] w-full items-center gap-1',
+                      'flex h-[30px] w-full items-center gap-1 desktop:h-[34px]',
                       c.align === 'center' && 'justify-center',
                       c.sortField && 'cursor-pointer hover:text-brand-700',
                     )}
@@ -293,7 +293,7 @@ export function WorklistTable({
                   {cols.map(c => (
                     <td
                       key={c.key}
-                      className={cx('px-2 py-1.5 align-top', c.align === 'center' && 'text-center')}
+                      className={cx('px-2 py-1.5 align-top desktop:py-2', c.align === 'center' && 'text-center')}
                     >
                       {c.render(row, i)}
                     </td>

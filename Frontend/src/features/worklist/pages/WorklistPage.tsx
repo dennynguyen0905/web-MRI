@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ClinicalModal } from '@/features/clinical/components/ClinicalModal'
 import { saveBlob } from '@/features/printing/api/printApi'
 import { PrintModal } from '@/features/printing/components/PrintModal'
@@ -8,10 +8,11 @@ import { fetchCurrentReport } from '@/features/reports/api/reportApi'
 import { AddStudyModal } from '@/features/studies/components/AddStudyModal'
 import { UpdateFromHisModal } from '@/features/studies/components/UpdateFromHisModal'
 import { UpdateStudyModal } from '@/features/studies/components/UpdateStudyModal'
+import { openStudyViewer } from '@/features/studies/api/viewerApi'
 import { useAuth, useCurrentUser } from '@/features/auth/hooks/useAuth'
 import { useAsync } from '@/shared/hooks/useAsync'
 import { can, deniedReason } from '@/shared/lib/auth'
-import type { TimeField, WorklistRow, WorklistTab } from '@/shared/lib/types'
+import type { StudyStatus, TimeField, WorklistRow, WorklistTab } from '@/shared/lib/types'
 import { Button, Select, cx } from '@/shared/ui/controls'
 import { Download, Printer, Warning } from '@/shared/ui/Icon'
 import { DEFAULT_SIDEBAR_FILTERS, Sidebar, type SidebarFilters } from '../components/Sidebar'
@@ -92,6 +93,31 @@ export function WorklistPage() {
 
   const reference = useReferenceData()
   const counts = useStatusCounts(refreshKey)
+
+  /* ------------------------- Tab mặc định theo vai trò (đăng nhập lần đầu) */
+  // RADIOLOGIST → "Chưa đọc" (UNREAD); APPROVER → "Đọc xong" (READ) hoặc "Đang duyệt" (APPROVING),
+  // chọn tab có nhiều ca hơn, mặc định READ nếu chưa xác định được. CLINICIAN/TECHNICIAN/ADMIN
+  // giữ tab đầu tiên hiện tại ('PENDING'). Chỉ áp dụng một lần lúc vào worklist, không ghi đè
+  // lựa chọn tab sau đó của người dùng. Vai trò lấy từ `useCurrentUser()` — cùng nguồn `auth.ts`.
+  const appliedRoleDefaultTab = useRef(false)
+  useEffect(() => {
+    if (appliedRoleDefaultTab.current) return
+    if (user.roles.includes('RADIOLOGIST')) {
+      appliedRoleDefaultTab.current = true
+      setTab('DONE')
+      setFilters(f => ({ ...f, statuses: ['UNREAD'] }))
+    } else if (user.roles.includes('APPROVER')) {
+      if (!counts.data) return // chờ số đếm trạng thái tải xong để biết tab nào nhiều ca hơn
+      appliedRoleDefaultTab.current = true
+      const target: StudyStatus = (counts.data.byStatus.APPROVING ?? 0) > (counts.data.byStatus.READ ?? 0)
+        ? 'APPROVING'
+        : 'READ'
+      setTab('DONE')
+      setFilters(f => ({ ...f, statuses: [target] }))
+    } else {
+      appliedRoleDefaultTab.current = true
+    }
+  }, [user.roles, counts.data])
 
   /* ------------------------------------------------- Bộ lọc gửi lên API */
 
@@ -309,14 +335,13 @@ export function WorklistPage() {
           visibleCount={total}
         />
 
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-app p-2">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-app p-2 desktop:p-3">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-white">
-            <div className="flex h-[38px] shrink-0 items-center gap-1.5 border-b border-line px-2">
+            <div className="flex min-h-[38px] shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5 desktop:h-[38px] desktop:flex-nowrap desktop:py-0">
               <TabButton active={tab === 'PENDING'} onClick={() => { setTab('PENDING'); setPage(1) }}>Chờ</TabButton>
               <TabButton active={tab === 'DONE'} onClick={() => { setTab('DONE'); setPage(1) }}>Đã thực hiện</TabButton>
 
-              <div className="flex-1" />
-
+              <div className="ml-auto flex flex-wrap items-center gap-1.5">
               <div className="w-[150px]">
                 <Select
                   value={topbar.timeField}
@@ -344,6 +369,7 @@ export function WorklistPage() {
               >
                 Tải danh sách
               </Button>
+              </div>
             </div>
 
             <WorklistTable
@@ -391,6 +417,7 @@ export function WorklistPage() {
             onUpdateFromHis={() => setModal('HIS')}
             onAddOrder={() => setModal('ADD')}
             onClinical={() => openGated('clinical.view', 'CLINICAL')}
+            onViewImage={() => openStudyViewer(selected.study.id)}
             onReport={() => setModal('REPORT')}
             onPrint={() => openGated('report.print', 'PRINT')}
           />
@@ -398,7 +425,7 @@ export function WorklistPage() {
       </div>
 
       <AddStudyModal open={modal === 'ADD'} onClose={() => setModal(null)} />
-      <UpdateStudyModal open={modal === 'UPDATE'} onClose={() => setModal(null)} row={selected} />
+      <UpdateStudyModal open={modal === 'UPDATE'} onClose={() => setModal(null)} row={selected} user={user} />
       <UpdateFromHisModal open={modal === 'HIS'} onClose={() => setModal(null)} row={selected} />
       <ClinicalModal open={modal === 'CLINICAL'} onClose={() => setModal(null)} row={selected} />
       <ReportModal
