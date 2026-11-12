@@ -8,6 +8,7 @@ Tài liệu con của `README.md`, mục 6A: [T1] Đặc tả state machine. Că
 | Trạng thái tài liệu | Mọi điểm gắn ❓ là **đề xuất, chờ nhóm xác nhận**. Chưa có điểm nào được xác nhận |
 | Liên quan README Phần 9 | Câu 1 (ai chuyển trạng thái, có quay lui không), câu 2 ("quá hạn"), câu 11–13 (AI) |
 | Thay đổi 2026-11-05 | Viết lại mục 2.6 (vị trí AI) — sửa mâu thuẫn với quy tắc "AI không ghi trực tiếp vào RIS", thêm đề xuất trường phụ `study.ai_status` (❓ chưa chốt, H-04). Chi tiết đầy đủ ở `doc/11-ai-design.md` |
+| Thay đổi 2026-11-12 | Mục 2.1: `CANCELLED` đã thêm vào `enu.StudyStatus` backend (IN-09, `GET /studies/status-counts` cần đếm đủ 7 nhóm khớp `openapi.yaml`) — bỏ nhãn ❓ ở hàng này, nhưng CHỈ cho phạm vi giá trị enum/đếm. Bảng T1–T10 ở mục 2.2 (đặc biệt T10 `SCHEDULED → CANCELLED`, vai trò/điều kiện) **không đổi**, vẫn ❓ chờ nhóm xác nhận — `rule.StudyStateMachine` chưa có nhánh nào đi đến/đi từ `CANCELLED` |
 
 Quy ước: mã trạng thái trong DB và API là cột **DB / API** của bảng 2.1 (theo `02-erd.md` mục 4.5). Nhãn tiếng Việt chỉ dùng cho UI.
 
@@ -29,7 +30,7 @@ Quy ước: mã trạng thái trong DB và API là cột **DB / API** của bả
 | `READ` | Đọc xong | Trung gian | Báo cáo đã chốt `FINAL`, chờ duyệt |
 | `APPROVING` | Đang duyệt | Trung gian | README Phần 4: có thể chỉ tồn tại ở một số khoa — ❓ chưa hỏi |
 | `APPROVED` | Duyệt xong | Cuối thuận lợi | Gửi kết quả về HIS (H-03); vẫn có thể mở lại (nhánh ❓) |
-| `CANCELLED` ❓ | Đã hủy | Cuối | Đề xuất trong `02-erd.md` mục 9, chờ xác nhận |
+| `CANCELLED` | Đã hủy | Cuối | Đã thêm vào `enu.StudyStatus` backend (2026-11-12, IN-09 - `GET /studies/status-counts` cần đếm đủ 7 nhóm, khớp `openapi.yaml`). Phạm vi chỉ là **giá trị enum để nhận diện/đếm** - `rule.StudyStateMachine` CHƯA có T10, điều kiện/vai trò chuyển sang trạng thái này ❓ **vẫn chưa xác nhận** (xem bảng T10 ở mục 2.2) |
 
 ### 2.2. Bảng chuyển trạng thái
 
