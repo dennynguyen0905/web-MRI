@@ -2,8 +2,10 @@ package com.vrris.pacs.service.impl;
 
 import com.vrris.pacs.audit.Audited;
 import com.vrris.pacs.dao.PatientDao;
+import com.vrris.pacs.dto.request.ListExportEventRequest;
 import com.vrris.pacs.dto.request.PatientCreateRequest;
 import com.vrris.pacs.dto.request.PatientUpdateRequest;
+import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.PatientPageResponse;
 import com.vrris.pacs.dto.response.PatientResponse;
 import com.vrris.pacs.enu.AuditAction;
@@ -12,6 +14,7 @@ import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.mapper.PatientMapper;
 import com.vrris.pacs.model.Patient;
 import com.vrris.pacs.rule.AgeCalculator;
+import com.vrris.pacs.rule.PatientListCsvExporter;
 import com.vrris.pacs.service.PatientService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -46,6 +49,7 @@ public class PatientServiceImpl implements PatientService {
     );
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 200;
+    private static final int MAX_EXPORT_ROWS = 5000;
 
     private final PatientDao patientDao;
     private final PatientMapper patientMapper;
@@ -115,6 +119,54 @@ public class PatientServiceImpl implements PatientService {
 
         Patient saved = patientDao.save(patient);
         return toResponseWithAge(saved);
+    }
+
+    @Override
+    // KHONG readOnly: AuditLogAspect ghi mot dong audit_log action EXPORT (IN-15, doc/09 muc 2.2).
+    @Transactional
+    @Audited(action = AuditAction.EXPORT, entityType = "PATIENT")
+    public ExportDocumentResponse exportCsv(String q, String patientCode, String fullName, String sort) {
+        SortSpec sortSpec = parseSort(sort);
+        PatientDao.SearchCriteria criteria = new PatientDao.SearchCriteria(
+                blankToNull(q), blankToNull(patientCode), blankToNull(fullName),
+                1, MAX_EXPORT_ROWS, sortSpec.field(), sortSpec.ascending());
+        PatientDao.SearchResult result = patientDao.search(criteria);
+
+        List<PatientListCsvExporter.PatientRow> rows = result.items().stream()
+                .map(p -> new PatientListCsvExporter.PatientRow(
+                        p.getPatientCode(),
+                        p.getHisPatientId(),
+                        p.getFullName(),
+                        p.getDateOfBirth(),
+                        p.getDobPrecision() == null ? DobPrecision.DAY : DobPrecision.valueOf(p.getDobPrecision()),
+                        p.getGender(),
+                        p.getSocialInsuranceNo(),
+                        p.getPhone(),
+                        p.getAddress(),
+                        p.getCreatedAt()
+                ))
+                .toList();
+
+        Long singlePatientId = result.items().size() == 1 ? result.items().get(0).getId() : null;
+        LocalDate today = LocalDate.now();
+        byte[] content = PatientListCsvExporter.exportPatients(rows, today);
+        return new ExportDocumentResponse(
+                PatientListCsvExporter.patientListFileName(today),
+                "text/csv;charset=UTF-8",
+                content,
+                rows.size(),
+                singlePatientId
+        );
+    }
+
+    @Override
+    // KHONG readOnly: AuditLogAspect ghi mot dong audit_log action EXPORT (IN-15, doc/09 muc 2.2).
+    @Transactional
+    @Audited(action = AuditAction.EXPORT, entityType = "PATIENT")
+    public void recordExportEvent(ListExportEventRequest request) {
+        if (request.patientId() != null) {
+            findOrThrow(request.patientId());
+        }
     }
 
     private Patient findOrThrow(Long id) {

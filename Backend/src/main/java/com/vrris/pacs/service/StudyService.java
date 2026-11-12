@@ -1,6 +1,7 @@
 package com.vrris.pacs.service;
 
 import com.vrris.pacs.dto.request.StudyCreateRequest;
+import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.StatusCountsResponse;
 import com.vrris.pacs.dto.response.StudyDetailResponse;
 import com.vrris.pacs.dto.response.StudyPageResponse;
@@ -71,4 +72,12 @@ public interface StudyService {
      * STUDY_DEVICE_NOT_FOUND, 422).
      */
     StudyResponse addToOrder(Long orderId, StudyCreateRequest request);
+
+    /**
+     * Xuat danh sach ca chup / benh nhan tren worklist ra file CSV UTF-8 kem BOM (IN-25,
+     * GET /studies/export). Ghi audit_log action EXPORT (patient_id co neu danh sach chi thuoc
+     * 1 benh nhan, NULL neu nhieu - doc/09-bao-mat-toan-ven-du-lieu.md muc 2.2).
+     */
+    ExportDocumentResponse exportCsv(Long orderId, String status, Long deviceId,
+                                     String q, String patientCode, String fullName, String sort);
 }

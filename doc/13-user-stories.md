@@ -238,6 +238,23 @@ File này "viết dần khi code" (README mục 6A) — không viết hết mộ
 - Given KTV chọn khoảng thời gian "Hôm qua", When tải worklist, Then chỉ hiện ca có `scheduled_at` trong khoảng hôm qua (00:00–23:59 giờ Việt Nam, quy đổi từ UTC — `02-erd.md` 4.7).
 - Given tham số lọc không khớp ca nào, When tải worklist, Then trả danh sách rỗng kèm số đếm `0`, không lỗi.
 
+#### US-KTV-11 — Xuất / tải file CSV và in danh sách bệnh nhân, ca chụp
+
+**Là** KTV chụp (hoặc bất kỳ vai trò nào trong 5 vai trò được xem danh sách), **tôi muốn** tải danh sách bệnh nhân / danh sách ca chụp trên worklist ra file CSV (UTF-8 kèm BOM) hoặc in danh sách theo bộ lọc hiện tại, **để** đối chiếu, bàn giao ca trực hoặc lưu trữ báo cáo tổng hợp mà không lỗi tiếng Việt khi mở bằng Excel. *(Mẫu dùng chung cho cả 5 vai trò có quyền `list.print`.)*
+
+| Trường | Giá trị |
+|---|---|
+| Mã IN | IN-25 ❓ (đề xuất tách từ H-05, `01-scope.md` mục 3.1 & mục 9) |
+| Endpoint | `GET /patients/export`, `GET /studies/export`, `POST /patients/export-events` |
+| Chuyển trạng thái | — |
+| Quyền | `ADMIN`, `CLINICIAN`, `TECHNICIAN`, `RADIOLOGIST`, `APPROVER` (`06-rbac-matrix.md` mục 3 ❓) |
+| Tuần dự kiến | 6 |
+| Trạng thái story | Done (2026-11-07) |
+
+- Given danh sách có nhiều bệnh nhân dữ liệu giả (`TEST0001`, `TEST0002`, theo ràng buộc `R-03`), When người dùng bấm "Tải danh sách" (`GET /patients/export` hoặc `GET /studies/export`), Then hệ thống trả `200` kèm file `text/csv; charset=UTF-8` có byte BOM (`\uFEFF`) ở đầu, cột `Tuổi` hiển thị đúng (`~68` khi `dob_precision != DAY`, `—` khi chưa có ngày sinh, không bao giờ là `0`), và ghi một dòng `audit_log` với `action = EXPORT`, `patient_id = NULL` (`09-bao-mat-toan-ven-du-lieu.md` mục 2.2).
+- Given bộ lọc tìm kiếm (`q` hoặc `patient_code`) chỉ khớp đúng **một** bệnh nhân, When gọi `GET /patients/export` hoặc `GET /studies/export`, Then dòng `audit_log` (`action = EXPORT`) ghi `patient_id` bằng đúng ID của bệnh nhân đó (truy vết theo `patient_id`, `09-…` mục 2.2 & 2.4).
+- Given người dùng chưa đăng nhập (không gửi JWT token) hoặc gửi tham số `sort`/`status` không hợp lệ, When gọi `GET /patients/export` hoặc `GET /studies/export`, Then hệ thống trả `401` (chưa đăng nhập) hoặc `400` (`VALIDATION_ERROR`), không xuất dữ liệu.
+
 ---
 
 ### 3.2. Bác sĩ lâm sàng (`CLINICIAN`)
@@ -607,6 +624,7 @@ File này "viết dần khi code" (README mục 6A) — không viết hết mộ
 | IN-22 | Chương AI trong báo cáo | *(không có story)* | Deliverable tài liệu — xem `doc/11-ai-design.md` |
 | IN-23 | Nút "Xem ảnh" (hai cửa vào) | US-BSCDHA-02 (cửa vào a), US-BSLS-04 (cửa vào b) | |
 | IN-24 | Kiến trúc phân tầng backend (R-05) | *(không có story)* | Ràng buộc kiến trúc áp dụng xuyên suốt mọi tính năng backend, không phải một màn hình riêng — đúng ví dụ nêu trong `01-scope.md` mục 3.1 |
+| IN-25 ❓ | Xuất / tải file CSV và in danh sách bệnh nhân, ca chụp | US-KTV-11 | Đề xuất tách từ H-05 (`01-scope.md` mục 9); ghi `audit_log` `EXPORT` (`patient_id` có nếu 1 bệnh nhân, `NULL` nếu nhiều) |
 
 ---
 
@@ -643,7 +661,7 @@ Lấy từ `01-scope.md` mục 9 (bảng thay đổi phạm vi, dòng 2026-10-31
 
 - Bộ lọc "Trạng thái đồng bộ HIS" và "Vi phạm BHYT" (thuộc nhóm HOÃN, `01-scope.md` mục 3.2).
 - Nút "Danh sách ca chụp quá hạn" (HOÃN — "quá hạn" chưa định nghĩa).
-- Nút "Duyệt toàn bộ danh sách" (H-05); nút "In danh sách", "Tải danh sách" hiện chưa có chức năng.
+- Nút "Duyệt toàn bộ danh sách" (H-05 — giữ nguyên HOÃN). *(Riêng nút "In danh sách" và "Tải danh sách" đã được đề xuất tách sang `IN-25` ❓ ngày 2026-11-07 và viết thành `US-KTV-11` — xem `01-scope.md` mục 9).*
 - Tab lâm sàng 3 và 4 hiển thị dữ liệu giả thay vì bảng rỗng + ghi chú "chờ tích hợp HIS" (riêng tab 3 đã được **đổi phạm vi** sang hiển thị dữ liệu RIS thật — xem US-BSLS-03, không còn là "thừa" sau khi đổi).
 - Cột mã đoàn khám, tên đoàn khám, mã hồ sơ, mã bệnh phẩm, mã lưu trữ trong tập cột mặc định (thuộc nhóm HOÃN "bảng phụ").
 - Popover "Cấu hình hệ thống" (README mục 3.5) — không thuộc danh mục IN nào.

@@ -395,6 +395,25 @@ export function createMockClient(): HttpClient {
       return undefined
     }
 
+    if (method === 'POST' && path === '/patients/export-events') {
+      const body = req.body as {
+        target: 'PATIENTS' | 'STUDIES'
+        mode: 'EXPORT' | 'PRINT'
+        row_count?: number
+        patient_id?: number | null
+      }
+      if (body.patient_id != null && !PATIENTS.some(p => p.id === body.patient_id)) {
+        throw new ApiError(404, 'PATIENT_NOT_FOUND', 'Không tìm thấy bệnh nhân.')
+      }
+      console.info('[mock] audit_log EXPORT', {
+        target: body.target,
+        mode: body.mode,
+        row_count: body.row_count ?? 0,
+        patient_id: body.patient_id ?? null,
+      })
+      return undefined
+    }
+
     if ((m = matchPath('/imaging-orders/:id/clinical-snapshot', path)) && method === 'GET') {
       const id = Number(m.id)
       const payload = CLINICAL_SNAPSHOTS[id]
@@ -411,9 +430,147 @@ export function createMockClient(): HttpClient {
     throw new ApiError(404, 'NOT_FOUND', `Mock server chưa cài endpoint ${method} ${path}.`)
   }
 
+  function escapeCsvCell(raw: string | number | null | undefined): string {
+    if (raw == null || raw === '') return ''
+    let val = String(raw)
+    const first = val.charAt(0)
+    if (first === '=' || first === '+' || first === '-' || first === '@') {
+      val = `'${val}`
+    }
+    if (val.includes(',') || val.includes('"') || val.includes('\n') || val.includes('\r')) {
+      return `"${val.replace(/"/g, '""')}"`
+    }
+    return val
+  }
+
+  function buildCsv(headers: string[], rows: (string | number | null | undefined)[][]): string {
+    const lines = [
+      headers.map(escapeCsvCell).join(','),
+      ...rows.map(r => r.map(escapeCsvCell).join(',')),
+    ]
+    return `\uFEFF${lines.join('\r\n')}\r\n`
+  }
+
+  function stampFileDate(): string {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}${m}${day}`
+  }
+
+  function formatAgeCell(age: number | null | undefined, approximate?: boolean): string {
+    if (age == null) return '—'
+    return approximate ? `~${age}` : String(age)
+  }
+
   return {
     request: <T,>(req: HttpRequest) => handle(req) as Promise<T>,
-    requestBlob: async () => {
+    requestBlob: async (req: HttpRequest) => {
+      await delay()
+      requireAuth()
+      const query = req.query ?? {}
+
+      if (req.method === 'GET' && req.path === '/studies/export') {
+        const page = listStudies({ ...query, page: 1, page_size: 5000 })
+        const items = page.items
+        const distinctPatientIds = Array.from(new Set(items.map(r => r.patient.id)))
+        const singlePatientId = distinctPatientIds.length === 1 ? distinctPatientIds[0] : null
+
+        console.info('[mock] audit_log EXPORT', {
+          entity_type: 'STUDY',
+          row_count: items.length,
+          patient_id: singlePatientId,
+        })
+
+        const csv = buildCsv(
+          [
+            'STT', 'Mã hồ sơ', 'Trạng thái', 'Mã phiếu', 'Mã LSVV', 'Loại BN',
+            'Mã bệnh nhân', 'Họ tên', 'Ngày sinh', 'Tuổi', 'Giới tính', 'Số BHXH',
+            'Dịch vụ chỉ định', 'Modality', 'Bộ phận chụp', 'Máy chụp',
+            'Bác sĩ chỉ định', 'Chẩn đoán lâm sàng', 'Kết luận',
+            'Thời gian lên lịch', 'Thời gian bắt đầu', 'Thời gian hoàn thành',
+          ],
+          items.map((r, i) => [
+            i + 1,
+            r.study.accession_number,
+            r.study.status,
+            r.order.order_code,
+            r.order.visit_code,
+            r.order.patient_class,
+            r.patient.patient_code,
+            r.patient.full_name,
+            r.patient.date_of_birth,
+            formatAgeCell(r.patient.age, r.patient.age_approximate),
+            r.patient.gender,
+            r.patient.social_insurance_no,
+            r.service_item.name,
+            r.service_item.modality,
+            r.service_item.body_part,
+            r.device?.name ?? '',
+            r.order.ordering_doctor_name,
+            r.order.clinical_diagnosis,
+            r.report_summary?.conclusion ?? '',
+            r.study.scheduled_at,
+            r.study.started_at,
+            r.study.completed_at,
+          ]),
+        )
+        return {
+          blob: new Blob([csv], { type: 'text/csv;charset=utf-8' }),
+          filename: `danh-sach-ca-chup_${stampFileDate()}.csv`,
+        }
+      }
+
+      if (req.method === 'GET' && req.path === '/patients/export') {
+        const q = String(query.q ?? '').trim().toLowerCase()
+        const code = String(query.patient_code ?? '').trim().toLowerCase()
+        const name = String(query.full_name ?? '').trim().toLowerCase()
+
+        const matched = PATIENTS.map(p => patientDto(p.id)).filter(p => {
+          if (code && !p.patient_code.toLowerCase().includes(code)) return false
+          if (name && !p.full_name.toLowerCase().includes(name)) return false
+          if (q) {
+            const hit = p.patient_code.toLowerCase().includes(q)
+              || p.full_name.toLowerCase().includes(q)
+              || (p.social_insurance_no ?? '').toLowerCase().includes(q)
+            if (!hit) return false
+          }
+          return true
+        })
+
+        const singlePatientId = matched.length === 1 ? matched[0].id : null
+        console.info('[mock] audit_log EXPORT', {
+          entity_type: 'PATIENT',
+          row_count: matched.length,
+          patient_id: singlePatientId,
+        })
+
+        const csv = buildCsv(
+          [
+            'STT', 'Mã bệnh nhân', 'Mã HIS', 'Họ tên', 'Ngày sinh',
+            'Độ chính xác NS', 'Tuổi', 'Giới tính', 'Số BHXH', 'Điện thoại', 'Địa chỉ',
+          ],
+          matched.map((p, i) => [
+            i + 1,
+            p.patient_code,
+            p.his_patient_id,
+            p.full_name,
+            p.date_of_birth,
+            p.dob_precision,
+            formatAgeCell(p.age, p.age_approximate),
+            p.gender,
+            p.social_insurance_no,
+            p.phone,
+            p.address,
+          ]),
+        )
+        return {
+          blob: new Blob([csv], { type: 'text/csv;charset=utf-8' }),
+          filename: `danh-sach-benh-nhan_${stampFileDate()}.csv`,
+        }
+      }
+
       throw new ApiError(
         501,
         'MOCK_NO_PDF',

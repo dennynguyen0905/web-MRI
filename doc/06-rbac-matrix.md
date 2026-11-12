@@ -57,6 +57,7 @@ Lấy từ `x-allowed-roles` trong `openapi.yaml` v0.1. ✔ = được gọi. D�
 | `GET /identity-conflicts`, `GET …/{id}` | ✔ | — | ✔ | — | — |
 | `POST /identity-conflicts/{id}/resolution` | ✔ | — | ✔ | — | — |
 | `GET /patients/{id}/print-documents`, `POST /patients/{id}/print-events` ❓ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `GET /patients/export`, `GET /studies/export`, `POST /patients/export-events` ❓ | ✔ | ✔ * | ✔ | ✔ | ✔ |
 | `GET /audit-logs` | ✔ | — | — | — | — |
 | `GET /departments`, `/devices`, `/service-items` | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /integration/his/orders`, `POST /integration/pacs/study-notifications` | chỉ tài khoản hệ thống (`system`), không dùng JWT của người dùng | | | | |
@@ -110,7 +111,7 @@ Frontend mới chỉ ẩn nút. Cột "Đề xuất" là quyền mà backend s�
 | `study.release` (giải phóng khóa) | (chưa có) | **ADMIN** ❓ D20 | **Thêm mới** |
 | `conflict.resolve` | (chưa có) | **ADMIN, TECHNICIAN** ❓ D22 | **Thêm mới** (màn danh sách lệch dữ liệu, T34) |
 | `audit.view` | (chưa có) | **ADMIN** | **Thêm mới** (T36) |
-| `list.print` | Cả 5 | Giữ nguyên | — |
+| `list.print` | Cả 5 | **Cả 5** ❓ — đề xuất kèm IN-25 (`GET /patients/export`, `GET /studies/export`, `POST /patients/export-events`) | Bắt buộc ghi `audit_log` `EXPORT` (`patient_id` có nếu 1 bệnh nhân, `NULL` nếu nhiều — `09-…` mục 2.2) |
 | `report.print` (mới) | Cả 5 | **Cả 5** ❓ — đề xuất kèm Task 5 | Bắt buộc ghi `audit_log` `PRINT` kèm `patient_id` mỗi lần in |
 | `config.system` | ADMIN | ADMIN; chưa có endpoint quản lý người dùng/máy trong OpenAPI ❓ | Giữ nguyên, ghi nợ kỹ thuật |
 
@@ -144,6 +145,7 @@ Gộp chung với migration V8 nếu V8 được tạo (T16).
 | RBAC-12 | `TECHNICIAN` hủy ca đã có `study_instance_uid` | T10 | `422` (đúng vai trò nhưng sai điều kiện) |
 | RBAC-13 | `CLINICIAN` đặt `study_instance_uid` | `PATCH /studies/{id}` | Từ chối theo cách đã chọn ở mục 5 |
 | RBAC-14 | Mỗi lần `403` ở trên | — | Có thêm dòng `audit_log` ghi người gọi, endpoint, lý do từ chối |
+| RBAC-15 | Tải/xuất danh sách bệnh nhân hoặc ca chụp | `GET /patients/export`, `GET /studies/export` | Không có token → `401`; có vai trò hợp lệ → `200` (`text/csv`) + ghi `audit_log` `EXPORT` |
 
 ## 9. Điểm mở cần nhóm chốt trước khi viết RBAC
 
