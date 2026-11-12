@@ -2,6 +2,7 @@ package com.vrris.pacs.service;
 
 import com.vrris.pacs.dto.request.StudyCreateRequest;
 import com.vrris.pacs.dto.response.StatusCountsResponse;
+import com.vrris.pacs.dto.response.StudyDetailResponse;
 import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
 import com.vrris.pacs.dto.response.ViewerLinkResponse;
@@ -43,8 +44,14 @@ public interface StudyService {
                                           LocalDate dateTo, String patientCode, String fullName,
                                           String visitCode, String orderCode);
 
-    /** Khong tim thay -> ApiException (STUDY_NOT_FOUND, 404). */
-    StudyResponse getById(Long id);
+    /**
+     * Chi tiet mot ca chup (IN-08, GET /studies/{id}), khop schema "StudyDetail" doc/api/openapi.yaml:
+     * ghep them patient (qua order.patient_id)/order/service_item/device (nullable)/current_report
+     * (nullable) vao cung cac truong cua StudyResponse. Mot so luong truy van CO DINH, khong phu
+     * thuoc kich thuoc bat ky danh sach nao (khong N+1) - xem Javadoc impl.
+     * Khong tim thay -> ApiException (STUDY_NOT_FOUND, 404).
+     */
+    StudyDetailResponse getDetailById(Long id);
 
     /**
      * Sinh deep-link xem anh OHIF (IN-19, IN-23).

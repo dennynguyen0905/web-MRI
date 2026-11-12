@@ -1,8 +1,8 @@
 package com.vrris.pacs.rest;
 
 import com.vrris.pacs.dto.response.StatusCountsResponse;
+import com.vrris.pacs.dto.response.StudyDetailResponse;
 import com.vrris.pacs.dto.response.StudyPageResponse;
-import com.vrris.pacs.dto.response.StudyResponse;
 import com.vrris.pacs.dto.response.ViewerLinkResponse;
 import com.vrris.pacs.service.StudyService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,7 +22,7 @@ import java.util.List;
 
 /**
  * /studies theo doc/api/openapi.yaml - operationId listStudies (IN-07, worklist) day du ve PHAN
- * LOC/TRANG/SAP XEP; getStudy van la BAN RUT GON (chua ghep thanh StudyDetail).
+ * LOC/TRANG/SAP XEP; getStudy (IN-08) da ghep thanh StudyDetail day du.
  *
  * listStudies: 2 tab PENDING/DONE (03-state-machine.md bang 2.1), loc theo status[]/department_id[]
  * (gom ca nhanh con)/device_id[]/modality/patient_class/khoang thoi gian theo time_field/patient_code/
@@ -35,15 +35,14 @@ import java.util.List;
  * enu.StudyStatus, dung CUNG bo loc voi listStudies TRU status[]/tab (khop mo ta openapi.yaml
  * operationId getStudyStatusCounts) - xem Javadoc service.StudyService.getStatusCounts.
  *
- * getStudy day du la StudyDetail (join patient/order/service_item/device/current_report) - CHUA lam
- * o day, ngoai pham vi "entity + DAO + mot luong rest->service->dao->model" cua lan truoc (xem
- * Javadoc dto.response.StudyResponse).
+ * getStudy (IN-08, GET /studies/{id}): tra StudyDetail day du (join patient/order/service_item/
+ * device/current_report), khong con la ban rut gon - xem Javadoc service.StudyService.getDetailById.
  *
  * Tao study: xem rest.ImagingOrderController (createImagingOrder, addStudyToOrder) - Study khong
  * co endpoint tao rieng ngoai hai cho do, dung theo doc/api/openapi.yaml (khong co POST /studies).
  */
 @RestController
-@Tag(name = "studies", description = "Quan ly ca chup (ban rut gon)")
+@Tag(name = "studies", description = "Quan ly ca chup")
 public class StudyController {
 
     private static final String READ_ROLES =
@@ -103,11 +102,11 @@ public class StudyController {
     }
 
     @GetMapping(path = "/studies/{studyId}", produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Chi tiet mot ca chup (ban rut gon)", description = "Chua join patient/order/service_item/device/current_report nhu StudyDetail day du.")
-    @ApiResponse(responseCode = "200", description = "Ca chup")
+    @Operation(summary = "Chi tiet mot ca chup (IN-08)", description = "Gom benh nhan, chi dinh, dich vu, may, bao cao hien hanh (current_report). Tra study_instance_uid de client mo OHIF bang deep-link; khong tra anh.")
+    @ApiResponse(responseCode = "200", description = "Chi tiet ca chup")
     @PreAuthorize(READ_ROLES)
-    public StudyResponse getStudy(@PathVariable Long studyId) {
-        return studyService.getById(studyId);
+    public StudyDetailResponse getStudy(@PathVariable Long studyId) {
+        return studyService.getDetailById(studyId);
     }
 
     @GetMapping(path = "/studies/{studyId}/viewer-link", produces = MediaType.APPLICATION_JSON_VALUE)

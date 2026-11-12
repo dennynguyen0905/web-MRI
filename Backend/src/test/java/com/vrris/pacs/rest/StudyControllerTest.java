@@ -5,12 +5,14 @@ import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.DeviceDao;
 import com.vrris.pacs.dao.ImagingOrderDao;
 import com.vrris.pacs.dao.PatientDao;
+import com.vrris.pacs.dao.ReportDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.Device;
 import com.vrris.pacs.model.ImagingOrder;
 import com.vrris.pacs.model.Patient;
+import com.vrris.pacs.model.Report;
 import com.vrris.pacs.model.ServiceItem;
 import com.vrris.pacs.model.Study;
 import com.vrris.pacs.security.JwtService;
@@ -66,6 +68,9 @@ class StudyControllerTest extends AbstractIntegrationTest {
     private StudyDao studyDao;
 
     @Autowired
+    private ReportDao reportDao;
+
+    @Autowired
     private JwtService jwtService;
 
     @Autowired
@@ -95,12 +100,49 @@ class StudyControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void get_tra_dung_ca_chup() throws Exception {
+    void get_tra_dung_ca_chup_voi_day_du_patient_order_service_item_device() throws Exception {
         mockMvc.perform(get("/studies/" + studyId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accession_number").value("2026103100001"))
-                .andExpect(jsonPath("$.status").value("SCHEDULED"));
+                .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                .andExpect(jsonPath("$.patient.id").value(patientId))
+                .andExpect(jsonPath("$.patient.patient_code").value("TEST0001"))
+                .andExpect(jsonPath("$.patient.full_name").value("Benh nhan TEST0001"))
+                .andExpect(jsonPath("$.order.id").value(orderId))
+                .andExpect(jsonPath("$.order.order_code").value("PH20261031001"))
+                .andExpect(jsonPath("$.order.patient_id").value(patientId))
+                .andExpect(jsonPath("$.order.studies.length()").value(1))
+                .andExpect(jsonPath("$.order.studies[0].accession_number").value("2026103100001"))
+                .andExpect(jsonPath("$.service_item.id").value(serviceItemId))
+                .andExpect(jsonPath("$.service_item.code").value("CT_SO_NAO"))
+                .andExpect(jsonPath("$.device.id").value(deviceId))
+                .andExpect(jsonPath("$.device.code").value("CT01"))
+                .andExpect(jsonPath("$.current_report").doesNotExist());
+    }
+
+    @Test
+    void get_tra_device_null_khi_ca_chup_chua_gan_may() throws Exception {
+        Study study = saveStudy("2026103100002", orderId, serviceItemId, null, "SCHEDULED", null, null);
+
+        mockMvc.perform(get("/studies/" + study.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.device").doesNotExist());
+    }
+
+    @Test
+    void get_tra_current_report_la_ban_co_version_lon_nhat() throws Exception {
+        saveReport(studyId, 1, "DRAFT", "Ky thuat v1", "Ket luan v1");
+        saveReport(studyId, 2, "FINAL", "Ky thuat v2", "Ket luan v2");
+
+        mockMvc.perform(get("/studies/" + studyId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.current_report.version").value(2))
+                .andExpect(jsonPath("$.current_report.status").value("FINAL"))
+                .andExpect(jsonPath("$.current_report.technique").value("Ky thuat v2"))
+                .andExpect(jsonPath("$.current_report.conclusion").value("Ket luan v2"));
     }
 
     @Test
@@ -109,6 +151,12 @@ class StudyControllerTest extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("STUDY_NOT_FOUND"));
+    }
+
+    @Test
+    void get_tra_401_khi_khong_co_token() throws Exception {
+        mockMvc.perform(get("/studies/" + studyId))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -568,6 +616,32 @@ class StudyControllerTest extends AbstractIntegrationTest {
         s.setModality(modality);
         s.setIsActive(true);
         return serviceItemDao.save(s);
+    }
+
+    private Report saveReport(Long studyId, int version, String status, String technique, String conclusion) {
+        Report report = new Report();
+        report.setStudyId(studyId);
+        report.setVersion(version);
+        report.setStatus(status);
+        report.setOrigin("MANUAL");
+        report.setTechnique(technique);
+        report.setConclusion(conclusion);
+        report.setCreatedByUserId(saveAppUser("bscdha_v" + version));
+        report.setCreatedAt(LocalDateTime.now());
+        return reportDao.save(report);
+    }
+
+    /**
+     * Flyway trong test chi chay toi V6 (xem src/test/resources/application.yml) nen bang app_user
+     * rong - phai tu them mot nguoi dung truoc khi insert report, vi report.created_by_user_id co
+     * khoa ngoai toi app_user (giong cach rest.PrintControllerTest.saveAppUser dang lam).
+     */
+    private Long saveAppUser(String username) {
+        jdbcTemplate.update(
+                "INSERT INTO app_user (username, password_hash, full_name, email) VALUES (?, ?, ?, ?)",
+                username, "khong-dung-trong-test", "BS. CDHA (test)", username + "@vr-ris.local");
+        return jdbcTemplate.queryForObject(
+                "SELECT id FROM app_user WHERE username = ?", Long.class, username);
     }
 
     private Device saveDevice(String code, Long departmentId, String modality) {

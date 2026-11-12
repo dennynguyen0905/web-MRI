@@ -4,23 +4,39 @@ import com.vrris.pacs.audit.Audited;
 import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.DeviceDao;
 import com.vrris.pacs.dao.ImagingOrderDao;
+import com.vrris.pacs.dao.PatientDao;
+import com.vrris.pacs.dao.ReportDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dto.request.StudyCreateRequest;
+import com.vrris.pacs.dto.response.ImagingOrderResponse;
+import com.vrris.pacs.dto.response.PatientResponse;
 import com.vrris.pacs.dto.response.StatusCountsResponse;
+import com.vrris.pacs.dto.response.StudyDetailResponse;
 import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
 import com.vrris.pacs.dto.response.ViewerLinkResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.DobPrecision;
 import com.vrris.pacs.enu.Modality;
 import com.vrris.pacs.enu.PatientClass;
 import com.vrris.pacs.enu.StudyStatus;
 import com.vrris.pacs.exception.ApiException;
+import com.vrris.pacs.mapper.DeviceMapper;
+import com.vrris.pacs.mapper.ImagingOrderMapper;
+import com.vrris.pacs.mapper.PatientMapper;
+import com.vrris.pacs.mapper.ReportMapper;
+import com.vrris.pacs.mapper.ServiceItemMapper;
 import com.vrris.pacs.mapper.StudyMapper;
 import com.vrris.pacs.model.Department;
+import com.vrris.pacs.model.Device;
 import com.vrris.pacs.model.ImagingOrder;
+import com.vrris.pacs.model.Patient;
+import com.vrris.pacs.model.Report;
+import com.vrris.pacs.model.ServiceItem;
 import com.vrris.pacs.model.Study;
 import com.vrris.pacs.rule.AccessionNumberGenerator;
+import com.vrris.pacs.rule.AgeCalculator;
 import com.vrris.pacs.rule.DepartmentTreeExpander;
 import com.vrris.pacs.service.StudyService;
 import org.springframework.beans.factory.annotation.Value;
@@ -80,19 +96,36 @@ public class StudyServiceImpl implements StudyService {
     private final ServiceItemDao serviceItemDao;
     private final DeviceDao deviceDao;
     private final DepartmentDao departmentDao;
+    private final PatientDao patientDao;
+    private final ReportDao reportDao;
     private final StudyMapper studyMapper;
+    private final ImagingOrderMapper imagingOrderMapper;
+    private final ServiceItemMapper serviceItemMapper;
+    private final DeviceMapper deviceMapper;
+    private final PatientMapper patientMapper;
+    private final ReportMapper reportMapper;
 
     @Value("${app.ohif.base-url:http://localhost:8043}")
     private String ohifBaseUrl = "http://localhost:8043";
 
     public StudyServiceImpl(StudyDao studyDao, ImagingOrderDao imagingOrderDao, ServiceItemDao serviceItemDao,
-                             DeviceDao deviceDao, DepartmentDao departmentDao, StudyMapper studyMapper) {
+                             DeviceDao deviceDao, DepartmentDao departmentDao, PatientDao patientDao,
+                             ReportDao reportDao, StudyMapper studyMapper, ImagingOrderMapper imagingOrderMapper,
+                             ServiceItemMapper serviceItemMapper, DeviceMapper deviceMapper,
+                             PatientMapper patientMapper, ReportMapper reportMapper) {
         this.studyDao = studyDao;
         this.imagingOrderDao = imagingOrderDao;
         this.serviceItemDao = serviceItemDao;
         this.deviceDao = deviceDao;
         this.departmentDao = departmentDao;
+        this.patientDao = patientDao;
+        this.reportDao = reportDao;
         this.studyMapper = studyMapper;
+        this.imagingOrderMapper = imagingOrderMapper;
+        this.serviceItemMapper = serviceItemMapper;
+        this.deviceMapper = deviceMapper;
+        this.patientMapper = patientMapper;
+        this.reportMapper = reportMapper;
     }
 
     @Override
@@ -244,11 +277,63 @@ public class StudyServiceImpl implements StudyService {
         return resolved;
     }
 
+    /**
+     * IN-08 (GET /studies/{id}, StudyDetail): ghep Study voi patient (qua order.patient_id)/order/
+     * service_item/device (nullable)/current_report (nullable) bang cac DAO lien quan, giong cach
+     * service.impl.PrintServiceImpl.load() dang lam cho /patients/{id}/studies/{id}/print - MOT so
+     * luong truy van CO DINH (studyDao, imagingOrderDao, patientDao, serviceItemDao, deviceDao khi
+     * co device_id, reportDao, studyDao.findByOrderId cho order.studies), khong phu thuoc kich
+     * thuoc danh sach nao -> khop tieu chi "khong N+1" cua phieu viec.
+     */
     @Override
     @Transactional(readOnly = true)
     @Audited(action = AuditAction.READ, entityType = "STUDY")
-    public StudyResponse getById(Long id) {
-        return studyMapper.toResponse(findOrThrow(id));
+    public StudyDetailResponse getDetailById(Long id) {
+        Study study = findOrThrow(id);
+        ImagingOrder order = imagingOrderDao.findById(study.getOrderId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "IMAGING_ORDER_NOT_FOUND",
+                        "Khong tim thay chi dinh id=" + study.getOrderId()));
+        Patient patient = patientDao.findById(order.getPatientId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PATIENT_NOT_FOUND",
+                        "Khong tim thay benh nhan id=" + order.getPatientId()));
+        ServiceItem serviceItem = serviceItemDao.findById(study.getServiceItemId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "SERVICE_ITEM_NOT_FOUND",
+                        "Khong tim thay dich vu id=" + study.getServiceItemId()));
+        Device device = study.getDeviceId() == null ? null : deviceDao.findById(study.getDeviceId()).orElse(null);
+        Report currentReport = reportDao.findCurrentByStudyId(id).orElse(null);
+
+        ImagingOrderResponse orderResponse = toImagingOrderResponse(order);
+        StudyResponse base = studyMapper.toResponse(study);
+        return new StudyDetailResponse(base.id(), base.accessionNumber(), base.orderId(), base.serviceItemId(),
+                base.deviceId(), base.status(), base.studyInstanceUid(), base.scheduledAt(), base.startedAt(),
+                base.completedAt(), base.dueAt(), base.performedByUserId(), base.readingUserId(),
+                base.approvingUserId(), base.createdAt(), base.updatedAt(),
+                toPatientResponse(patient), orderResponse, serviceItemMapper.toResponse(serviceItem),
+                device == null ? null : deviceMapper.toResponse(device),
+                currentReport == null ? null : reportMapper.toResponse(currentReport));
+    }
+
+    private ImagingOrderResponse toImagingOrderResponse(ImagingOrder order) {
+        ImagingOrderResponse base = imagingOrderMapper.toResponse(order);
+        return new ImagingOrderResponse(base.id(), base.orderCode(), base.patientId(), base.visitCode(),
+                base.source(), base.hisOrderId(), base.syncStatus(), base.orderingDepartmentId(),
+                base.orderingDoctorName(), base.patientClass(), base.room(), base.bed(),
+                base.clinicalDiagnosis(), base.orderedAt(), listByOrderId(order.getId()),
+                base.createdAt(), base.updatedAt());
+    }
+
+    /** Giong cach service.impl.PatientServiceImpl.toResponseWithAge tinh age/ageApproximate (R-05). */
+    private PatientResponse toPatientResponse(Patient patient) {
+        PatientResponse base = patientMapper.toResponse(patient);
+        if (patient.getDateOfBirth() == null) {
+            return base;
+        }
+        AgeCalculator.Result result = AgeCalculator.calculate(
+                patient.getDateOfBirth(), DobPrecision.valueOf(patient.getDobPrecision()), LocalDate.now());
+        return new PatientResponse(base.id(), base.patientCode(), base.hisPatientId(), base.fullName(),
+                base.dateOfBirth(), base.dobPrecision(), result.years(), result.approximate(),
+                base.gender(), base.socialInsuranceNo(), base.phone(), base.address(),
+                base.createdAt(), base.updatedAt());
     }
 
     @Override
