@@ -52,6 +52,7 @@ public class AuditLogAspect {
             AuditContext.consumeAfter();
             AuditContext.consumePatientId();
             AuditContext.consumeEntityId();
+            AuditContext.consumeActorUsername();
             throw ex;
         }
 
@@ -158,6 +159,10 @@ public class AuditLogAspect {
     }
 
     private String currentUsername() {
+        String fromContext = AuditContext.consumeActorUsername();
+        if (fromContext != null && !fromContext.isBlank()) {
+            return fromContext;
+        }
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication == null ? "system" : String.valueOf(authentication.getPrincipal());
     }

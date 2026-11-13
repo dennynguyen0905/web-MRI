@@ -28,4 +28,4 @@ app:
   security:
     jwt:
       secret: "test-only-secret-khong-dung-ngoai-test-du-32-ky-tu-cho-hs256"
-      expiration-minutes: 60
+      expiration-minutes: 15
