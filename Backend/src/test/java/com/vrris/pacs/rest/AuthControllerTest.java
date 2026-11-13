@@ -2,9 +2,11 @@ package com.vrris.pacs.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.dao.AppUserDao;
+import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.RoleDao;
 import com.vrris.pacs.dto.request.LoginRequest;
 import com.vrris.pacs.model.AppUser;
+import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.Role;
 import com.vrris.pacs.security.JwtService;
 import com.vrris.pacs.support.AbstractIntegrationTest;
@@ -22,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -43,6 +44,9 @@ class AuthControllerTest extends AbstractIntegrationTest {
     private RoleDao roleDao;
 
     @Autowired
+    private DepartmentDao departmentDao;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Autowired
@@ -51,21 +55,31 @@ class AuthControllerTest extends AbstractIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    private Long departmentId;
+
     @BeforeEach
     void seedUsersAndRoles() {
+        Department dept = new Department();
+        dept.setCode("K01_AUTH");
+        dept.setName("Khoa CDHA Auth");
+        dept.setType("KHOA");
+        dept.setSortOrder(1);
+        dept.setIsActive(true);
+        departmentId = departmentDao.save(dept).getId();
+
         Role adminRole = getOrCreateRole("ADMIN", "Quản trị viên");
         Role clinicianRole = getOrCreateRole("CLINICIAN", "BS Lâm sàng");
         Role technicianRole = getOrCreateRole("TECHNICIAN", "Kỹ thuật viên");
         Role radiologistRole = getOrCreateRole("RADIOLOGIST", "BS CĐHA");
         Role approverRole = getOrCreateRole("APPROVER", "BS Duyệt");
 
-        createUserIfAbsent("admin", "Quản trị viên (demo)", "admin@vr-ris.local", 1L, Set.of(adminRole));
-        createUserIfAbsent("bslamsang", "BS. Lâm Sàng (demo)", "bslamsang@vr-ris.local", 7L, Set.of(clinicianRole));
-        createUserIfAbsent("ktv", "KTV. Kỹ Thuật (demo)", "ktv@vr-ris.local", 1L, Set.of(technicianRole));
-        createUserIfAbsent("bscdha", "BS. CĐHA (demo)", "bscdha@vr-ris.local", 1L, Set.of(radiologistRole));
-        createUserIfAbsent("bsduyet", "BS. Duyệt (demo)", "bsduyet@vr-ris.local", 1L, Set.of(approverRole));
-        createUserIfAbsent("bscdha2", "BS. CĐHA Hai (demo)", "bscdha2@vr-ris.local", 1L, Set.of(radiologistRole));
-        createUserIfAbsent("bsduyet2", "BS. Duyệt Hai (demo)", "bsduyet2@vr-ris.local", 1L, Set.of(approverRole));
+        createUserIfAbsent("admin", "Quản trị viên (demo)", "admin@vr-ris.local", departmentId, Set.of(adminRole));
+        createUserIfAbsent("bslamsang", "BS. Lâm Sàng (demo)", "bslamsang@vr-ris.local", departmentId, Set.of(clinicianRole));
+        createUserIfAbsent("ktv", "KTV. Kỹ Thuật (demo)", "ktv@vr-ris.local", departmentId, Set.of(technicianRole));
+        createUserIfAbsent("bscdha", "BS. CĐHA (demo)", "bscdha@vr-ris.local", departmentId, Set.of(radiologistRole));
+        createUserIfAbsent("bsduyet", "BS. Duyệt (demo)", "bsduyet@vr-ris.local", departmentId, Set.of(approverRole));
+        createUserIfAbsent("bscdha2", "BS. CĐHA Hai (demo)", "bscdha2@vr-ris.local", departmentId, Set.of(radiologistRole));
+        createUserIfAbsent("bsduyet2", "BS. Duyệt Hai (demo)", "bsduyet2@vr-ris.local", departmentId, Set.of(approverRole));
     }
 
     private Role getOrCreateRole(String code, String name) {
@@ -75,14 +89,14 @@ class AuthControllerTest extends AbstractIntegrationTest {
         });
     }
 
-    private void createUserIfAbsent(String username, String fullName, String email, Long departmentId, Set<Role> roles) {
+    private void createUserIfAbsent(String username, String fullName, String email, Long deptId, Set<Role> roles) {
         if (appUserDao.findByUsername(username).isEmpty()) {
             AppUser u = new AppUser();
             u.setUsername(username);
             u.setPasswordHash(passwordEncoder.encode("123456"));
             u.setFullName(fullName);
             u.setEmail(email);
-            u.setDepartmentId(departmentId);
+            u.setDepartmentId(deptId);
             u.setIsActive(true);
             u.setCreatedAt(LocalDateTime.now());
             u.setRoles(roles);
@@ -156,7 +170,7 @@ class AuthControllerTest extends AbstractIntegrationTest {
     @Test
     void khoa_tai_khoan_sau_5_lan_sai_lien_tiep() throws Exception {
         String testUser = "test_lockout_user";
-        createUserIfAbsent(testUser, "Test Lockout", "lock@vr-ris.local", 1L, Set.of(getOrCreateRole("ADMIN", "Admin")));
+        createUserIfAbsent(testUser, "Test Lockout", "lock@vr-ris.local", departmentId, Set.of(getOrCreateRole("ADMIN", "Admin")));
 
         // 5 lần sai liên tiếp
         for (int i = 0; i < 5; i++) {
