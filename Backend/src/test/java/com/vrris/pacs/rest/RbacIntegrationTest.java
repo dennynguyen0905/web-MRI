@@ -357,7 +357,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
         conflict.setDetectedAt(LocalDateTime.now());
         identityConflictDao.save(conflict);
 
-        ConflictResolutionRequest req = new ConflictResolutionRequest(ConflictResolution.KEEP_RIS, null);
+        ConflictResolutionRequest req = new ConflictResolutionRequest(ConflictResolution.KEEP_RIS, null, null);
 
         mockMvc.perform(post("/identity-conflicts/" + conflict.getId() + "/resolution")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + radiologist1Token)
