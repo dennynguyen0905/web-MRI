@@ -114,7 +114,7 @@ class AuthControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.access_token", notNullValue()))
                 .andExpect(jsonPath("$.token_type").value("Bearer"))
-                .andExpect(jsonPath("$.expires_in").value(900))
+                .andExpect(jsonPath("$.expires_in").value(jwtService.getExpirationSeconds()))
                 .andExpect(jsonPath("$.user.username").value("admin"))
                 .andExpect(jsonPath("$.user.full_name").value("Quản trị viên (demo)"))
                 .andExpect(jsonPath("$.user.roles", hasItem("ADMIN")));
