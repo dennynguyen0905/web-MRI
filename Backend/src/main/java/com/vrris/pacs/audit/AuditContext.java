@@ -19,10 +19,15 @@ public final class AuditContext {
 
     private static final ThreadLocal<Long> PATIENT_ID = new ThreadLocal<>();
     private static final ThreadLocal<Long> ENTITY_ID = new ThreadLocal<>();
+    private static final ThreadLocal<String> ACTOR_USERNAME = new ThreadLocal<>();
     private static final ThreadLocal<Object> BEFORE = new ThreadLocal<>();
     private static final ThreadLocal<Object> AFTER = new ThreadLocal<>();
 
     private AuditContext() {
+    }
+
+    public static void recordActorUsername(String username) {
+        ACTOR_USERNAME.set(username);
     }
 
     public static void recordPatientId(Long patientId) {
@@ -49,6 +54,10 @@ public final class AuditContext {
 
     static Long consumeEntityId() {
         return consume(ENTITY_ID);
+    }
+
+    public static String consumeActorUsername() {
+        return consume(ACTOR_USERNAME);
     }
 
     static Object consumeBefore() {
