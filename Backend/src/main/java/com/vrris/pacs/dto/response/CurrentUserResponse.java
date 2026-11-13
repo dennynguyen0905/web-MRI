@@ -71,3 +71,4 @@ public class CurrentUserResponse {
         this.roles = roles;
     }
 }
+
