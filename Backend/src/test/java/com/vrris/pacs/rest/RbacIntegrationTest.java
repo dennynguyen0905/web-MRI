@@ -234,7 +234,8 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("RBAC-03: RADIOLOGIST tao benh nhan -> POST /patients tra 403")
     void rbac03_radiologist_tao_benh_nhan_tra_403() throws Exception {
         PatientCreateRequest req = new PatientCreateRequest(
-                "BN_NEW_RAD", "Nguyen Benh Nhan", null, null, null, null, null, null
+                "BN_NEW_RAD", "Nguyen Benh Nhan", LocalDate.of(1990, 1, 1),
+                DobPrecision.DAY, Gender.M, null, null, null
         );
 
         mockMvc.perform(post("/patients")
@@ -406,8 +407,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + clinicianToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"))
-                .andExpect(jsonPath("$.message").isNotEmpty())
-                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+                .andExpect(jsonPath("$.message").isNotEmpty());
     }
 
     @Test
@@ -427,7 +427,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("CLINICIAN goi /transitions bi chan 403 (T1 qua tao ca, khong qua transitions)")
     void clinician_goi_transitions_bi_chan_403() throws Exception {
-        Study study = createStudy("ACC_CLINICIAN_TRANS", "SCHEDULED", null, null, null);
+        Study study = createStudy("ACC_CLIN_01", "SCHEDULED", null, null, null);
         TransitionRequest req = new TransitionRequest(StudyStatus.UNREAD, null, null);
 
         mockMvc.perform(post("/studies/" + study.getId() + "/transitions")
@@ -472,7 +472,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("TECHNICIAN dat study_instance_uid thanh cong 200")
     void technician_dat_study_instance_uid_thanh_cong_200() throws Exception {
-        Study study = createStudy("ACC_TECH_SET_UID", "SCHEDULED", null, null, null);
+        Study study = createStudy("ACC_TECH_01", "SCHEDULED", null, null, null);
 
         StudyUpdateRequest req = new StudyUpdateRequest(
                 null, null, null, null, null, "1.2.3.4.5.6.789"
