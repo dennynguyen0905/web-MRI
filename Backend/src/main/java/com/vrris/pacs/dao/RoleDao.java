@@ -8,3 +8,4 @@ public interface RoleDao extends BaseDao<Role, Long> {
 
     Optional<Role> findByCode(String code);
 }
+

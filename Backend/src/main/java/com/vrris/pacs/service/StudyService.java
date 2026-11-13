@@ -1,11 +1,15 @@
 package com.vrris.pacs.service;
 
 import com.vrris.pacs.dto.request.StudyCreateRequest;
+import com.vrris.pacs.dto.request.StudyUpdateRequest;
+import com.vrris.pacs.dto.request.TransitionRequest;
 import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.StatusCountsResponse;
+import com.vrris.pacs.dto.response.StatusHistoryEntry;
 import com.vrris.pacs.dto.response.StudyDetailResponse;
 import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
+import com.vrris.pacs.dto.response.TransitionResponse;
 import com.vrris.pacs.dto.response.ViewerLinkResponse;
 
 import java.time.LocalDate;
@@ -80,4 +84,21 @@ public interface StudyService {
      */
     ExportDocumentResponse exportCsv(Long orderId, String status, Long deviceId,
                                      String q, String patientCode, String fullName, String sort);
+
+    /**
+     * Sua thong tin ca chup (PATCH /studies/{id}, operationId updateStudy).
+     * Chi TECHNICIAN va ADMIN duoc dat study_instance_uid; CLINICIAN dat truong nay se bi chan 403 (RBAC-13).
+     */
+    StudyResponse update(Long id, StudyUpdateRequest request);
+
+    /**
+     * Chuyen trang thai ca chup theo luong T1-T10 (POST /studies/{id}/transitions, operationId transitionStudy).
+     * Kiem tra chat che vai tro (ADMIN, TECHNICIAN, RADIOLOGIST, APPROVER) va dieu kien nghiep vu.
+     */
+    TransitionResponse transition(Long id, TransitionRequest request);
+
+    /**
+     * Luan chuyen lich su trang thai cua mot ca chup (GET /studies/{id}/status-history).
+     */
+    List<StatusHistoryEntry> listStatusHistory(Long studyId);
 }

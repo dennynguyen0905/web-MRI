@@ -26,3 +26,4 @@ public class RoleDaoImpl extends AbstractHibernateDao<Role, Long> implements Rol
         return entityManager.createQuery(query).getResultStream().findFirst();
     }
 }
+
