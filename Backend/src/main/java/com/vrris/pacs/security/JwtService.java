@@ -18,12 +18,10 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Khung JWT toi thieu (IN-13) - chi sinh/doc token HS256 bang khoa bi mat chung. CHUA day du RBAC
- * (vai tro lay tho tu claim "roles" trong token, chua tra DB app_user/role/user_role) - xem
- * doc/15-kien-truc-backend.md muc 7 diem 4 va README IN-14.
- *
- * secret dang doc tu app.security.jwt.secret (application.yml) - gia tri demo trong repo, PHAI
- * chuyen sang Kubernetes Secret truoc khi dung ngoai moi truong dev (IN-17).
+ * Dich vu JWT (IN-13): sinh va kiem tra token HS256.
+ * Payload: sub = app_user.id, username, roles[], iat, exp.
+ * Thoi han mac dinh: access token 15 phut.
+ * Secret dai >= 32 byte lay tu cau hinh/Secret (APP_SECURITY_JWT_SECRET).
  */
 @Component
 public class JwtService {
@@ -32,20 +30,28 @@ public class JwtService {
     private final long expirationMinutes;
 
     public JwtService(@Value("${app.security.jwt.secret}") String secret,
-                       @Value("${app.security.jwt.expiration-minutes:60}") long expirationMinutes) {
+                      @Value("${app.security.jwt.expiration-minutes:15}") long expirationMinutes) {
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalArgumentException("JWT secret must be at least 32 bytes for HS256");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMinutes = expirationMinutes;
     }
 
-    public String generateToken(String username, List<String> roles) {
+    public String generateToken(Long userId, String username, List<String> roles) {
         Instant now = Instant.now();
-        return Jwts.builder()
-                .setSubject(username)
+        var builder = Jwts.builder()
+                .setSubject(userId != null ? String.valueOf(userId) : username)
+                .claim("username", username)
                 .claim("roles", roles)
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(now.plus(expirationMinutes, ChronoUnit.MINUTES)))
-                .signWith(key, SignatureAlgorithm.HS256)
-                .compact();
+                .signWith(key, SignatureAlgorithm.HS256);
+        return builder.compact();
+    }
+
+    public String generateToken(String username, List<String> roles) {
+        return generateToken(null, username, roles);
     }
 
     public Optional<Claims> parse(String token) {
@@ -58,5 +64,13 @@ public class JwtService {
         } catch (JwtException | IllegalArgumentException ex) {
             return Optional.empty();
         }
+    }
+
+    public long getExpirationMinutes() {
+        return expirationMinutes;
+    }
+
+    public long getExpirationSeconds() {
+        return expirationMinutes * 60;
     }
 }
