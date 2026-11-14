@@ -2,6 +2,7 @@ package com.vrris.pacs.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.audit.AuditLogAspect;
+import com.vrris.pacs.dao.AppUserDao;
 import com.vrris.pacs.dao.AuditLogDao;
 import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.DeviceDao;
@@ -10,6 +11,7 @@ import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dao.ReportDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
+import com.vrris.pacs.dao.StudyStatusHistoryDao;
 import com.vrris.pacs.dto.request.ListExportEventRequest;
 import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.mapper.DeviceMapper;
@@ -90,7 +92,8 @@ class ExportServiceUnitTest {
 
         StudyServiceImpl rawStudyService = new StudyServiceImpl(
                 studyDao, imagingOrderDao, serviceItemDao, deviceDao, mock(DepartmentDao.class),
-                patientDao, reportDao, mock(StudyMapper.class), mock(ImagingOrderMapper.class),
+                patientDao, reportDao, mock(AppUserDao.class), mock(StudyStatusHistoryDao.class),
+                mock(StudyMapper.class), mock(ImagingOrderMapper.class),
                 mock(ServiceItemMapper.class), mock(DeviceMapper.class), mock(PatientMapper.class),
                 mock(ReportMapper.class));
         AspectJProxyFactory studyProxyFactory = new AspectJProxyFactory(rawStudyService);
