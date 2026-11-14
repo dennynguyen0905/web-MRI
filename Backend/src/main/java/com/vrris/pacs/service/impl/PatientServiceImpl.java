@@ -111,6 +111,20 @@ public class PatientServiceImpl implements PatientService {
     @Audited(action = AuditAction.UPDATE, entityType = "PATIENT")
     public PatientResponse update(Long id, PatientUpdateRequest request) {
         Patient patient = findOrThrow(id);
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isTechOrAdmin = hasAuthority(auth, "ROLE_ADMIN") || hasAuthority(auth, "ROLE_TECHNICIAN");
+
+        if (!isTechOrAdmin) {
+            // CLINICIAN khong duoc sua cac truong dinh danh benh nhan (D24, doc/06 muc 5)
+            if (request.fullName() != null || request.dateOfBirth() != null ||
+                    request.dobPrecision() != null || request.gender() != null ||
+                    request.socialInsuranceNo() != null) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "CLINICIAN khong duoc sua cac truong dinh danh benh nhan (D24)");
+            }
+        }
+
         rejectSuspectedDuplicateBhxh(request.socialInsuranceNo(), id);
 
         patientMapper.updateEntityFromRequest(request, patient);
@@ -222,6 +236,11 @@ public class PatientServiceImpl implements PatientService {
 
     private String blankToNull(String value) {
         return (value == null || value.isBlank()) ? null : value;
+    }
+
+    private boolean hasAuthority(Authentication auth, String authority) {
+        if (auth == null) return false;
+        return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(authority));
     }
 
     private String currentUsername() {

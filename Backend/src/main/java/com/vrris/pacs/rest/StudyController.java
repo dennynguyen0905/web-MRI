@@ -1,15 +1,21 @@
 package com.vrris.pacs.rest;
 
+import com.vrris.pacs.dto.request.StudyUpdateRequest;
+import com.vrris.pacs.dto.request.TransitionRequest;
 import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.StatusCountsResponse;
+import com.vrris.pacs.dto.response.StatusHistoryEntry;
 import com.vrris.pacs.dto.response.StudyDetailResponse;
 import com.vrris.pacs.dto.response.StudyPageResponse;
+import com.vrris.pacs.dto.response.StudyResponse;
+import com.vrris.pacs.dto.response.TransitionResponse;
 import com.vrris.pacs.dto.response.ViewerLinkResponse;
 import com.vrris.pacs.service.StudyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,7 +25,10 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -153,5 +162,34 @@ public class StudyController {
     @PreAuthorize(READ_ROLES)
     public ViewerLinkResponse getViewerLink(@PathVariable Long studyId) {
         return studyService.getViewerLink(studyId);
+    }
+
+    @PatchMapping(path = "/studies/{studyId}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Sua thong tin ca chup", description = "Sua dich vu, may, thoi gian chup, study_instance_uid. Chi TECHNICIAN va ADMIN duoc dat study_instance_uid.")
+    @ApiResponse(responseCode = "200", description = "Da cap nhat")
+    @ApiResponse(responseCode = "403", description = "CLINICIAN dat study_instance_uid hoac sai vai tro")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_CLINICIAN','ROLE_TECHNICIAN')")
+    public StudyResponse updateStudy(@PathVariable Long studyId, @Valid @RequestBody StudyUpdateRequest request) {
+        return studyService.update(studyId, request);
+    }
+
+    @PostMapping(path = "/studies/{studyId}/transitions", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Chuyen trang thai ca chup", description = "Thuc hien chuyen trang thai T1-T10. CLINICIAN khong co quyen.")
+    @ApiResponse(responseCode = "200", description = "Da chuyen trang thai")
+    @ApiResponse(responseCode = "401", description = "Chua dang nhap")
+    @ApiResponse(responseCode = "403", description = "Sai vai tro, khong phai nguoi giu ca, hoac nguoi duyet trung nguoi doc")
+    @ApiResponse(responseCode = "409", description = "Chuyen khong hop le tu trang thai hien tai")
+    @ApiResponse(responseCode = "422", description = "Thieu dieu kien nghiep vu (reason, technique/conclusion, study_instance_uid)")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_TECHNICIAN','ROLE_RADIOLOGIST','ROLE_APPROVER')")
+    public TransitionResponse transitionStudy(@PathVariable Long studyId, @Valid @RequestBody TransitionRequest request) {
+        return studyService.transition(studyId, request);
+    }
+
+    @GetMapping(path = "/studies/{studyId}/status-history", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Lich su chuyen trang thai ca chup")
+    @ApiResponse(responseCode = "200", description = "Danh sach lich su chuyen trang thai")
+    @PreAuthorize(READ_ROLES)
+    public List<StatusHistoryEntry> listStatusHistory(@PathVariable Long studyId) {
+        return studyService.listStatusHistory(studyId);
     }
 }

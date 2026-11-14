@@ -1,6 +1,8 @@
 package com.vrris.pacs.service.impl;
 
+import com.vrris.pacs.audit.AuditContext;
 import com.vrris.pacs.audit.Audited;
+import com.vrris.pacs.dao.AppUserDao;
 import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.DeviceDao;
 import com.vrris.pacs.dao.ImagingOrderDao;
@@ -8,14 +10,19 @@ import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dao.ReportDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
+import com.vrris.pacs.dao.StudyStatusHistoryDao;
 import com.vrris.pacs.dto.request.StudyCreateRequest;
+import com.vrris.pacs.dto.request.StudyUpdateRequest;
+import com.vrris.pacs.dto.request.TransitionRequest;
 import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.ImagingOrderResponse;
 import com.vrris.pacs.dto.response.PatientResponse;
 import com.vrris.pacs.dto.response.StatusCountsResponse;
+import com.vrris.pacs.dto.response.StatusHistoryEntry;
 import com.vrris.pacs.dto.response.StudyDetailResponse;
 import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
+import com.vrris.pacs.dto.response.TransitionResponse;
 import com.vrris.pacs.dto.response.ViewerLinkResponse;
 import com.vrris.pacs.enu.AuditAction;
 import com.vrris.pacs.enu.DobPrecision;
@@ -29,6 +36,7 @@ import com.vrris.pacs.mapper.PatientMapper;
 import com.vrris.pacs.mapper.ReportMapper;
 import com.vrris.pacs.mapper.ServiceItemMapper;
 import com.vrris.pacs.mapper.StudyMapper;
+import com.vrris.pacs.model.AppUser;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.Device;
 import com.vrris.pacs.model.ImagingOrder;
@@ -36,6 +44,7 @@ import com.vrris.pacs.model.Patient;
 import com.vrris.pacs.model.Report;
 import com.vrris.pacs.model.ServiceItem;
 import com.vrris.pacs.model.Study;
+import com.vrris.pacs.model.StudyStatusHistory;
 import com.vrris.pacs.rule.AccessionNumberGenerator;
 import com.vrris.pacs.rule.AgeCalculator;
 import com.vrris.pacs.rule.DepartmentTreeExpander;
@@ -43,6 +52,8 @@ import com.vrris.pacs.rule.PatientListCsvExporter;
 import com.vrris.pacs.service.StudyService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -102,6 +113,8 @@ public class StudyServiceImpl implements StudyService {
     private final DepartmentDao departmentDao;
     private final PatientDao patientDao;
     private final ReportDao reportDao;
+    private final AppUserDao appUserDao;
+    private final StudyStatusHistoryDao studyStatusHistoryDao;
     private final StudyMapper studyMapper;
     private final ImagingOrderMapper imagingOrderMapper;
     private final ServiceItemMapper serviceItemMapper;
@@ -114,7 +127,8 @@ public class StudyServiceImpl implements StudyService {
 
     public StudyServiceImpl(StudyDao studyDao, ImagingOrderDao imagingOrderDao, ServiceItemDao serviceItemDao,
                             DeviceDao deviceDao, DepartmentDao departmentDao, PatientDao patientDao,
-                            ReportDao reportDao, StudyMapper studyMapper, ImagingOrderMapper imagingOrderMapper,
+                            ReportDao reportDao, AppUserDao appUserDao, StudyStatusHistoryDao studyStatusHistoryDao,
+                            StudyMapper studyMapper, ImagingOrderMapper imagingOrderMapper,
                             ServiceItemMapper serviceItemMapper, DeviceMapper deviceMapper,
                             PatientMapper patientMapper, ReportMapper reportMapper) {
         this.studyDao = studyDao;
@@ -124,6 +138,8 @@ public class StudyServiceImpl implements StudyService {
         this.departmentDao = departmentDao;
         this.patientDao = patientDao;
         this.reportDao = reportDao;
+        this.appUserDao = appUserDao;
+        this.studyStatusHistoryDao = studyStatusHistoryDao;
         this.studyMapper = studyMapper;
         this.imagingOrderMapper = imagingOrderMapper;
         this.serviceItemMapper = serviceItemMapper;
@@ -556,6 +572,327 @@ public class StudyServiceImpl implements StudyService {
                     "Gia tri khong hop le cho tham so 'sort': chieu sap xep phai la 'asc' hoac 'desc'");
         }
         return new SortSpec(entityField, direction.equals("asc"));
+    }
+
+    @Override
+    @Transactional
+    @Audited(action = AuditAction.UPDATE, entityType = "STUDY")
+    public StudyResponse update(Long id, StudyUpdateRequest request) {
+        Study study = findOrThrow(id);
+        AuditContext.recordPatientId(resolvePatientId(study));
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isTechOrAdmin = hasAuthority(auth, "ROLE_ADMIN") || hasAuthority(auth, "ROLE_TECHNICIAN");
+
+        if (request.studyInstanceUid() != null && !isTechOrAdmin) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                    "Chi TECHNICIAN va ADMIN duoc dat study_instance_uid");
+        }
+
+        if (request.serviceItemId() != null) {
+            serviceItemDao.findById(request.serviceItemId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "STUDY_SERVICE_ITEM_NOT_FOUND",
+                            "Dich vu khong ton tai"));
+            study.setServiceItemId(request.serviceItemId());
+        }
+
+        if (request.deviceId() != null) {
+            deviceDao.findById(request.deviceId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "STUDY_DEVICE_NOT_FOUND",
+                            "May khong ton tai"));
+            study.setDeviceId(request.deviceId());
+        }
+
+        if (request.scheduledAt() != null) {
+            study.setScheduledAt(request.scheduledAt());
+        }
+        if (request.startedAt() != null) {
+            study.setStartedAt(request.startedAt());
+        }
+        if (request.completedAt() != null) {
+            study.setCompletedAt(request.completedAt());
+        }
+        if (request.studyInstanceUid() != null) {
+            study.setStudyInstanceUid(request.studyInstanceUid());
+        }
+
+        study.setUpdatedAt(LocalDateTime.now());
+        Study saved = studyDao.save(study);
+        return studyMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    @Audited(action = AuditAction.STATUS_CHANGE, entityType = "STUDY")
+    public TransitionResponse transition(Long id, TransitionRequest request) {
+        Study study = findOrThrow(id);
+        AuditContext.recordPatientId(resolvePatientId(study));
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Chua dang nhap");
+        }
+
+        String username = auth.getName();
+        AppUser caller = appUserDao.findByUsername(username)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "USER_NOT_FOUND", "Nguoi dung khong ton tai"));
+        Long callerId = caller.getId();
+
+        boolean isAdmin = hasAuthority(auth, "ROLE_ADMIN");
+        boolean isTech = hasAuthority(auth, "ROLE_TECHNICIAN");
+        boolean isRadiologist = hasAuthority(auth, "ROLE_RADIOLOGIST");
+        boolean isApprover = hasAuthority(auth, "ROLE_APPROVER");
+        boolean isClinician = hasAuthority(auth, "ROLE_CLINICIAN");
+
+        if (isClinician && !isAdmin && !isTech && !isRadiologist && !isApprover) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                    "CLINICIAN khong co quyen chuyen trang thai ca chup");
+        }
+
+        String fromStatus = study.getStatus();
+        String toStatus = request.toStatus().name();
+
+        Report currentReport = reportDao.findCurrentByStudyId(id).orElse(null);
+
+        if ("SCHEDULED".equals(fromStatus) && "UNREAD".equals(toStatus)) {
+            if (!isAdmin && !isTech) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chi TECHNICIAN va ADMIN duoc chuyen SCHEDULED -> UNREAD");
+            }
+            if (study.getStudyInstanceUid() == null || study.getStudyInstanceUid().isBlank()) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "STUDY_NO_DICOM_IMAGE",
+                        "Chua co study_instance_uid, khong the chuyen sang UNREAD");
+            }
+            study.setStatus("UNREAD");
+
+        } else if ("UNREAD".equals(fromStatus) && "READING".equals(toStatus)) {
+            if (!isRadiologist) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chi RADIOLOGIST duoc mo ca de doc");
+            }
+            if (study.getReadingUserId() != null && !study.getReadingUserId().equals(callerId)) {
+                throw new ApiException(HttpStatus.CONFLICT, "STUDY_LOCKED_BY_ANOTHER",
+                        "Ca chup dang duoc mo doc boi bac si khac");
+            }
+            study.setStatus("READING");
+            study.setReadingUserId(callerId);
+            if (study.getStartedAt() == null) {
+                study.setStartedAt(LocalDateTime.now());
+            }
+            if (currentReport == null) {
+                Report newReport = new Report();
+                newReport.setStudyId(id);
+                newReport.setVersion(1);
+                newReport.setStatus("DRAFT");
+                newReport.setOrigin("MANUAL");
+                newReport.setCreatedByUserId(callerId);
+                newReport.setCreatedAt(LocalDateTime.now());
+                currentReport = reportDao.save(newReport);
+            }
+
+        } else if ("READING".equals(fromStatus) && "UNREAD".equals(toStatus)) {
+            if (isAdmin) {
+                // Admin giai phong khoa
+            } else if (isRadiologist) {
+                if (study.getReadingUserId() == null || !study.getReadingUserId().equals(callerId)) {
+                    throw new ApiException(HttpStatus.FORBIDDEN, "REPORT_NOT_HOLDER",
+                            "Chi nguoi dang giu ca duoc bo do");
+                }
+            } else {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Khong co quyen giai phong khoa hoac bo do ca chup");
+            }
+            requireReason(request.reason(), "T4 (bo do) bat buoc co ly do");
+            study.setStatus("UNREAD");
+            study.setReadingUserId(null);
+
+        } else if ("READING".equals(fromStatus) && "READ".equals(toStatus)) {
+            if (!isRadiologist) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chi RADIOLOGIST duoc chot doc ca chup");
+            }
+            if (study.getReadingUserId() == null || !study.getReadingUserId().equals(callerId)) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "REPORT_NOT_HOLDER",
+                        "Chi nguoi dang giu ca duoc chot doc");
+            }
+            if (currentReport == null ||
+                    currentReport.getTechnique() == null || currentReport.getTechnique().trim().isEmpty() ||
+                    currentReport.getConclusion() == null || currentReport.getConclusion().trim().isEmpty()) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "REPORT_INCOMPLETE",
+                        "Ky thuat va ket luan khong duoc de trong khi chot doc");
+            }
+            study.setStatus("READ");
+            currentReport.setStatus("FINAL");
+            reportDao.save(currentReport);
+
+        } else if ("READ".equals(fromStatus) && "APPROVING".equals(toStatus)) {
+            if (!isApprover) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chi APPROVER duoc mo ca de duyet");
+            }
+            if (callerId.equals(study.getReadingUserId()) ||
+                    (currentReport != null && callerId.equals(currentReport.getCreatedByUserId()))) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "APPROVER_CANNOT_BE_READER",
+                        "Nguoi duyet khong duoc la nguoi doc bao cao");
+            }
+            study.setStatus("APPROVING");
+            study.setApprovingUserId(callerId);
+
+        } else if ("APPROVING".equals(fromStatus) && "APPROVED".equals(toStatus)) {
+            if (isAdmin && !isApprover) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "ADMIN_CANNOT_APPROVE",
+                        "ADMIN khong duoc duyet bao cao");
+            }
+            if (!isApprover) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chi APPROVER duoc duyet ca chup");
+            }
+            if (study.getApprovingUserId() == null || !study.getApprovingUserId().equals(callerId)) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "NOT_APPROVING_HOLDER",
+                        "Chi nguoi da mo duyet duoc duyet ca chup nay");
+            }
+            if (callerId.equals(study.getReadingUserId()) ||
+                    (currentReport != null && callerId.equals(currentReport.getCreatedByUserId()))) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "APPROVER_CANNOT_BE_READER",
+                        "Nguoi duyet khong duoc la nguoi doc bao cao");
+            }
+            LocalDateTime now = LocalDateTime.now();
+            study.setStatus("APPROVED");
+            study.setCompletedAt(now);
+            if (currentReport != null) {
+                currentReport.setStatus("APPROVED");
+                currentReport.setApprovedByUserId(callerId);
+                currentReport.setApprovedAt(now);
+                reportDao.save(currentReport);
+            }
+
+        } else if ("APPROVING".equals(fromStatus) && "READING".equals(toStatus)) {
+            if (!isApprover) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chi APPROVER duoc tra lai ca chup de sua");
+            }
+            requireReason(request.reason(), "T8 (tra lai) bat buoc co ly do");
+            study.setStatus("READING");
+            study.setApprovingUserId(null);
+            if (currentReport != null) {
+                currentReport.setStatus("RETURNED");
+                reportDao.save(currentReport);
+            }
+
+        } else if ("APPROVED".equals(fromStatus) && "READING".equals(toStatus)) {
+            if (!isAdmin && !isApprover) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chi ADMIN hoac APPROVER duoc mo lai ca da duyet");
+            }
+            requireReason(request.reason(), "T9 (mo lai ca da duyet) bat buoc co ly do");
+            study.setStatus("READING");
+            study.setApprovingUserId(null);
+
+            if (currentReport != null) {
+                Report newReport = new Report();
+                newReport.setStudyId(id);
+                newReport.setVersion(currentReport.getVersion() + 1);
+                newReport.setStatus("DRAFT");
+                newReport.setOrigin(currentReport.getOrigin());
+                newReport.setTechnique(currentReport.getTechnique());
+                newReport.setFindings(currentReport.getFindings());
+                newReport.setDiagnosis(currentReport.getDiagnosis());
+                newReport.setConclusion(currentReport.getConclusion());
+                newReport.setRecommendation(currentReport.getRecommendation());
+                newReport.setCreatedByUserId(callerId);
+                newReport.setCreatedAt(LocalDateTime.now());
+                reportDao.save(newReport);
+            }
+
+        } else if ("SCHEDULED".equals(fromStatus) && "CANCELLED".equals(toStatus)) {
+            if (!isAdmin && !isTech) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chi ADMIN va TECHNICIAN duoc huy ca chup");
+            }
+            if (study.getStudyInstanceUid() != null && !study.getStudyInstanceUid().isBlank()) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "CANNOT_CANCEL_STUDY_WITH_IMAGE",
+                        "Khong the huy ca chup da co anh trong PACS (study_instance_uid khong null)");
+            }
+            requireReason(request.reason(), "T10 (huy ca chup) bat buoc co ly do");
+            study.setStatus("CANCELLED");
+
+        } else {
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_TRANSITION",
+                    "Khong cho phep chuyen trang thai tu " + fromStatus + " sang " + toStatus);
+        }
+
+        study.setUpdatedAt(LocalDateTime.now());
+        Study savedStudy = studyDao.save(study);
+
+        StudyStatusHistory history = new StudyStatusHistory();
+        history.setStudyId(id);
+        history.setFromStatus(fromStatus);
+        history.setToStatus(toStatus);
+        history.setChangedByUserId(callerId);
+        history.setChangedAt(LocalDateTime.now());
+        history.setReason(request.reason() != null ? request.reason().trim() : null);
+        history.setNote(request.note() != null ? request.note().trim() : null);
+        StudyStatusHistory savedHistory = studyStatusHistoryDao.save(history);
+
+        StatusHistoryEntry entry = new StatusHistoryEntry(
+                savedHistory.getId(),
+                savedHistory.getStudyId(),
+                savedHistory.getFromStatus(),
+                savedHistory.getToStatus(),
+                callerId,
+                caller.getUsername(),
+                savedHistory.getChangedAt(),
+                savedHistory.getReason(),
+                savedHistory.getNote()
+        );
+
+        return new TransitionResponse(studyMapper.toResponse(savedStudy), entry);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @Audited(action = AuditAction.READ, entityType = "STUDY", entityIdArg = 0)
+    public List<StatusHistoryEntry> listStatusHistory(Long studyId) {
+        Study study = findOrThrow(studyId);
+        AuditContext.recordPatientId(resolvePatientId(study));
+
+        List<StudyStatusHistory> list = studyStatusHistoryDao.findByStudyIdOrderByChangedAtAsc(studyId);
+        return list.stream().map(h -> {
+            String username = appUserDao.findById(h.getChangedByUserId())
+                    .map(AppUser::getUsername)
+                    .orElse(null);
+            return new StatusHistoryEntry(
+                    h.getId(),
+                    h.getStudyId(),
+                    h.getFromStatus(),
+                    h.getToStatus(),
+                    h.getChangedByUserId(),
+                    username,
+                    h.getChangedAt(),
+                    h.getReason(),
+                    h.getNote()
+            );
+        }).toList();
+    }
+
+    private Long resolvePatientId(Study study) {
+        if (study == null || study.getOrderId() == null) {
+            return null;
+        }
+        return imagingOrderDao.findById(study.getOrderId())
+                .map(ImagingOrder::getPatientId)
+                .orElse(null);
+    }
+
+    private void requireReason(String reason, String message) {
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "TRANSITION_REASON_REQUIRED", message);
+        }
+    }
+
+    private boolean hasAuthority(Authentication auth, String authority) {
+        if (auth == null) return false;
+        return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(authority));
     }
 
     private record SortSpec(String field, boolean ascending) {

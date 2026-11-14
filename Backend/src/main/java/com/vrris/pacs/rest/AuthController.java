@@ -45,3 +45,4 @@ public class AuthController {
         return authService.getCurrentUser();
     }
 }
+
