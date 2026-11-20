@@ -2,7 +2,9 @@ import { type Permission, can, deniedReason } from '@/shared/lib/auth'
 import { dash, formatAge, formatDateTime, formatDob, genderLabel } from '@/shared/lib/format'
 import type { AppUser, Report, WorklistRow } from '@/shared/lib/types'
 import { Button } from '@/shared/ui/controls'
-import { Check, ChevronRight, Edit, Eye, FileText, Printer, Stethoscope, Sync, Trash, User } from '@/shared/ui/Icon'
+import {
+  Check, ChevronRight, Edit, Eye, FileText, Lock, Printer, Refresh, Stethoscope, Sync, Trash, User, Warning,
+} from '@/shared/ui/Icon'
 
 interface Props {
   row: WorklistRow
@@ -16,41 +18,48 @@ interface Props {
   onViewImage: () => void
   onReport: () => void
   onPrint: () => void
-  /** T2 — xác nhận PACS đã nhận đủ ảnh (Task 10). */
+  /** T2 — xác nhận PACS đã nhận đủ ảnh. */
   onMarkReceived: () => void
-  /** T10 — hủy ca chưa có ảnh (Task 9). */
+  /** T10 — hủy ca chưa có ảnh. */
   onCancelStudy: () => void
+  /** T3 — mở ca để đọc (UNREAD -> READING). */
+  onStartReading: () => void
+  /** T4 — bỏ dở hoặc giải phóng khóa đọc (READING -> UNREAD). */
+  onAbandonReading: () => void
+  /** T5 — chốt đọc / lưu báo cáo chính thức (READING -> READ). */
+  onFinishReading: () => void
+  /** T6 — mở ca để duyệt (READ -> APPROVING). */
+  onStartApproving: () => void
+  /** T7 — duyệt kết quả (APPROVING -> APPROVED). */
+  onApproveStudy: () => void
+  /** T8 — trả lại để sửa (APPROVING -> READING). */
+  onReturnForRevision: () => void
+  /** T9 — mở lại ca đã duyệt (APPROVED -> READING). */
+  onReopenStudy: () => void
 }
 
 /**
  * Panel chi tiết bên phải (IN-08, story US-BSCDHA-05).
- * Chỉ hiển thị khi đã chọn một ca — khi chưa chọn, `WorklistPage` không dựng panel này nữa
- * để bảng chiếm hết chiều ngang (Task 6).
+ * Hiển thị đầy đủ các nút luồng đọc (T3/T4/T5), duyệt (T6/T7/T8/T9), nhận ảnh (T2) và hủy ca (T10)
+ * theo trạng thái hiện hành của ca chụp và phân quyền RBAC.
  */
 export function PatientPanel({
   row, user, report, onClose, onUpdate, onUpdateFromHis, onAddOrder, onClinical, onViewImage, onReport,
-  onPrint, onMarkReceived, onCancelStudy,
+  onPrint, onMarkReceived, onCancelStudy, onStartReading, onAbandonReading, onFinishReading,
+  onStartApproving, onApproveStudy, onReturnForRevision, onReopenStudy,
 }: Props) {
   // Kỹ thuật và kết luận lấy từ báo cáo hiện hành — nguồn duy nhất (`doc/02-erd.md` mục 10).
   const technique = report?.technique ?? row.reportSummary?.technique ?? null
   const conclusion = report?.conclusion ?? row.reportSummary?.conclusion ?? null
 
-  // Cùng cơ chế mà icon con mắt trước đây dùng trong WorklistTable: chưa có ảnh trong
-  // PACS hoặc không đủ quyền → disabled kèm tooltip, không ẩn nút.
   const hasImage = Boolean(row.study.studyInstanceUid)
   const canViewImage = can(user, 'study.viewImage')
   const viewImageDenied = !hasImage ? 'Chưa có ảnh chụp' : !canViewImage ? deniedReason('study.viewImage') : undefined
 
-  /*
-   * Ca còn ở "Chờ thực hiện" thì chưa có ảnh và chưa có gì để đọc, nên hai nút "Xem ảnh chụp"
-   * và "Báo cáo" bị ẩn — nhường chỗ cho hai thao tác thật sự dùng được ở trạng thái này:
-   * T2 "Đánh dấu đã có ảnh" (Task 10) và T10 "Hủy ca" (Task 9). Xem `doc/06b-ui-permission-spec.md`
-   * mục 3: trước đây `study.markReceived` và `study.cancel` chưa gắn với nút nào.
-   */
-  const isScheduled = row.study.status === 'SCHEDULED'
+  const status = row.study.status
+  const isScheduled = status === 'SCHEDULED'
 
-  // T2 chỉ hợp lệ khi PACS đã có ảnh (SM-12). Chưa có UID → khóa nút kèm lý do, không ẩn,
-  // để KTV biết còn thiếu bước đẩy ảnh chứ không tưởng là mất chức năng.
+  // T2 chỉ hợp lệ khi PACS đã có ảnh (SM-12).
   const markReceivedDenied = !can(user, 'study.markReceived')
     ? deniedReason('study.markReceived')
     : !hasImage
@@ -63,6 +72,8 @@ export function PatientPanel({
     : hasImage
       ? 'Ca đã có ảnh trong PACS nên không hủy được'
       : undefined
+
+  const reportReadyForT5 = Boolean(technique?.trim() && conclusion?.trim())
 
   return (
     <aside className="flex w-[260px] shrink-0 flex-col overflow-hidden border-l border-line bg-white desktop:w-[300px]">
@@ -86,7 +97,6 @@ export function PatientPanel({
 
         {isScheduled ? (
           <>
-            {/* Chỉ ADMIN/TECHNICIAN thấy hai nút này; vai trò khác ẩn hẳn (doc/06 mục 4, T2 và T10). */}
             {can(user, 'study.markReceived') && (
               <Button
                 variant="primary"
@@ -122,6 +132,91 @@ export function PatientPanel({
               Xem ảnh chụp
             </Button>
             <Button variant="outline" icon={<Edit size={12} />} onClick={onReport}>Báo cáo</Button>
+
+            {/* Luồng đọc: UNREAD -> READING (T3) */}
+            {status === 'UNREAD' && can(user, 'report.write') && (
+              <Button
+                variant="primary"
+                icon={<Edit size={12} />}
+                onClick={onStartReading}
+              >
+                Mở ca để đọc
+              </Button>
+            )}
+
+            {/* Luồng đọc: READING -> READ (T5) & READING -> UNREAD (T4 bỏ dở / giải phóng khóa) */}
+            {status === 'READING' && can(user, 'report.write') && (
+              <>
+                <Button
+                  variant="primary"
+                  icon={<Check size={12} />}
+                  disabled={!reportReadyForT5}
+                  title={reportReadyForT5 ? undefined : 'Cần nhập Kỹ thuật và Kết luận trong mục Báo cáo trước khi chốt đọc'}
+                  onClick={onFinishReading}
+                >
+                  Chốt đọc
+                </Button>
+                <Button
+                  variant="danger"
+                  icon={<Warning size={12} />}
+                  onClick={onAbandonReading}
+                >
+                  Bỏ dở
+                </Button>
+              </>
+            )}
+
+            {status === 'READING' && !can(user, 'report.write') && can(user, 'study.release') && (
+              <Button
+                variant="danger"
+                icon={<Lock size={12} />}
+                onClick={onAbandonReading}
+              >
+                Giải phóng khóa
+              </Button>
+            )}
+
+            {/* Luồng duyệt: READ -> APPROVING (T6) */}
+            {status === 'READ' && can(user, 'report.approve') && (
+              <Button
+                variant="primary"
+                icon={<Check size={12} />}
+                onClick={onStartApproving}
+              >
+                Mở ca để duyệt
+              </Button>
+            )}
+
+            {/* Luồng duyệt: APPROVING -> APPROVED (T7) & APPROVING -> READING (T8) */}
+            {status === 'APPROVING' && can(user, 'report.approve') && (
+              <>
+                <Button
+                  variant="primary"
+                  icon={<Check size={12} />}
+                  onClick={onApproveStudy}
+                >
+                  Duyệt
+                </Button>
+                <Button
+                  variant="danger"
+                  icon={<Warning size={12} />}
+                  onClick={onReturnForRevision}
+                >
+                  Trả lại để sửa
+                </Button>
+              </>
+            )}
+
+            {/* Mở lại ca đã duyệt: APPROVED -> READING (T9) */}
+            {status === 'APPROVED' && can(user, 'study.reopen') && (
+              <Button
+                variant="danger"
+                icon={<Refresh size={12} />}
+                onClick={onReopenStudy}
+              >
+                Mở lại ca
+              </Button>
+            )}
           </>
         )}
 

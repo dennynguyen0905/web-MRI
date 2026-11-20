@@ -18,8 +18,22 @@ export const toUserRef = (d: UserRefDto): UserRef => ({
   fullName: d.full_name,
 })
 
-const toUserRefOrNull = (d: UserRefDto | null | undefined): UserRef | null =>
-  d == null ? null : toUserRef(d)
+const toUserRefOrFallback = (
+  d: UserRefDto | null | undefined,
+  fallbackId?: number | null,
+  fallbackUsername?: string | null,
+  labelPrefix = 'Người dùng',
+): UserRef | null => {
+  if (d != null) return toUserRef(d)
+  if (fallbackId != null) {
+    return {
+      id: fallbackId,
+      username: fallbackUsername ?? undefined,
+      fullName: fallbackUsername ? `${labelPrefix} (${fallbackUsername})` : `${labelPrefix} #${fallbackId}`,
+    }
+  }
+  return null
+}
 
 export const toAppUser = (d: CurrentUserDto): AppUser => ({
   id: d.id,
@@ -102,9 +116,9 @@ export const toStudy = (d: StudyDto): Study => ({
   startedAt: nz(d.started_at),
   completedAt: nz(d.completed_at),
   dueAt: nz(d.due_at),
-  performedBy: toUserRefOrNull(d.performed_by),
-  readingUser: toUserRefOrNull(d.reading_user),
-  approvingUser: toUserRefOrNull(d.approving_user),
+  performedBy: toUserRefOrFallback(d.performed_by, d.performed_by_user_id, null, 'KTV'),
+  readingUser: toUserRefOrFallback(d.reading_user, d.reading_user_id, null, 'BS CĐHA'),
+  approvingUser: toUserRefOrFallback(d.approving_user, d.approving_user_id, null, 'BS duyệt'),
 })
 
 export const toReportSummary = (d: ReportSummaryDto | null | undefined): ReportSummary | null =>
@@ -126,9 +140,12 @@ export const toReport = (d: ReportDto): Report => ({
   diagnosis: nz(d.diagnosis),
   conclusion: nz(d.conclusion),
   recommendation: nz(d.recommendation),
-  createdBy: toUserRef(d.created_by),
+  createdBy: toUserRefOrFallback(d.created_by, d.created_by_user_id, null, 'BS CĐHA') ?? {
+    id: 0,
+    fullName: 'BS CĐHA',
+  },
   createdAt: d.created_at,
-  approvedBy: toUserRefOrNull(d.approved_by),
+  approvedBy: toUserRefOrFallback(d.approved_by, d.approved_by_user_id, null, 'BS duyệt'),
   approvedAt: nz(d.approved_at),
 })
 
@@ -137,21 +154,34 @@ export const toStatusHistoryEntry = (d: StatusHistoryEntryDto): StatusHistoryEnt
   studyId: d.study_id,
   fromStatus: nz(d.from_status),
   toStatus: d.to_status,
-  changedBy: toUserRef(d.changed_by),
+  changedBy: toUserRefOrFallback(
+    d.changed_by,
+    d.changed_by_user_id,
+    d.changed_by_username,
+    'Người thực hiện',
+  ) ?? {
+    id: 0,
+    fullName: d.changed_by_username ?? 'Hệ thống',
+  },
   changedAt: d.changed_at,
   reason: nz(d.reason),
   note: nz(d.note),
 })
 
-export const toWorklistRow = (d: WorklistRowDto): WorklistRow => ({
-  study: toStudy(d.study),
-  order: toImagingOrder(d.order),
-  patient: toPatient(d.patient),
-  service: toServiceItem(d.service_item),
-  device: d.device == null ? null : toDevice(d.device),
-  department: d.department == null ? null : toDepartment(d.department),
-  reportSummary: toReportSummary(d.report_summary),
-})
+export const toWorklistRow = (d: WorklistRowDto): WorklistRow => {
+  const raw = d as unknown as StudyDto & { current_report?: ReportSummaryDto | null }
+  const studyDto = d.study ?? raw
+  const reportSummaryDto = d.report_summary ?? raw.current_report ?? null
+  return {
+    study: toStudy(studyDto),
+    order: toImagingOrder(d.order),
+    patient: toPatient(d.patient),
+    service: toServiceItem(d.service_item),
+    device: d.device == null ? null : toDevice(d.device),
+    department: d.department == null ? null : toDepartment(d.department),
+    reportSummary: toReportSummary(reportSummaryDto),
+  }
+}
 
 export const toPage = <D, T>(d: PageDto<D>, map: (item: D) => T): Page<T> => ({
   page: d.page,

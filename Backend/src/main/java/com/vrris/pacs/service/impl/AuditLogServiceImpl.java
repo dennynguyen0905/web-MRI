@@ -13,12 +13,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static com.vrris.pacs.service.impl.ServiceSupport.DEFAULT_PAGE_SIZE;
+import static com.vrris.pacs.service.impl.ServiceSupport.safePage;
+import static com.vrris.pacs.service.impl.ServiceSupport.safePageSize;
+
 @Service
 public class AuditLogServiceImpl implements AuditLogService {
 
-    private static final int DEFAULT_PAGE = 1;
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_AUDIT_PAGE_SIZE = 100;
 
     private final AuditLogDao auditLogDao;
     private final AuditLogMapper auditLogMapper;
@@ -34,18 +36,15 @@ public class AuditLogServiceImpl implements AuditLogService {
     public AuditLogPageResponse search(Long patientId, Long actorUserId, String action, String entityType,
                                         Long entityId, LocalDateTime occurredFrom, LocalDateTime occurredTo,
                                         Integer page, Integer pageSize) {
-        int resolvedPage = (page == null || page < 1) ? DEFAULT_PAGE : page;
-        int resolvedPageSize = (pageSize == null || pageSize < 1) ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
+        int resolvedPage = safePage(page);
+        int resolvedPageSize = safePageSize(pageSize, DEFAULT_PAGE_SIZE, MAX_AUDIT_PAGE_SIZE);
 
         AuditLogDao.SearchCriteria criteria = new AuditLogDao.SearchCriteria(
                 patientId, actorUserId, action, entityType, entityId,
                 occurredFrom, occurredTo, resolvedPage, resolvedPageSize);
 
         AuditLogDao.SearchResult result = auditLogDao.search(criteria);
-        List<AuditLogResponse> items = result.items().stream()
-                .map(auditLogMapper::toResponse)
-                .toList();
-
+        List<AuditLogResponse> items = result.items().stream().map(auditLogMapper::toResponse).toList();
         int totalPages = result.total() == 0 ? 0 : (int) Math.ceil((double) result.total() / resolvedPageSize);
 
         return new AuditLogPageResponse(items, result.total(), resolvedPage, resolvedPageSize, totalPages);

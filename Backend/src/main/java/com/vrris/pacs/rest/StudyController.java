@@ -16,11 +16,8 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,40 +26,22 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 
-/**
- * /studies theo doc/api/openapi.yaml - operationId listStudies (IN-07, worklist) day du ve PHAN
- * LOC/TRANG/SAP XEP; getStudy (IN-08) da ghep thanh StudyDetail day du.
- *
- * listStudies: 2 tab PENDING/DONE (03-state-machine.md bang 2.1), loc theo status[]/department_id[]
- * (gom ca nhanh con)/device_id[]/modality/patient_class/khoang thoi gian theo time_field/patient_code/
- * full_name/visit_code/order_code, phan trang + sap xep - xem Javadoc service.StudyService.search.
- * Response van tra StudyResponse (khong ghep patient/order/service_item/device/current_report thanh
- * WorklistRow nhu openapi "WorklistPage" mo ta) - CHUA lam, ngoai pham vi IN-07 lan sua nay (chi
- * sua phan loc/tim o StudyController.listStudies, xem phieu viec IN-07).
- *
- * getStatusCounts (IN-09, GET /studies/status-counts): dem so ca theo 7 nhom trang thai cua
- * enu.StudyStatus, dung CUNG bo loc voi listStudies TRU status[]/tab (khop mo ta openapi.yaml
- * operationId getStudyStatusCounts) - xem Javadoc service.StudyService.getStatusCounts.
- *
- * getStudy (IN-08, GET /studies/{id}): tra StudyDetail day du (join patient/order/service_item/
- * device/current_report), khong con la ban rut gon - xem Javadoc service.StudyService.getDetailById.
- *
- * Tao study: xem rest.ImagingOrderController (createImagingOrder, addStudyToOrder) - Study khong
- * co endpoint tao rieng ngoai hai cho do, dung theo doc/api/openapi.yaml (khong co POST /studies).
- */
+import static com.vrris.pacs.rest.RestSupport.READ_ROLES;
+import static com.vrris.pacs.rest.RestSupport.TRANSITION_ROLES;
+import static com.vrris.pacs.rest.RestSupport.WRITE_ORDER_ROLES;
+import static com.vrris.pacs.rest.RestSupport.attachment;
+
 @RestController
+@RequestMapping("/studies")
 @Tag(name = "studies", description = "Quan ly ca chup")
 public class StudyController {
-
-    private static final String READ_ROLES =
-            "hasAnyAuthority('ROLE_ADMIN','ROLE_CLINICIAN','ROLE_TECHNICIAN','ROLE_RADIOLOGIST','ROLE_APPROVER')";
 
     private final StudyService studyService;
 
@@ -70,34 +49,34 @@ public class StudyController {
         this.studyService = studyService;
     }
 
-    @GetMapping(path = "/studies", produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Worklist ca chup (IN-07)", description = "2 tab PENDING/DONE; loc theo status/department/device/modality/patient_class/khoang thoi gian/benh nhan; phan trang + sap xep. Response van la StudyResponse (ban rut gon), chua ghep thanh WorklistRow.")
+    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Worklist ca chup (IN-07)")
     @ApiResponse(responseCode = "200", description = "Mot trang worklist")
     @PreAuthorize(READ_ROLES)
     public StudyPageResponse listStudies(
-            @Parameter(description = "PENDING (chi SCHEDULED) hoac DONE (cac trang thai con lai)") @RequestParam(required = false) String tab,
+            @Parameter(description = "PENDING | DONE") @RequestParam(required = false) String tab,
             @Parameter(description = "Loc theo mot hoac nhieu trang thai") @RequestParam(required = false) List<String> status,
             @Parameter(description = "Khoa/nhom; gom ca nhanh con") @RequestParam(name = "department_id", required = false) List<Long> departmentId,
             @Parameter(description = "Loc theo may") @RequestParam(name = "device_id", required = false) List<Long> deviceId,
             @Parameter(description = "Loc theo modality") @RequestParam(required = false) String modality,
             @Parameter(description = "Loc theo patient_class") @RequestParam(name = "patient_class", required = false) String patientClass,
-            @Parameter(description = "SCHEDULED | ORDERED | COMPLETED - cot dung voi date_from/date_to, mac dinh SCHEDULED") @RequestParam(name = "time_field", required = false) String timeField,
-            @Parameter(description = "Tu ngay, gom ca ngay nay") @RequestParam(name = "date_from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @Parameter(description = "Den ngay, gom ca ngay nay") @RequestParam(name = "date_to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
-            @Parameter(description = "Tim theo ma benh nhan (chua dung ca tri)") @RequestParam(name = "patient_code", required = false) String patientCode,
-            @Parameter(description = "Tim theo ho ten benh nhan (chua dung ca tri)") @RequestParam(name = "full_name", required = false) String fullName,
+            @Parameter(description = "SCHEDULED | ORDERED | COMPLETED") @RequestParam(name = "time_field", required = false) String timeField,
+            @Parameter(description = "Tu ngay") @RequestParam(name = "date_from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @Parameter(description = "Den ngay") @RequestParam(name = "date_to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @Parameter(description = "Tim theo ma benh nhan") @RequestParam(name = "patient_code", required = false) String patientCode,
+            @Parameter(description = "Tim theo ho ten benh nhan") @RequestParam(name = "full_name", required = false) String fullName,
             @Parameter(description = "Tim theo ma LSVV") @RequestParam(name = "visit_code", required = false) String visitCode,
             @Parameter(description = "Tim theo ma phieu chi dinh") @RequestParam(name = "order_code", required = false) String orderCode,
             @Parameter(description = "So trang, bat dau tu 1") @RequestParam(required = false) Integer page,
             @Parameter(description = "So dong moi trang") @RequestParam(name = "page_size", required = false) Integer pageSize,
-            @Parameter(description = "<field>,<asc|desc>, vi du scheduled_at,asc") @RequestParam(required = false) String sort
+            @Parameter(description = "<field>,<asc|desc>") @RequestParam(required = false) String sort
     ) {
         return studyService.search(tab, status, departmentId, deviceId, modality, patientClass, timeField,
                 dateFrom, dateTo, patientCode, fullName, visitCode, orderCode, page, pageSize, sort);
     }
 
-    @GetMapping(path = "/studies/status-counts", produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Dem so ca theo nhom trang thai (IN-09)", description = "Ap dung cung bo loc voi listStudies, tru status/tab. Tinh tu DB tai thoi diem goi, khong phai hang so.")
+    @GetMapping(path = "/status-counts", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Dem so ca theo nhom trang thai (IN-09)")
     @ApiResponse(responseCode = "200", description = "So dem theo trang thai")
     @PreAuthorize(READ_ROLES)
     public StatusCountsResponse getStatusCounts(
@@ -105,11 +84,11 @@ public class StudyController {
             @Parameter(description = "Loc theo may") @RequestParam(name = "device_id", required = false) List<Long> deviceId,
             @Parameter(description = "Loc theo modality") @RequestParam(required = false) String modality,
             @Parameter(description = "Loc theo patient_class") @RequestParam(name = "patient_class", required = false) String patientClass,
-            @Parameter(description = "SCHEDULED | ORDERED | COMPLETED - cot dung voi date_from/date_to, mac dinh SCHEDULED") @RequestParam(name = "time_field", required = false) String timeField,
-            @Parameter(description = "Tu ngay, gom ca ngay nay") @RequestParam(name = "date_from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @Parameter(description = "Den ngay, gom ca ngay nay") @RequestParam(name = "date_to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
-            @Parameter(description = "Tim theo ma benh nhan (chua dung ca tri)") @RequestParam(name = "patient_code", required = false) String patientCode,
-            @Parameter(description = "Tim theo ho ten benh nhan (chua dung ca tri)") @RequestParam(name = "full_name", required = false) String fullName,
+            @Parameter(description = "SCHEDULED | ORDERED | COMPLETED") @RequestParam(name = "time_field", required = false) String timeField,
+            @Parameter(description = "Tu ngay") @RequestParam(name = "date_from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @Parameter(description = "Den ngay") @RequestParam(name = "date_to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @Parameter(description = "Tim theo ma benh nhan") @RequestParam(name = "patient_code", required = false) String patientCode,
+            @Parameter(description = "Tim theo ho ten benh nhan") @RequestParam(name = "full_name", required = false) String fullName,
             @Parameter(description = "Tim theo ma LSVV") @RequestParam(name = "visit_code", required = false) String visitCode,
             @Parameter(description = "Tim theo ma phieu chi dinh") @RequestParam(name = "order_code", required = false) String orderCode
     ) {
@@ -117,75 +96,58 @@ public class StudyController {
                 dateFrom, dateTo, patientCode, fullName, visitCode, orderCode);
     }
 
-    @GetMapping(path = "/studies/export", produces = "text/csv;charset=UTF-8")
-    @Operation(
-            summary = "Xuat danh sach ca chup / benh nhan tren worklist dang CSV (UTF-8 kem BOM)",
-            description = "De xuat IN-25 (doc/01-scope.md muc 3.1 & muc 9, doc/06-rbac-matrix.md muc 3). "
-                    + "Ghi audit_log action EXPORT (patient_id co neu 1 benh nhan, NULL neu nhieu - doc/09 muc 2.2).")
+    @GetMapping(path = "/export", produces = "text/csv;charset=UTF-8")
+    @Operation(summary = "Xuat danh sach ca chup dang CSV (UTF-8 kem BOM)")
     @ApiResponse(responseCode = "200", description = "File CSV (UTF-8 kem BOM)")
     @PreAuthorize(READ_ROLES)
     public ResponseEntity<Resource> exportStudies(
-            @Parameter(description = "Loc theo chi dinh") @RequestParam(name = "order_id", required = false) Long orderId,
-            @Parameter(description = "Loc theo trang thai") @RequestParam(required = false) String status,
-            @Parameter(description = "Loc theo may") @RequestParam(name = "device_id", required = false) Long deviceId,
-            @Parameter(description = "Tim tu do tren ma benh nhan, ho ten, ma phieu, ma ho so") @RequestParam(required = false) String q,
-            @Parameter(description = "Loc theo ma benh nhan") @RequestParam(name = "patient_code", required = false) String patientCode,
-            @Parameter(description = "Loc theo ho ten") @RequestParam(name = "full_name", required = false) String fullName,
-            @Parameter(description = "<field>,<asc|desc>, vi du scheduled_at,asc") @RequestParam(required = false) String sort
+            @RequestParam(name = "order_id", required = false) Long orderId,
+            @RequestParam(required = false) String status,
+            @RequestParam(name = "device_id", required = false) Long deviceId,
+            @RequestParam(required = false) String q,
+            @RequestParam(name = "patient_code", required = false) String patientCode,
+            @RequestParam(name = "full_name", required = false) String fullName,
+            @RequestParam(required = false) String sort
     ) {
-        ExportDocumentResponse document = studyService.exportCsv(
-                orderId, status, deviceId, q, patientCode, fullName, sort);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentDisposition(ContentDisposition.attachment()
-                .filename(document.fileName(), StandardCharsets.UTF_8)
-                .build());
-        return ResponseEntity.ok()
-                .headers(headers)
-                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
-                .contentLength(document.content().length)
-                .body(new ByteArrayResource(document.content()));
+        ExportDocumentResponse doc = studyService.exportCsv(orderId, status, deviceId, q, patientCode, fullName, sort);
+        return attachment(doc.fileName(), "text/csv;charset=UTF-8", doc.content());
     }
 
-    @GetMapping(path = "/studies/{studyId}", produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Chi tiet mot ca chup (IN-08)", description = "Gom benh nhan, chi dinh, dich vu, may, bao cao hien hanh (current_report). Tra study_instance_uid de client mo OHIF bang deep-link; khong tra anh.")
+    @GetMapping(path = "/{studyId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Chi tiet mot ca chup (IN-08)")
     @ApiResponse(responseCode = "200", description = "Chi tiet ca chup")
     @PreAuthorize(READ_ROLES)
     public StudyDetailResponse getStudy(@PathVariable Long studyId) {
         return studyService.getDetailById(studyId);
     }
 
-    @GetMapping(path = "/studies/{studyId}/viewer-link", produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Lay link mo OHIF Viewer cho ca chup", description = "Kiem tra study_instance_uid, ghi audit_log VIEW_IMAGE, ghep base URL OHIF.")
+    @GetMapping(path = "/{studyId}/viewer-link", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Lay link mo OHIF Viewer cho ca chup")
     @ApiResponse(responseCode = "200", description = "Link mo OHIF Viewer")
-    @ApiResponse(responseCode = "422", description = "Ca chup chua co anh trong PACS (study_instance_uid is null)")
+    @ApiResponse(responseCode = "422", description = "Ca chup chua co anh trong PACS")
     @PreAuthorize(READ_ROLES)
     public ViewerLinkResponse getViewerLink(@PathVariable Long studyId) {
         return studyService.getViewerLink(studyId);
     }
 
-    @PatchMapping(path = "/studies/{studyId}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Sua thong tin ca chup", description = "Sua dich vu, may, thoi gian chup, study_instance_uid. Chi TECHNICIAN va ADMIN duoc dat study_instance_uid.")
+    @PatchMapping(path = "/{studyId}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Sua thong tin ca chup")
     @ApiResponse(responseCode = "200", description = "Da cap nhat")
     @ApiResponse(responseCode = "403", description = "CLINICIAN dat study_instance_uid hoac sai vai tro")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_CLINICIAN','ROLE_TECHNICIAN')")
+    @PreAuthorize(WRITE_ORDER_ROLES)
     public StudyResponse updateStudy(@PathVariable Long studyId, @Valid @RequestBody StudyUpdateRequest request) {
         return studyService.update(studyId, request);
     }
 
-    @PostMapping(path = "/studies/{studyId}/transitions", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Chuyen trang thai ca chup", description = "Thuc hien chuyen trang thai T1-T10. CLINICIAN khong co quyen.")
+    @PostMapping(path = "/{studyId}/transitions", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Chuyen trang thai ca chup (T2..T10)")
     @ApiResponse(responseCode = "200", description = "Da chuyen trang thai")
-    @ApiResponse(responseCode = "401", description = "Chua dang nhap")
-    @ApiResponse(responseCode = "403", description = "Sai vai tro, khong phai nguoi giu ca, hoac nguoi duyet trung nguoi doc")
-    @ApiResponse(responseCode = "409", description = "Chuyen khong hop le tu trang thai hien tai")
-    @ApiResponse(responseCode = "422", description = "Thieu dieu kien nghiep vu (reason, technique/conclusion, study_instance_uid)")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_TECHNICIAN','ROLE_RADIOLOGIST','ROLE_APPROVER')")
+    @PreAuthorize(TRANSITION_ROLES)
     public TransitionResponse transitionStudy(@PathVariable Long studyId, @Valid @RequestBody TransitionRequest request) {
         return studyService.transition(studyId, request);
     }
 
-    @GetMapping(path = "/studies/{studyId}/status-history", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(path = "/{studyId}/status-history", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Lich su chuyen trang thai ca chup")
     @ApiResponse(responseCode = "200", description = "Danh sach lich su chuyen trang thai")
     @PreAuthorize(READ_ROLES)

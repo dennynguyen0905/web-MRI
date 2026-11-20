@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { compactNumber, formatThousands } from '@/shared/lib/format'
-import { DONE_STATUSES, STATUS_META } from '@/shared/lib/status'
+import { formatThousands } from '@/shared/lib/format'
+import { DONE_STATUSES } from '@/shared/lib/status'
 import type {
   Department, Device, Modality, PatientClass, ServiceItem, StatusCounts, StudyStatus,
 } from '@/shared/lib/types'
-import { StatusGlyph } from '@/shared/ui/StatusChip'
 import { Checkbox, Select } from '@/shared/ui/controls'
 import { ChevronDown, ChevronRight, Folder, Lock, Settings } from '@/shared/ui/Icon'
 
@@ -39,9 +38,9 @@ interface Props {
 }
 
 /**
- * Bộ lọc trái. Các nhóm lọc đã [HOÃN] ở `doc/01-scope.md` mục 3.2 (trạng thái đồng bộ HIS,
- * vi phạm BHYT, danh sách ca quá hạn) **không** dựng ở đây: backend không có tham số tương ứng
- * trong `GET /studies`, dựng ra sẽ là nút bấm không làm gì.
+ * Bộ lọc trái (Danh sách máy + Thông tin ca chụp).
+ * Bộ lọc "Trạng thái ca chụp" đã được chuyển lên thanh công cụ phía trên bảng worklist
+ * cạnh hai tab "Chờ" và "Đã thực hiện".
  */
 export function Sidebar({ filters, onChange, departments, devices, serviceItems, counts, visibleCount }: Props) {
   return (
@@ -56,8 +55,6 @@ export function Sidebar({ filters, onChange, departments, devices, serviceItems,
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3 desktop:px-3 desktop:pb-4">
-        <StatusFilter filters={filters} onChange={onChange} counts={counts} />
-
         <div className="mt-3 mb-1.5 flex items-center justify-between desktop:mt-4">
           <span className="section-label">Thông tin ca chụp</span>
           <Settings size={12} className="text-brand-500" />
@@ -144,7 +141,7 @@ function DeviceTree({ filters, onChange, departments, devices, total, visibleCou
         />
       </div>
 
-      <div className="max-h-[164px] space-y-px overflow-y-auto pr-0.5 desktop:max-h-[220px]">
+      <div className="max-h-[260px] space-y-px overflow-y-auto pr-0.5 desktop:max-h-[340px]">
         {roots.map(khoa => {
           const groups = departments.filter(d => d.parentId === khoa.id)
           const open = !collapsed.has(khoa.id)
@@ -205,54 +202,5 @@ function DeviceRow({ device, checked, onToggle, indent }: {
         label={<span className="text-[10.5px] text-ink-3 desktop:text-[11.5px]">{device.name}</span>}
       />
     </div>
-  )
-}
-
-/* ------------------------------------------------------ Lọc theo trạng thái */
-
-function StatusFilter({ filters, onChange, counts }: {
-  filters: SidebarFilters
-  onChange: (next: Partial<SidebarFilters>) => void
-  counts: StatusCounts | null
-}) {
-  const toggle = (s: StudyStatus) =>
-    onChange({
-      statuses: filters.statuses.includes(s)
-        ? filters.statuses.filter(x => x !== s)
-        : [...filters.statuses, s],
-    })
-
-  const allOn = DONE_STATUSES.every(s => filters.statuses.includes(s))
-
-  return (
-    <>
-      <div className="mt-3 mb-1 section-label">Trạng thái ca chụp</div>
-
-      {/* Tab "Chờ" đã là SCHEDULED nên dòng này chỉ để đối chiếu, không bật/tắt được. */}
-      <div className="flex h-[23px] items-center gap-2 rounded px-0.5 desktop:h-[27px]">
-        <span className="w-3.5" />
-        <StatusGlyph status="SCHEDULED" />
-        <span className="flex-1 text-[11.5px] text-ink-2 desktop:text-[12px]">{STATUS_META.SCHEDULED.label}</span>
-        <span className="text-[10px] tabular-nums text-ink-4 desktop:text-[11px]">({compactNumber(counts?.byStatus.SCHEDULED ?? 0)})</span>
-      </div>
-
-      {DONE_STATUSES.map(s => (
-        <div key={s} className="flex h-[23px] items-center gap-2 rounded px-0.5 transition-colors hover:bg-line-soft desktop:h-[27px]">
-          <Checkbox checked={filters.statuses.includes(s)} onChange={() => toggle(s)} />
-          <StatusGlyph status={s} />
-          <span className="flex-1 text-[11.5px] text-ink-2 desktop:text-[12px]">{STATUS_META[s].label}</span>
-          <span className="text-[10px] tabular-nums text-ink-4 desktop:text-[11px]">({compactNumber(counts?.byStatus[s] ?? 0)})</span>
-        </div>
-      ))}
-
-      <div className="flex h-[23px] items-center gap-2 rounded px-0.5 transition-colors hover:bg-line-soft desktop:h-[27px]">
-        <Checkbox
-          checked={allOn}
-          onChange={v => onChange({ statuses: v ? [...DONE_STATUSES] : [] })}
-        />
-        <span className="w-3" />
-        <span className="flex-1 text-[11.5px] text-ink-2 desktop:text-[12px]">Tất cả</span>
-      </div>
-    </>
   )
 }

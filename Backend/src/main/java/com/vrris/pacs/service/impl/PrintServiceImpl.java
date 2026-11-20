@@ -28,8 +28,6 @@ import com.vrris.pacs.service.PrintService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +37,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import static com.vrris.pacs.service.impl.ServiceSupport.currentUsername;
 
 @Service
 public class PrintServiceImpl implements PrintService {
@@ -72,12 +72,10 @@ public class PrintServiceImpl implements PrintService {
     }
 
     @Override
-    // KHONG readOnly: AuditLogAspect ghi mot dong audit_log cho moi lan in (IN-15).
     @Transactional
     @Audited(action = AuditAction.PRINT, entityType = "study", patientIdArg = 0, entityIdArg = 1)
     public PrintDocumentResponse render(Long patientId, Long studyId, PrintSection section) {
         Context ctx = load(patientId, studyId);
-
         List<PdfPrintRenderer.Line> patientLines = patientLines(ctx);
         List<PdfPrintRenderer.Line> body = new ArrayList<>();
         PdfPrintRenderer.Table table = null;
@@ -85,7 +83,6 @@ public class PrintServiceImpl implements PrintService {
 
         switch (section) {
             case FUNCTIONAL -> {
-                // Phan duy nhat la du lieu that cua RIS trong 8 tuan.
                 Report report = ctx.report().orElse(null);
                 body.add(new PdfPrintRenderer.Line("Ten dich vu", ctx.serviceItem().map(ServiceItem::getName).orElse(null)));
                 body.add(new PdfPrintRenderer.Line("May chup", ctx.device().map(Device::getName).orElse(null)));
@@ -132,7 +129,6 @@ public class PrintServiceImpl implements PrintService {
     }
 
     @Override
-    // KHONG readOnly: AuditLogAspect ghi mot dong audit_log cho moi lan in (IN-15).
     @Transactional
     @Audited(action = AuditAction.PRINT, entityType = "study", patientIdArg = 0, entityIdArg = 1)
     public void recordPrintEvent(Long patientId, Long studyId, List<PrintSection> sections) {
@@ -141,34 +137,31 @@ public class PrintServiceImpl implements PrintService {
                 ctx.patient().getPatientCode(), ctx.study().getAccessionNumber(), sections);
     }
 
-    /* ------------------------------------------------------------------ Noi bo */
-
-    private record Context(Patient patient, Study study, ImagingOrder order,
-                           Optional<ServiceItem> serviceItem, Optional<Device> device,
-                           Optional<Report> report, Optional<ClinicalSnapshot> snapshot) {
+    private record Context(
+            Patient patient,
+            Study study,
+            ImagingOrder order,
+            Optional<ServiceItem> serviceItem,
+            Optional<Device> device,
+            Optional<Report> report,
+            Optional<ClinicalSnapshot> snapshot
+    ) {
     }
 
     private Context load(Long patientId, Long studyId) {
         Patient patient = patientDao.findById(patientId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PATIENT_NOT_FOUND",
-                        "Khong tim thay benh nhan."));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PATIENT_NOT_FOUND", "Khong tim thay benh nhan."));
         Study study = studyDao.findById(studyId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "STUDY_NOT_FOUND",
-                        "Khong tim thay ca chup."));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "STUDY_NOT_FOUND", "Khong tim thay ca chup."));
         ImagingOrder order = imagingOrderDao.findById(study.getOrderId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND",
-                        "Khong tim thay chi dinh cua ca chup."));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "Khong tim thay chi dinh cua ca chup."));
 
-        // Chan in nham ho so nguoi khac: ca chup phai thuoc dung benh nhan duoc yeu cau.
         if (!order.getPatientId().equals(patientId)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "STUDY_PATIENT_MISMATCH",
-                    "Ca chup khong thuoc benh nhan nay.");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "STUDY_PATIENT_MISMATCH", "Ca chup khong thuoc benh nhan nay.");
         }
 
         return new Context(
-                patient,
-                study,
-                order,
+                patient, study, order,
                 serviceItemDao.findById(study.getServiceItemId()),
                 study.getDeviceId() == null ? Optional.empty() : deviceDao.findById(study.getDeviceId()),
                 reportDao.findCurrentByStudyId(studyId),
@@ -177,24 +170,23 @@ public class PrintServiceImpl implements PrintService {
 
     private List<PdfPrintRenderer.Line> patientLines(Context ctx) {
         Patient p = ctx.patient();
-        // Khong co ngay sinh thi khong tinh tuoi - KHONG duoc ra "0" (doc/01-scope.md muc 6 buoc 10).
         String ageText = p.getDateOfBirth() == null
                 ? "—"
                 : AgeCalculator.calculate(
                         p.getDateOfBirth(), DobPrecision.valueOf(p.getDobPrecision()), LocalDate.now()).format();
 
-        List<PdfPrintRenderer.Line> lines = new ArrayList<>();
-        lines.add(new PdfPrintRenderer.Line("Ho ten", p.getFullName()));
-        lines.add(new PdfPrintRenderer.Line("Ma benh nhan", p.getPatientCode()));
-        lines.add(new PdfPrintRenderer.Line("Ngay sinh", p.getDateOfBirth() == null ? null : p.getDateOfBirth().toString()));
-        lines.add(new PdfPrintRenderer.Line("Tuoi", ageText));
-        lines.add(new PdfPrintRenderer.Line("Gioi tinh", p.getGender()));
-        lines.add(new PdfPrintRenderer.Line("Ma BHXH", p.getSocialInsuranceNo()));
-        lines.add(new PdfPrintRenderer.Line("Ma phieu", ctx.order().getOrderCode()));
-        lines.add(new PdfPrintRenderer.Line("Ma LSVV", ctx.order().getVisitCode()));
-        lines.add(new PdfPrintRenderer.Line("Bac si chi dinh", ctx.order().getOrderingDoctorName()));
-        lines.add(new PdfPrintRenderer.Line("Chi dinh", ctx.serviceItem().map(ServiceItem::getName).orElse(null)));
-        return lines;
+        return List.of(
+                new PdfPrintRenderer.Line("Ho ten", p.getFullName()),
+                new PdfPrintRenderer.Line("Ma benh nhan", p.getPatientCode()),
+                new PdfPrintRenderer.Line("Ngay sinh", p.getDateOfBirth() == null ? null : p.getDateOfBirth().toString()),
+                new PdfPrintRenderer.Line("Tuoi", ageText),
+                new PdfPrintRenderer.Line("Gioi tinh", p.getGender()),
+                new PdfPrintRenderer.Line("Ma BHXH", p.getSocialInsuranceNo()),
+                new PdfPrintRenderer.Line("Ma phieu", ctx.order().getOrderCode()),
+                new PdfPrintRenderer.Line("Ma LSVV", ctx.order().getVisitCode()),
+                new PdfPrintRenderer.Line("Bac si chi dinh", ctx.order().getOrderingDoctorName()),
+                new PdfPrintRenderer.Line("Chi dinh", ctx.serviceItem().map(ServiceItem::getName).orElse(null))
+        );
     }
 
     private JsonNode snapshotNode(Context ctx, String field) {
@@ -204,8 +196,7 @@ public class PrintServiceImpl implements PrintService {
                 JsonNode node = root.get(field);
                 return node == null || node.isNull() ? null : node;
             } catch (Exception e) {
-                log.warn("clinical_snapshot cua chi dinh {} khong phai JSON hop le: {}",
-                        s.getOrderId(), e.getMessage());
+                log.warn("clinical_snapshot cua chi dinh {} khong phai JSON hop le: {}", s.getOrderId(), e.getMessage());
                 return null;
             }
         }).orElse(null);
@@ -215,19 +206,12 @@ public class PrintServiceImpl implements PrintService {
         List<List<String>> rows = new ArrayList<>();
         if (array != null && array.isArray()) {
             for (JsonNode item : array) {
-                List<String> row = new ArrayList<>();
-                for (String field : fields) {
-                    JsonNode value = item.get(field);
-                    row.add(value == null || value.isNull() ? "—" : value.asText());
-                }
-                rows.add(row);
+                rows.add(fields.stream()
+                        .map(item::get)
+                        .map(val -> val == null || val.isNull() ? "—" : val.asText())
+                        .toList());
             }
         }
         return new PdfPrintRenderer.Table(headers, rows);
-    }
-
-    private String currentUsername() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication == null ? "system" : String.valueOf(authentication.getPrincipal());
     }
 }
