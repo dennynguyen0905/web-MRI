@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { can, deniedReason } from '@/shared/lib/auth'
 import { formatAge, formatDateTime, formatDob, genderLabel } from '@/shared/lib/format'
 import { STATUS_META } from '@/shared/lib/status'
-import { canEditReport, transitionsFrom } from '@/shared/lib/stateMachine'
-import type { AppUser, ReportStatus, WorklistRow } from '@/shared/lib/types'
+import { TRANSITIONS, canEditReport, transitionsFrom } from '@/shared/lib/stateMachine'
+import type { AppUser, ReportStatus, StudyStatus, WorklistRow } from '@/shared/lib/types'
 import { StatusChip } from '@/shared/ui/StatusChip'
 import { Button, Modal, Tag, Textarea } from '@/shared/ui/controls'
 import { Check, Clock, FileText, Warning } from '@/shared/ui/Icon'
@@ -35,7 +35,7 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
   onClose: () => void
   row: WorklistRow | null
   user: AppUser
-  onChanged: () => void
+  onChanged: (nextStatus?: StudyStatus) => void
 }) {
   const studyId = row?.study.id ?? null
   const { report, history, loading, saving, error, saveDraft, transition } = useStudyReport(studyId, open)
@@ -52,10 +52,6 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
   }, [open, studyId, report])
 
   /* -------------------------------------- Kênh AI Panel (OHIF) → form báo cáo (postMessage) */
-  // Ref giữ state mới nhất để listener (gắn 1 lần ở mount) không bị "đóng kín" giá trị cũ —
-  // component này luôn được WorklistPage mount (chỉ ẩn render khi `!open`), nên effect gắn
-  // listener chạy đúng 1 lần là đủ, không phụ thuộc open/row/draft (doc/11-ai-design.md mục 4,
-  // 5.2.5.d — chi tiết thiết kế kênh ở báo cáo cuối của task nối kênh này).
   const aiBridgeStateRef = useRef({ open, studyInstanceUid: row?.study.studyInstanceUid ?? null, draft })
   useEffect(() => {
     aiBridgeStateRef.current = { open, studyInstanceUid: row?.study.studyInstanceUid ?? null, draft }
@@ -71,15 +67,11 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
         setDirty(true)
         if (focusFirst) {
           const firstKey = FIELDS.find(f => fields[f.key] !== undefined)?.key
-          // Chờ 1 tick cho React render lại draft mới rồi mới focus.
           requestAnimationFrame(() => fieldRefs.current[firstKey as keyof ReportDraft]?.focus())
         }
       },
       confirmOverwrite: (keys: AiDraftFieldKey[]) => {
         const labels = keys.map(k => FIELDS.find(f => f.key === k)?.label ?? k).join(', ')
-        // Quyết định an toàn thêm ngoài tài liệu gốc (chưa có nút xác nhận ghi đè trong thiết kế
-        // Figma) — dùng confirm() có sẵn của trình duyệt thay vì tự vẽ modal mới, cần nhóm duyệt
-        // lại UX (xem báo cáo cuối của task nối kênh).
         return window.confirm(
           `Các trường sau đã có nội dung bác sĩ nhập: ${labels}. Ghi đè bằng gợi ý AI?`,
         )
@@ -91,7 +83,16 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
 
   const status = row.study.status
   const editable = canEditReport(status) && can(user, 'report.write')
-  const transitions = transitionsFrom(status).filter(t => can(user, t.permission))
+
+  // Cho phép cả ADMIN thực hiện T4 (giải phóng khóa đọc, D20) và cho phép BS CĐHA chốt đọc luôn từ UNREAD.
+  const baseTransitions = transitionsFrom(status).filter(
+    t => can(user, t.permission) || (t.code === 'T4' && can(user, 'study.release')),
+  )
+  const t5 = TRANSITIONS.find(t => t.code === 'T5')
+  const transitions = status === 'UNREAD' && can(user, 'report.write') && t5
+    ? [...baseTransitions, t5]
+    : baseTransitions
+
   const needsReason = transitions.some(t => t.exceptional)
 
   const set = (key: keyof ReportDraft, value: string) => {
@@ -99,11 +100,12 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
     setDirty(true)
   }
 
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<StudyStatus | undefined>) => {
     try {
-      await fn()
+      const nextStatus = await fn()
       setDirty(false)
-      onChanged()
+      setReason('')
+      onChanged(nextStatus)
     } catch {
       // Thông điệp lỗi đã nằm trong `error` của hook, không cần xử lý thêm ở đây.
     }
@@ -125,22 +127,34 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
             variant="outline"
             disabled={!editable || saving}
             title={editable ? undefined : deniedReason('report.write')}
-            onClick={() => run(() => saveDraft(draft))}
+            onClick={() => void run(() => saveDraft(draft, status))}
           >
             Lưu nháp
           </Button>
-          {transitions.map(t => (
-            <Button
-              key={t.code}
-              variant={t.exceptional ? 'danger' : 'primary'}
-              icon={t.exceptional ? <Warning size={12} /> : <Check size={12} />}
-              disabled={saving || (t.exceptional && reason.trim() === '')}
-              title={t.exceptional && reason.trim() === '' ? 'Thao tác ngoại lệ bắt buộc nhập lý do' : undefined}
-              onClick={() => run(() => transition(t.to, draft, t.exceptional ? reason.trim() : null))}
-            >
-              {t.label}
-            </Button>
-          ))}
+          {transitions.map(t => {
+            const label = t.code === 'T4' && !can(user, 'report.write') && can(user, 'study.release')
+              ? 'Giải phóng khóa'
+              : t.label
+            const incompleteForT5 = t.code === 'T5' && (!draft.technique.trim() || !draft.conclusion.trim())
+            return (
+              <Button
+                key={t.code}
+                variant={t.exceptional ? 'danger' : 'primary'}
+                icon={t.exceptional ? <Warning size={12} /> : <Check size={12} />}
+                disabled={saving || (t.exceptional && reason.trim() === '') || incompleteForT5}
+                title={
+                  t.exceptional && reason.trim() === ''
+                    ? 'Thao tác ngoại lệ bắt buộc nhập lý do'
+                    : incompleteForT5
+                      ? 'Cần nhập Kỹ thuật và Kết luận trước khi lưu báo cáo chính thức'
+                      : undefined
+                }
+                onClick={() => void run(() => transition(t.to, draft, t.exceptional ? reason.trim() : null, status))}
+              >
+                {label}
+              </Button>
+            )
+          })}
         </>
       }
     >
@@ -208,7 +222,7 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
                 <div className="mb-1 text-[11.5px] font-medium text-ink-3">Lý do (bắt buộc với thao tác ngoại lệ)</div>
                 <Textarea
                   rows={2}
-                  placeholder="Ví dụ: ảnh thiếu lát cắt, cần chụp lại"
+                  placeholder="Ví dụ: ảnh thiếu lát cắt, cần bổ sung mô tả hoặc hiệu chỉnh kết luận…"
                   value={reason}
                   onChange={e => setReason(e.target.value)}
                 />
