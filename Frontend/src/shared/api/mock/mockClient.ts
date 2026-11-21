@@ -236,21 +236,39 @@ function applyTransition(studyId: number, body: TransitionRequestDto): Transitio
       'Ca chụp đã có ảnh trong PACS nên không hủy được.')
   }
 
+  let report = currentReportOf(studyId)
+
+  // T5: chốt đọc bắt buộc có kỹ thuật và kết luận (SM-05).
+  if (transition.code === 'T5') {
+    if (!report || !report.technique?.trim() || !report.conclusion?.trim()) {
+      throw new ApiError(
+        422, 'REPORT_INCOMPLETE',
+        'Kỹ thuật và kết luận không được để trống khi chốt đọc.')
+    }
+  }
+
   study.status = to
-  if (to === 'READING') {
+  if (to === 'READING' && from === 'UNREAD') {
     study.started_at ??= now
     study.reading_user = actor
+  }
+  if (to === 'READING' && (from === 'APPROVING' || from === 'APPROVED')) {
+    study.approving_user = null
   }
   if (to === 'UNREAD' && from === 'READING') study.reading_user = null
   if (to === 'UNREAD' && from === 'SCHEDULED') study.completed_at ??= now
   if (to === 'APPROVING') study.approving_user = actor
-  if (to === 'APPROVED') study.approving_user = actor
+  if (to === 'APPROVED') {
+    study.approving_user = actor
+    study.completed_at = now
+  }
 
   const entry: StatusHistoryEntryDto = {
     id: historySeq++,
     study_id: studyId,
     from_status: from,
     to_status: to,
+    transition_code: transition.code,
     changed_by: actor,
     changed_at: now,
     reason: body.reason ?? null,
@@ -258,14 +276,18 @@ function applyTransition(studyId: number, body: TransitionRequestDto): Transitio
   }
   history.push(entry)
 
-  // Trạng thái báo cáo đi kèm bước chuyển: chỉ nhánh "trả lại" (APPROVING → READING) là RETURNED.
+  // Trạng thái báo cáo đi kèm bước chuyển:
+  // - T3 (UNREAD -> READING): tạo DRAFT v1 nếu chưa có
+  // - T5 (READING -> READ): DRAFT/RETURNED -> FINAL (giữ cùng version, SM-03)
+  // - T7 (APPROVING -> APPROVED): FINAL -> APPROVED
+  // - T8 (APPROVING -> READING): FINAL -> RETURNED (giữ cùng version, SM-03)
+  // - T9 (APPROVED -> READING): giữ bản APPROVED cũ, tạo bản DRAFT mới version + 1 (SM-04)
   const nextReportStatus: ReportStatus | null =
     to === 'READ' ? 'FINAL'
       : to === 'APPROVED' ? 'APPROVED'
         : to === 'READING' ? (from === 'APPROVING' ? 'RETURNED' : 'DRAFT')
           : null
 
-  let report = currentReportOf(studyId)
   if (nextReportStatus) {
     if (!report) {
       report = {
@@ -274,9 +296,17 @@ function applyTransition(studyId: number, body: TransitionRequestDto): Transitio
         created_by: actor, created_at: now, approved_by: null, approved_at: null,
       }
       reports.push(report)
-    } else if (report.status === 'RETURNED' && nextReportStatus === 'FINAL') {
-      // Chốt lại sau khi bị trả lại là một version mới (`UK(study_id, version)`).
-      report = { ...report, id: reportSeq++, version: report.version + 1, status: 'FINAL', created_by: actor, created_at: now }
+    } else if (from === 'APPROVED' && to === 'READING') {
+      report = {
+        ...report,
+        id: reportSeq++,
+        version: report.version + 1,
+        status: 'DRAFT',
+        created_by: study.reading_user ?? actor,
+        created_at: now,
+        approved_by: null,
+        approved_at: null,
+      }
       reports.push(report)
     } else {
       report.status = nextReportStatus

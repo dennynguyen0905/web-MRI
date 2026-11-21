@@ -104,6 +104,9 @@ export interface StudyDto {
   performed_by?: UserRefDto | null
   reading_user?: UserRefDto | null
   approving_user?: UserRefDto | null
+  performed_by_user_id?: number | null
+  reading_user_id?: number | null
+  approving_user_id?: number | null
 }
 
 export interface ReportSummaryDto {
@@ -124,9 +127,11 @@ export interface ReportDto {
   diagnosis?: string | null
   conclusion?: string | null
   recommendation?: string | null
-  created_by: UserRefDto
+  created_by?: UserRefDto | null
+  created_by_user_id?: number | null
   created_at: string
   approved_by?: UserRefDto | null
+  approved_by_user_id?: number | null
   approved_at?: string | null
 }
 
@@ -143,7 +148,10 @@ export interface StatusHistoryEntryDto {
   study_id: number
   from_status?: StudyStatus | null
   to_status: StudyStatus
-  changed_by: UserRefDto
+  transition_code?: string | null
+  changed_by?: UserRefDto | null
+  changed_by_user_id?: number | null
+  changed_by_username?: string | null
   changed_at: string
   reason?: string | null
   note?: string | null

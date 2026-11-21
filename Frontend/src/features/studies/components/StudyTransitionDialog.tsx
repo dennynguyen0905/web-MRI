@@ -7,11 +7,18 @@ import type { WorklistRow } from '@/shared/lib/types'
 import { StatusChip } from '@/shared/ui/StatusChip'
 import { Button, Modal, Textarea } from '@/shared/ui/controls'
 import { Check, Warning } from '@/shared/ui/Icon'
-import { transitionStudy } from '../api/studiesApi'
+import { type TransitionResult, transitionStudy } from '../api/studiesApi'
+
+const REASON_PLACEHOLDERS: Record<string, string> = {
+  T4: 'Ví dụ: ảnh nhiễu, thiếu chuỗi xung hoặc bàn giao ca trực cho bác sĩ khác…',
+  T8: 'Ví dụ: cần bổ sung mô tả nhu mô não và đối chiếu lâm sàng…',
+  T9: 'Ví dụ: phát hiện thêm tổn thương sau hội chẩn, cần hiệu chỉnh kết luận…',
+  T10: 'Ví dụ: bệnh nhân đã xuất viện hoặc đổi chỉ định, không còn nhu cầu chụp…',
+}
 
 /**
- * Hộp thoại xác nhận một bước chuyển trạng thái gọi thẳng từ `PatientPanel`
- * (T2 "Đánh dấu đã có ảnh" và T10 "Hủy ca").
+ * Hộp thoại xác nhận bước chuyển trạng thái gọi từ `PatientPanel` (T2…T10: nhận ảnh,
+ * mở đọc, bỏ dở/giải phóng khóa, chốt đọc, mở duyệt, duyệt, trả lại, mở lại ca, hủy ca).
  *
  * Nhánh ngoại lệ (`exceptional`) bắt buộc nhập lý do — Frontend chặn trước cho đỡ một vòng gọi,
  * nhưng backend vẫn kiểm lại và có thể trả 422 (`doc/03-state-machine.md` mục 2.4).
@@ -21,7 +28,7 @@ export function StudyTransitionDialog({ open, onClose, row, transition, onDone }
   onClose: () => void
   row: WorklistRow | null
   transition: Transition | null
-  onDone: () => void
+  onDone: (result: TransitionResult) => void
 }) {
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -43,8 +50,8 @@ export function StudyTransitionDialog({ open, onClose, row, transition, onDone }
     setBusy(true)
     setError(null)
     try {
-      await transitionStudy(row.study.id, transition.to, needsReason ? reason.trim() : null)
-      onDone()
+      const result = await transitionStudy(row.study.id, transition.to, needsReason ? reason.trim() : null)
+      onDone(result)
       onClose()
     } catch (err) {
       if (err instanceof ApiError) {
@@ -104,22 +111,91 @@ export function StudyTransitionDialog({ open, onClose, row, transition, onDone }
         <Line label="StudyInstanceUID" value={row.study.studyInstanceUid ?? '— (chưa có ảnh trong PACS)'} />
       </div>
 
-      {transition.code === 'T10' && (
-        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-[#f6e0b5] bg-[#fdf9ef] px-2.5 py-2 text-[11.5px] text-[#92400e]">
-          <Warning size={13} className="mt-px shrink-0" />
-          <span>
-            Ca bị hủy sẽ chuyển sang trạng thái <strong>{STATUS_META.CANCELLED.label}</strong> và rời khỏi
-            tab "Chờ". Chỉ hủy được ca <strong>chưa có ảnh</strong> trong PACS.
-          </span>
-        </div>
-      )}
-
       {transition.code === 'T2' && (
         <div className="mb-3 flex items-start gap-1.5 rounded-md border border-brand-100 bg-brand-50 px-2.5 py-2 text-[11.5px] text-brand-700">
           <Check size={13} className="mt-px shrink-0" />
           <span>
             Dùng khi máy chụp đã gửi đủ ảnh vào PACS. Ca sẽ chuyển sang
             {' '}<strong>{STATUS_META.UNREAD.label}</strong> để bác sĩ CĐHA đọc.
+          </span>
+        </div>
+      )}
+
+      {transition.code === 'T3' && (
+        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-brand-100 bg-brand-50 px-2.5 py-2 text-[11.5px] text-brand-700">
+          <Check size={13} className="mt-px shrink-0" />
+          <span>
+            Nhận khóa đọc ca chụp này và chuyển sang <strong>{STATUS_META.READING.label}</strong>.
+            Cửa sổ nhập báo cáo sẽ tự động mở ngay sau khi xác nhận.
+          </span>
+        </div>
+      )}
+
+      {transition.code === 'T4' && (
+        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-[#f6e0b5] bg-[#fdf9ef] px-2.5 py-2 text-[11.5px] text-[#92400e]">
+          <Warning size={13} className="mt-px shrink-0" />
+          <span>
+            Giải phóng khóa đọc và trả ca về <strong>{STATUS_META.UNREAD.label}</strong> để bác sĩ CĐHA
+            khác có thể nhận đọc. Nội dung nháp đã lưu (nếu có) vẫn được giữ lại.
+          </span>
+        </div>
+      )}
+
+      {transition.code === 'T5' && (
+        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-brand-100 bg-brand-50 px-2.5 py-2 text-[11.5px] text-brand-700">
+          <Check size={13} className="mt-px shrink-0" />
+          <span>
+            Chốt báo cáo chính thức và chuyển ca sang <strong>{STATUS_META.READ.label}</strong> để chờ bác sĩ duyệt.
+          </span>
+        </div>
+      )}
+
+      {transition.code === 'T6' && (
+        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-brand-100 bg-brand-50 px-2.5 py-2 text-[11.5px] text-brand-700">
+          <Check size={13} className="mt-px shrink-0" />
+          <span>
+            Nhận khóa duyệt và chuyển ca sang <strong>{STATUS_META.APPROVING.label}</strong>.
+            Cửa sổ báo cáo sẽ mở để bạn kiểm tra và duyệt hoặc trả lại.
+          </span>
+        </div>
+      )}
+
+      {transition.code === 'T7' && (
+        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-brand-100 bg-brand-50 px-2.5 py-2 text-[11.5px] text-brand-700">
+          <Check size={13} className="mt-px shrink-0" />
+          <span>
+            Phê duyệt chính thức kết quả chẩn đoán hình ảnh. Ca sẽ chuyển sang
+            {' '}<strong>{STATUS_META.APPROVED.label}</strong> và sẵn sàng in trả kết quả.
+          </span>
+        </div>
+      )}
+
+      {transition.code === 'T8' && (
+        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-[#f6e0b5] bg-[#fdf9ef] px-2.5 py-2 text-[11.5px] text-[#92400e]">
+          <Warning size={13} className="mt-px shrink-0" />
+          <span>
+            Trả ca về trạng thái <strong>{STATUS_META.READING.label}</strong> cho bác sĩ đọc ban đầu
+            để chỉnh sửa báo cáo theo yêu cầu của người duyệt (SM-03).
+          </span>
+        </div>
+      )}
+
+      {transition.code === 'T9' && (
+        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-[#f6e0b5] bg-[#fdf9ef] px-2.5 py-2 text-[11.5px] text-[#92400e]">
+          <Warning size={13} className="mt-px shrink-0" />
+          <span>
+            Mở lại ca đã duyệt sang <strong>{STATUS_META.READING.label}</strong>. Bản báo cáo đã duyệt
+            được giữ nguyên và hệ thống tạo bản nháp mới (tăng version) để chỉnh sửa (SM-04).
+          </span>
+        </div>
+      )}
+
+      {transition.code === 'T10' && (
+        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-[#f6e0b5] bg-[#fdf9ef] px-2.5 py-2 text-[11.5px] text-[#92400e]">
+          <Warning size={13} className="mt-px shrink-0" />
+          <span>
+            Ca bị hủy sẽ chuyển sang trạng thái <strong>{STATUS_META.CANCELLED.label}</strong> và rời khỏi
+            tab &quot;Chờ&quot;. Chỉ hủy được ca <strong>chưa có ảnh</strong> trong PACS.
           </span>
         </div>
       )}
@@ -133,7 +209,7 @@ export function StudyTransitionDialog({ open, onClose, row, transition, onDone }
             rows={3}
             autoFocus
             disabled={busy}
-            placeholder="Ví dụ: bệnh nhân đã xuất viện, không còn nhu cầu chụp"
+            placeholder={REASON_PLACEHOLDERS[transition.code] ?? 'Nhập lý do chuyển trạng thái…'}
             value={reason}
             onChange={e => setReason(e.target.value)}
           />

@@ -41,4 +41,22 @@ class StudyStateMachineTest {
     void khong_co_buoc_tiep_theo_sau_APPROVED() {
         assertThat(StudyStateMachine.allowedNextStates(StudyStatus.APPROVED)).isEmpty();
     }
+
+    @ParameterizedTest
+    @CsvSource({
+            "SCHEDULED, UNREAD, T2, false",
+            "UNREAD, READING, T3, false",
+            "READING, UNREAD, T4, true",
+            "READING, READ, T5, false",
+            "READ, APPROVING, T6, false",
+            "APPROVING, APPROVED, T7, false",
+            "APPROVING, READING, T8, true",
+            "APPROVED, READING, T9, true",
+            "SCHEDULED, CANCELLED, T10, true"
+    })
+    void resolveTransitionCode_va_isExceptional_khop_T2_den_T10(
+            StudyStatus from, StudyStatus to, String expectedCode, boolean expectedExceptional) {
+        assertThat(StudyStateMachine.resolveTransitionCode(from, to)).isEqualTo(expectedCode);
+        assertThat(StudyStateMachine.isExceptionalTransition(from, to)).isEqualTo(expectedExceptional);
+    }
 }
