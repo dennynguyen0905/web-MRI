@@ -5,5 +5,7 @@ package com.vrris.pacs.enu;
  * can biet date_of_birth duoc luu chinh xac toi muc nao de tinh tuoi dung (rule.AgeCalculator).
  */
 public enum DobPrecision {
-    DAY, MONTH, YEAR
+    DAY,    // 0
+    MONTH,  // 1
+    YEAR    // 2
 }

@@ -5,5 +5,8 @@ package com.vrris.pacs.enu;
  * database/migrations/V5__audit_and_conflict.sql).
  */
 public enum ConflictResolution {
-    PENDING, KEEP_RIS, TAKE_HIS, MANUAL_EDIT
+    PENDING,      // 0
+    KEEP_RIS,     // 1
+    TAKE_HIS,     // 2
+    MANUAL_EDIT   // 3
 }

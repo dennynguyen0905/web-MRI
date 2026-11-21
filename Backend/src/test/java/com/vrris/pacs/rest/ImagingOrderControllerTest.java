@@ -6,6 +6,13 @@ import com.vrris.pacs.dao.ClinicalSnapshotDao;
 import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dao.ServiceItemDao;
+import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
+import com.vrris.pacs.enu.DepartmentType;
+import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.SnapshotSource;
 import com.vrris.pacs.model.AuditLog;
 import com.vrris.pacs.model.ClinicalSnapshot;
 import com.vrris.pacs.model.Department;
@@ -292,8 +299,8 @@ class ImagingOrderControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.payload.labs").isArray());
 
         boolean audited = auditLogDao.findAll().stream().anyMatch(log ->
-                "READ".equals(log.getAction())
-                        && "CLINICAL_SNAPSHOT".equals(log.getEntityType())
+                AuditAction.READ == log.getAction()
+                        && AuditEntityType.CLINICAL_SNAPSHOT == log.getEntityType()
                         && orderId.equals(log.getEntityId())
                         && "admin".equals(log.getActorUsername()));
         assertThat(audited).isTrue();
@@ -369,7 +376,7 @@ class ImagingOrderControllerTest extends AbstractIntegrationTest {
         snapshot.setOrderId(orderId);
         snapshot.setPayload(payloadJson);
         snapshot.setFetchedAt(LocalDateTime.now());
-        snapshot.setSource("SEED");
+        snapshot.setSource(SnapshotSource.SEED);
         clinicalSnapshotDao.save(snapshot);
     }
 
@@ -384,8 +391,8 @@ class ImagingOrderControllerTest extends AbstractIntegrationTest {
         Patient p = new Patient();
         p.setPatientCode(code);
         p.setFullName("Benh nhan " + code);
-        p.setDobPrecision("DAY");
-        p.setGender("U");
+        p.setDobPrecision(DobPrecision.DAY);
+        p.setGender(Gender.U);
         LocalDateTime now = LocalDateTime.now();
         p.setCreatedAt(now);
         p.setUpdatedAt(now);
@@ -396,7 +403,7 @@ class ImagingOrderControllerTest extends AbstractIntegrationTest {
         Department d = new Department();
         d.setCode(code);
         d.setName("Khoa " + code);
-        d.setType("KHOA");
+        d.setType(DepartmentType.KHOA);
         d.setSortOrder(1);
         d.setIsActive(true);
         return departmentDao.save(d);
@@ -406,7 +413,7 @@ class ImagingOrderControllerTest extends AbstractIntegrationTest {
         ServiceItem s = new ServiceItem();
         s.setCode(code);
         s.setName("Chup " + code);
-        s.setModality("CT");
+        s.setModality(Modality.CT);
         s.setIsActive(true);
         return serviceItemDao.save(s);
     }

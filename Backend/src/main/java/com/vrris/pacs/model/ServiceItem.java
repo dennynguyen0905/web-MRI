@@ -1,7 +1,10 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.Modality;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -25,7 +28,8 @@ public class ServiceItem {
     private String name;
 
     @Column(name = "modality", nullable = false)
-    private String modality;
+    @Enumerated(EnumType.STRING)
+    private Modality modality;
 
     @Column(name = "body_part")
     private String bodyPart;
@@ -57,11 +61,11 @@ public class ServiceItem {
         this.name = name;
     }
 
-    public String getModality() {
+    public Modality getModality() {
         return modality;
     }
 
-    public void setModality(String modality) {
+    public void setModality(Modality modality) {
         this.modality = modality;
     }
 

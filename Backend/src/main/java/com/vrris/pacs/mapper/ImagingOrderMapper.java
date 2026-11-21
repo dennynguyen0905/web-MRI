@@ -14,9 +14,8 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
 import java.util.List;
 
 /**
- * model.ImagingOrder.source/sync_status/patient_class la String trong DB; enu tuong ung o dto -
- * MapStruct tu sinh valueOf()/name() vi cung ten field va kieu dich la enum (giong
- * mapper.PatientMapper voi dob_precision/gender).
+ * source/sync_status/patient_class o model va dto deu la enum (enu.OrderSource/SyncStatus/PatientClass)
+ * - MapStruct map enum -> enum theo ten.
  */
 @Mapper(componentModel = "spring")
 public interface ImagingOrderMapper {

@@ -1,7 +1,10 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.StudyStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,8 +17,7 @@ import java.time.LocalDateTime;
  * Mapping dung bang "study" trong database/migrations/V3__patient_order_study.sql.
  * KHONG doi ten cot / them cot o day - muon doi schema phai them migration V8+ (database/README.md).
  *
- * status luu String (dung kieu cot DB) - chi dua ra enu.StudyStatus o tang dto, giong cach
- * model.Patient dang lam voi dob_precision/gender.
+ * status la enu.StudyStatus, luu ten (name()) vao cot VARCHAR qua @Enumerated(EnumType.STRING) - CSDL khong doi, khong can migration.
  *
  * performed_by_user_id/reading_user_id/approving_user_id la FK toi app_user - bang/entity do CHUA
  * co trong codebase nay (chi moi patient/imaging_order/study theo pham vi lan nay). Giu nguyen la
@@ -44,7 +46,8 @@ public class Study {
     private Long deviceId;
 
     @Column(name = "status", nullable = false)
-    private String status;
+    @Enumerated(EnumType.STRING)
+    private StudyStatus status;
 
     @Column(name = "study_instance_uid", unique = true)
     private String studyInstanceUid;
@@ -121,11 +124,11 @@ public class Study {
         this.deviceId = deviceId;
     }
 
-    public String getStatus() {
+    public StudyStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(StudyStatus status) {
         this.status = status;
     }
 

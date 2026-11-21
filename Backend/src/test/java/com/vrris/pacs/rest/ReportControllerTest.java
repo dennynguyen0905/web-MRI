@@ -7,6 +7,16 @@ import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dao.ReportDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
+import com.vrris.pacs.enu.DepartmentType;
+import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.OrderSource;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.ReportOrigin;
+import com.vrris.pacs.enu.ReportStatus;
+import com.vrris.pacs.enu.StudyStatus;
+import com.vrris.pacs.enu.SyncStatus;
 import com.vrris.pacs.model.AppUser;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.ImagingOrder;
@@ -86,9 +96,9 @@ class ReportControllerTest extends AbstractIntegrationTest {
     void seed() {
         patientId = savePatient("TEST0001", "Benh nhan TEST0001").getId();
         Long departmentId = saveDepartment("K01").getId();
-        Long serviceItemId = saveServiceItem("CT_SO_NAO", "CT").getId();
+        Long serviceItemId = saveServiceItem("CT_SO_NAO", Modality.CT).getId();
         orderId = saveOrder("PH20261031001", patientId, departmentId).getId();
-        studyId = saveStudy("2026103100001", orderId, serviceItemId, "UNREAD", null).getId();
+        studyId = saveStudy("2026103100001", orderId, serviceItemId, StudyStatus.UNREAD, null).getId();
 
         AppUser holder = saveAppUser("bscdha");
         holderUserId = holder.getId();
@@ -97,8 +107,8 @@ class ReportControllerTest extends AbstractIntegrationTest {
 
     @Test
     void listReports_tra_moi_version_version_lon_nhat_truoc() throws Exception {
-        saveReport(studyId, 1, "APPROVED", "KT v1", "KL v1", null, null);
-        saveReport(studyId, 2, "DRAFT", "KT v2", "KL v2", null, null);
+        saveReport(studyId, 1, ReportStatus.APPROVED, "KT v1", "KL v1", null, null);
+        saveReport(studyId, 2, ReportStatus.DRAFT, "KT v2", "KL v2", null, null);
 
         mockMvc.perform(get("/studies/" + studyId + "/reports")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken))
@@ -126,8 +136,8 @@ class ReportControllerTest extends AbstractIntegrationTest {
 
     @Test
     void getCurrentReport_tra_ban_version_lon_nhat() throws Exception {
-        saveReport(studyId, 1, "DRAFT", "KT v1", "KL v1", null, null);
-        saveReport(studyId, 2, "FINAL", "KT v2", "KL v2", null, null);
+        saveReport(studyId, 1, ReportStatus.DRAFT, "KT v1", "KL v1", null, null);
+        saveReport(studyId, 2, ReportStatus.FINAL, "KT v2", "KL v2", null, null);
 
         mockMvc.perform(get("/studies/" + studyId + "/reports/current")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken))
@@ -139,8 +149,8 @@ class ReportControllerTest extends AbstractIntegrationTest {
 
     @Test
     void getCurrentReport_ghi_audit_REPORT_voi_entity_id_la_report_id_khong_phai_study_id() throws Exception {
-        saveReport(studyId, 1, "DRAFT", "KT v1", "KL v1", null, null);
-        Report current = saveReport(studyId, 2, "FINAL", "KT v2", "KL v2", null, null);
+        saveReport(studyId, 1, ReportStatus.DRAFT, "KT v1", "KL v1", null, null);
+        Report current = saveReport(studyId, 2, ReportStatus.FINAL, "KT v2", "KL v2", null, null);
 
         mockMvc.perform(get("/studies/" + studyId + "/reports/current")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken))
@@ -155,7 +165,7 @@ class ReportControllerTest extends AbstractIntegrationTest {
 
     @Test
     void listReports_ghi_audit_STUDY_voi_entity_id_la_study_id() throws Exception {
-        saveReport(studyId, 1, "DRAFT", "KT v1", "KL v1", null, null);
+        saveReport(studyId, 1, ReportStatus.DRAFT, "KT v1", "KL v1", null, null);
 
         mockMvc.perform(get("/studies/" + studyId + "/reports")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken))
@@ -178,7 +188,7 @@ class ReportControllerTest extends AbstractIntegrationTest {
     @Test
     void put_thanh_cong_khi_dung_nguoi_dang_giu_ca_va_ghi_audit_co_before_after() throws Exception {
         setStudyReadingBy(holderUserId);
-        Report report = saveReport(studyId, 1, "DRAFT", "KT cu", "KL cu", null, null);
+        Report report = saveReport(studyId, 1, ReportStatus.DRAFT, "KT cu", "KL cu", null, null);
 
         mockMvc.perform(put("/studies/" + studyId + "/reports/current")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken)
@@ -207,7 +217,7 @@ class ReportControllerTest extends AbstractIntegrationTest {
     @Test
     void put_tra_403_khi_APPROVER_goi() throws Exception {
         setStudyReadingBy(holderUserId);
-        saveReport(studyId, 1, "DRAFT", null, null, null, null);
+        saveReport(studyId, 1, ReportStatus.DRAFT, null, null, null, null);
         String approverToken = jwtService.generateToken("bsduyet", List.of("APPROVER"));
 
         mockMvc.perform(put("/studies/" + studyId + "/reports/current")
@@ -220,7 +230,7 @@ class ReportControllerTest extends AbstractIntegrationTest {
     @Test
     void put_tra_403_khi_ADMIN_goi() throws Exception {
         setStudyReadingBy(holderUserId);
-        saveReport(studyId, 1, "DRAFT", null, null, null, null);
+        saveReport(studyId, 1, ReportStatus.DRAFT, null, null, null, null);
         String adminToken = jwtService.generateToken("admin", List.of("ADMIN"));
 
         mockMvc.perform(put("/studies/" + studyId + "/reports/current")
@@ -233,7 +243,7 @@ class ReportControllerTest extends AbstractIntegrationTest {
     @Test
     void put_tra_403_khi_RADIOLOGIST_khac_khong_giu_ca_goi() throws Exception {
         setStudyReadingBy(holderUserId);
-        saveReport(studyId, 1, "DRAFT", null, null, null, null);
+        saveReport(studyId, 1, ReportStatus.DRAFT, null, null, null, null);
         saveAppUser("bscdha2");
         String otherToken = jwtService.generateToken("bscdha2", List.of("RADIOLOGIST"));
 
@@ -249,10 +259,10 @@ class ReportControllerTest extends AbstractIntegrationTest {
     void put_tra_409_khi_ca_khong_o_READING() throws Exception {
         // reading_user_id van la holder (vi du con lai tu truoc) nhung status khong con la READING.
         Study study = studyDao.findById(studyId).orElseThrow();
-        study.setStatus("READ");
+        study.setStatus(StudyStatus.READ);
         study.setReadingUserId(holderUserId);
         studyDao.save(study);
-        saveReport(studyId, 1, "DRAFT", null, null, null, null);
+        saveReport(studyId, 1, ReportStatus.DRAFT, null, null, null, null);
 
         mockMvc.perform(put("/studies/" + studyId + "/reports/current")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken)
@@ -266,7 +276,7 @@ class ReportControllerTest extends AbstractIntegrationTest {
     void put_tra_409_khi_bao_cao_hien_hanh_khong_con_la_DRAFT() throws Exception {
         setStudyReadingBy(holderUserId);
         Long approverId = saveAppUser("bsduyet").getId();
-        saveReport(studyId, 1, "APPROVED", "KT", "KL", approverId, LocalDateTime.now());
+        saveReport(studyId, 1, ReportStatus.APPROVED, "KT", "KL", approverId, LocalDateTime.now());
 
         mockMvc.perform(put("/studies/" + studyId + "/reports/current")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken)
@@ -300,8 +310,8 @@ class ReportControllerTest extends AbstractIntegrationTest {
     void multiVersion_mo_phong_T9_ban_APPROVED_cu_giu_nguyen_chi_ban_DRAFT_moi_bi_sua() throws Exception {
         setStudyReadingBy(holderUserId);
         Long approverId = saveAppUser("bsduyet").getId();
-        Report approved = saveReport(studyId, 1, "APPROVED", "KT v1", "KL v1", approverId, LocalDateTime.now());
-        Report draft = saveReport(studyId, 2, "DRAFT", null, null, null, null);
+        Report approved = saveReport(studyId, 1, ReportStatus.APPROVED, "KT v1", "KL v1", approverId, LocalDateTime.now());
+        Report draft = saveReport(studyId, 2, ReportStatus.DRAFT, null, null, null, null);
 
         mockMvc.perform(get("/studies/" + studyId + "/reports")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken))
@@ -326,7 +336,7 @@ class ReportControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.version").value(2));
 
         Report approvedAfter = reportDao.findById(approved.getId()).orElseThrow();
-        assertThat(approvedAfter.getStatus()).isEqualTo("APPROVED");
+        assertThat(approvedAfter.getStatus()).isEqualTo(ReportStatus.APPROVED);
         assertThat(approvedAfter.getTechnique()).isEqualTo("KT v1");
         assertThat(approvedAfter.getApprovedByUserId()).isEqualTo(approverId);
 
@@ -337,7 +347,7 @@ class ReportControllerTest extends AbstractIntegrationTest {
 
     private void setStudyReadingBy(Long userId) {
         Study study = studyDao.findById(studyId).orElseThrow();
-        study.setStatus("READING");
+        study.setStatus(StudyStatus.READING);
         study.setReadingUserId(userId);
         studyDao.save(study);
     }
@@ -352,13 +362,13 @@ class ReportControllerTest extends AbstractIntegrationTest {
         return appUserDao.save(user);
     }
 
-    private Report saveReport(Long studyId, int version, String status, String technique, String conclusion,
+    private Report saveReport(Long studyId, int version, ReportStatus status, String technique, String conclusion,
                                Long approvedByUserId, LocalDateTime approvedAt) {
         Report report = new Report();
         report.setStudyId(studyId);
         report.setVersion(version);
         report.setStatus(status);
-        report.setOrigin("MANUAL");
+        report.setOrigin(ReportOrigin.MANUAL);
         report.setTechnique(technique);
         report.setConclusion(conclusion);
         report.setCreatedByUserId(holderUserId);
@@ -368,7 +378,7 @@ class ReportControllerTest extends AbstractIntegrationTest {
         return reportDao.save(report);
     }
 
-    private Study saveStudy(String accessionNumber, Long orderId, Long serviceItemId, String status,
+    private Study saveStudy(String accessionNumber, Long orderId, Long serviceItemId, StudyStatus status,
                              Long readingUserId) {
         Study study = new Study();
         study.setAccessionNumber(accessionNumber);
@@ -387,11 +397,11 @@ class ReportControllerTest extends AbstractIntegrationTest {
         ImagingOrder order = new ImagingOrder();
         order.setOrderCode(orderCode);
         order.setPatientId(patientId);
-        order.setSource("MANUAL");
-        order.setSyncStatus("NOT_SYNCED");
+        order.setSource(OrderSource.MANUAL);
+        order.setSyncStatus(SyncStatus.NOT_SYNCED);
         order.setOrderingDepartmentId(departmentId);
         order.setOrderingDoctorName("BS Test");
-        order.setPatientClass("OUTPATIENT");
+        order.setPatientClass(PatientClass.OUTPATIENT);
         LocalDateTime now = LocalDateTime.now();
         order.setOrderedAt(now);
         order.setCreatedAt(now);
@@ -403,8 +413,8 @@ class ReportControllerTest extends AbstractIntegrationTest {
         Patient p = new Patient();
         p.setPatientCode(code);
         p.setFullName(fullName);
-        p.setDobPrecision("DAY");
-        p.setGender("U");
+        p.setDobPrecision(DobPrecision.DAY);
+        p.setGender(Gender.U);
         LocalDateTime now = LocalDateTime.now();
         p.setCreatedAt(now);
         p.setUpdatedAt(now);
@@ -415,13 +425,13 @@ class ReportControllerTest extends AbstractIntegrationTest {
         Department d = new Department();
         d.setCode(code);
         d.setName("Khoa " + code);
-        d.setType("KHOA");
+        d.setType(DepartmentType.KHOA);
         d.setSortOrder(1);
         d.setIsActive(true);
         return departmentDao.save(d);
     }
 
-    private ServiceItem saveServiceItem(String code, String modality) {
+    private ServiceItem saveServiceItem(String code, Modality modality) {
         ServiceItem s = new ServiceItem();
         s.setCode(code);
         s.setName("Chup " + code);

@@ -1,7 +1,10 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.StudyStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -21,10 +24,12 @@ public class StudyStatusHistory {
     private Long studyId;
 
     @Column(name = "from_status")
-    private String fromStatus;
+    @Enumerated(EnumType.STRING)
+    private StudyStatus fromStatus;
 
     @Column(name = "to_status", nullable = false)
-    private String toStatus;
+    @Enumerated(EnumType.STRING)
+    private StudyStatus toStatus;
 
     @Column(name = "changed_by_user_id", nullable = false)
     private Long changedByUserId;
@@ -54,19 +59,19 @@ public class StudyStatusHistory {
         this.studyId = studyId;
     }
 
-    public String getFromStatus() {
+    public StudyStatus getFromStatus() {
         return fromStatus;
     }
 
-    public void setFromStatus(String fromStatus) {
+    public void setFromStatus(StudyStatus fromStatus) {
         this.fromStatus = fromStatus;
     }
 
-    public String getToStatus() {
+    public StudyStatus getToStatus() {
         return toStatus;
     }
 
-    public void setToStatus(String toStatus) {
+    public void setToStatus(StudyStatus toStatus) {
         this.toStatus = toStatus;
     }
 

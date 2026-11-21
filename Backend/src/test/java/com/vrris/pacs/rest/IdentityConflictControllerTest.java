@@ -4,6 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.dao.AuditLogDao;
 import com.vrris.pacs.dao.IdentityConflictDao;
 import com.vrris.pacs.dao.PatientDao;
+import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
+import com.vrris.pacs.enu.ConflictResolution;
+import com.vrris.pacs.enu.ConflictSource;
+import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
 import com.vrris.pacs.model.AuditLog;
 import com.vrris.pacs.model.IdentityConflict;
 import com.vrris.pacs.model.Patient;
@@ -80,8 +86,8 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_tra_200_va_loc_theo_resolution() throws Exception {
-        saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", "PENDING");
-        IdentityConflict resolved = saveConflict(patientId, "address", "Dia chi A (gia)", "Dia chi B (gia)", "KEEP_RIS");
+        saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", ConflictResolution.PENDING);
+        IdentityConflict resolved = saveConflict(patientId, "address", "Dia chi A (gia)", "Dia chi B (gia)", ConflictResolution.KEEP_RIS);
         resolved.setResolvedAt(LocalDateTime.now());
         identityConflictDao.save(resolved);
 
@@ -108,7 +114,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk());
 
         boolean audited = auditLogDao.findAll().stream().anyMatch(log ->
-                "READ".equals(log.getAction()) && "IDENTITY_CONFLICT".equals(log.getEntityType())
+                AuditAction.READ == log.getAction() && AuditEntityType.IDENTITY_CONFLICT == log.getEntityType()
                         && "admin".equals(log.getActorUsername()));
         assertThat(audited).isTrue();
     }
@@ -125,7 +131,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void get_tra_200_kem_du_lieu_benh_nhan() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "date_of_birth", "1958-03-15", "1952", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "date_of_birth", "1958-03-15", "1952", ConflictResolution.PENDING);
 
         mockMvc.perform(get("/identity-conflicts/" + conflict.getId())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + technicianToken))
@@ -138,7 +144,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void get_tra_403_khi_sai_vai_tro() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "gender", "F", "M", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "gender", "F", "M", ConflictResolution.PENDING);
 
         mockMvc.perform(get("/identity-conflicts/" + conflict.getId())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + radiologistToken))
@@ -150,7 +156,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void resolve_keepRis_khong_doi_patient_va_ghi_audit_log() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", ConflictResolution.PENDING);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("resolution", "KEEP_RIS");
@@ -170,7 +176,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void resolve_takeHis_doi_patient_va_ghi_before_after() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", ConflictResolution.PENDING);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("resolution", "TAKE_HIS");
@@ -186,7 +192,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
         assertThat(patient.getFullName()).isEqualTo("Nguyen Van Gia B");
 
         AuditLog audit = auditLogDao.findAll().stream()
-                .filter(log -> "UPDATE".equals(log.getAction()) && "IDENTITY_CONFLICT".equals(log.getEntityType())
+                .filter(log -> AuditAction.UPDATE == log.getAction() && AuditEntityType.IDENTITY_CONFLICT == log.getEntityType()
                         && conflict.getId().equals(log.getEntityId()))
                 .findFirst().orElseThrow();
         assertThat(audit.getPatientId()).isEqualTo(patientId);
@@ -196,7 +202,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void resolve_manualEdit_doi_patient_theo_gia_tri_nhap() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "gender", "U", "M", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "gender", "U", "M", ConflictResolution.PENDING);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("resolution", "MANUAL_EDIT");
@@ -210,12 +216,12 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.resolution").value("MANUAL_EDIT"));
 
         Patient patient = patientDao.findById(patientId).orElseThrow();
-        assertThat(patient.getGender()).isEqualTo("F");
+        assertThat(patient.getGender()).isEqualTo(Gender.F);
     }
 
     @Test
     void resolve_manualEdit_tra_400_khi_thieu_manual_value() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", ConflictResolution.PENDING);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("resolution", "MANUAL_EDIT");
@@ -230,7 +236,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void resolve_tra_409_khi_khong_con_pending() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", "KEEP_RIS");
+        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", ConflictResolution.KEEP_RIS);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("resolution", "TAKE_HIS");
@@ -258,7 +264,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void resolve_tra_403_khi_radiologist_xu_ly_RBAC11_RC18() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", "Nguyen Van Gia B", ConflictResolution.PENDING);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("resolution", "KEEP_RIS");
@@ -271,14 +277,14 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
 
         IdentityConflict unchanged = identityConflictDao.findById(conflict.getId()).orElseThrow();
-        assertThat(unchanged.getResolution()).isEqualTo("PENDING");
+        assertThat(unchanged.getResolution()).isEqualTo(ConflictResolution.PENDING);
     }
 
     /* ------------------------------- resolve: du lieu xau phai ra 4xx, khong phai 500 */
 
     @Test
     void resolve_takeHis_tra_422_khi_his_value_null() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", null, "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", null, ConflictResolution.PENDING);
 
         postResolution(conflict.getId(), Map.of("resolution", "TAKE_HIS"))
                 .andExpect(status().isUnprocessableEntity())
@@ -289,7 +295,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void resolve_manualEdit_tra_422_khi_ngay_sinh_khong_ton_tai() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "date_of_birth", "1958-03-15", "1952", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "date_of_birth", "1958-03-15", "1952", ConflictResolution.PENDING);
 
         postResolution(conflict.getId(), Map.of("resolution", "MANUAL_EDIT", "manual_value", "2026-13-45"))
                 .andExpect(status().isUnprocessableEntity())
@@ -298,7 +304,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     @Test
     void resolve_manualEdit_tra_422_khi_ngay_sinh_o_tuong_lai() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "date_of_birth", "1958-03-15", "1952", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "date_of_birth", "1958-03-15", "1952", ConflictResolution.PENDING);
         String nextYear = String.valueOf(java.time.LocalDate.now().getYear() + 1);
 
         postResolution(conflict.getId(), Map.of("resolution", "MANUAL_EDIT", "manual_value", nextYear))
@@ -309,7 +315,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
     @Test
     void resolve_takeHis_tra_409_khi_patient_code_trung_benh_nhan_khac() throws Exception {
         savePatient("TEST0002", "Nguyen Van Gia C");
-        IdentityConflict conflict = saveConflict(patientId, "patient_code", "TEST0001", "TEST0002", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "patient_code", "TEST0001", "TEST0002", ConflictResolution.PENDING);
 
         postResolution(conflict.getId(), Map.of("resolution", "TAKE_HIS"))
                 .andExpect(status().isConflict())
@@ -321,7 +327,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
         Patient other = savePatient("TEST0003", "Nguyen Van Gia D");
         other.setSocialInsuranceNo("GD4790000000999");
         patientDao.save(other);
-        IdentityConflict conflict = saveConflict(patientId, "social_insurance_no", null, "GD4790000000111", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "social_insurance_no", null, "GD4790000000111", ConflictResolution.PENDING);
 
         postResolution(conflict.getId(), Map.of("resolution", "MANUAL_EDIT", "manual_value", "GD4790000000999"))
                 .andExpect(status().isConflict())
@@ -335,7 +341,7 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
      */
     @Test
     void resolve_takeHis_flush_xuong_db_thanh_cong_va_ghi_before_null() throws Exception {
-        IdentityConflict conflict = saveConflict(patientId, "phone", null, "0900000999", "PENDING");
+        IdentityConflict conflict = saveConflict(patientId, "phone", null, "0900000999", ConflictResolution.PENDING);
 
         postResolution(conflict.getId(), Map.of("resolution", "TAKE_HIS"))
                 .andExpect(status().isOk());
@@ -361,10 +367,10 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
     /* -------------------------------------------------- helpers */
 
-    private IdentityConflict saveConflict(Long patientId, String fieldName, String risValue, String hisValue, String resolution) {
+    private IdentityConflict saveConflict(Long patientId, String fieldName, String risValue, String hisValue, ConflictResolution resolution) {
         IdentityConflict conflict = new IdentityConflict();
         conflict.setPatientId(patientId);
-        conflict.setSource("HIS");
+        conflict.setSource(ConflictSource.HIS);
         conflict.setFieldName(fieldName);
         conflict.setRisValue(risValue);
         conflict.setHisValue(hisValue);
@@ -383,8 +389,8 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
         Patient p = new Patient();
         p.setPatientCode(code);
         p.setFullName(fullName);
-        p.setDobPrecision("DAY");
-        p.setGender("U");
+        p.setDobPrecision(DobPrecision.DAY);
+        p.setGender(Gender.U);
         LocalDateTime now = LocalDateTime.now();
         p.setCreatedAt(now);
         p.setUpdatedAt(now);

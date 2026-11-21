@@ -11,9 +11,8 @@ import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
 /**
- * patient.dob_precision/patient.gender la String trong DB (model.Patient); enu.DobPrecision/enu.Gender
- * o dto - MapStruct tu sinh valueOf()/name() vi cung ten field va kieu dich la enum (giong cach
- * mapper.DeviceMapper dang lam voi modality).
+ * dob_precision/gender o model va dto deu la enu.DobPrecision/enu.Gender - MapStruct map enum -> enum
+ * theo ten.
  */
 @Mapper(componentModel = "spring")
 public interface PatientMapper {

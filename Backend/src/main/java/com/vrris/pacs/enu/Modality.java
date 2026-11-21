@@ -4,5 +4,9 @@ package com.vrris.pacs.enu;
  * Khop schema "Modality" trong doc/api/openapi.yaml.
  */
 public enum Modality {
-    CT, MR, CR, DX, US
+    CT,  // 0
+    MR,  // 1
+    CR,  // 2
+    DX,  // 3
+    US   // 4
 }

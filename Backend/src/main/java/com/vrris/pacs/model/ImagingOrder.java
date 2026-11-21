@@ -1,7 +1,12 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.OrderSource;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.SyncStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,9 +19,7 @@ import java.time.LocalDateTime;
  * Mapping dung bang "imaging_order" trong database/migrations/V3__patient_order_study.sql.
  * KHONG doi ten cot / them cot o day - muon doi schema phai them migration V8+ (database/README.md).
  *
- * source/sync_status/patient_class luu String (dung kieu cot DB) - chi dua ra enu.OrderSource/
- * enu.SyncStatus/enu.PatientClass o tang dto, mapper.ImagingOrderMapper tu chuyen doi hai chieu
- * (giong cach model.Patient dang lam voi dob_precision/gender).
+ * source/sync_status/patient_class la enu.OrderSource/SyncStatus/PatientClass, luu ten (name()) vao cot VARCHAR qua @Enumerated(EnumType.STRING) - CSDL khong doi, khong can migration.
  *
  * Bang nay khong co created_by/updated_by (khac patient) - dung theo dung cot trong V3, khong them.
  */
@@ -38,13 +41,15 @@ public class ImagingOrder {
     private String visitCode;
 
     @Column(name = "source", nullable = false)
-    private String source;
+    @Enumerated(EnumType.STRING)
+    private OrderSource source;
 
     @Column(name = "his_order_id")
     private String hisOrderId;
 
     @Column(name = "sync_status", nullable = false)
-    private String syncStatus;
+    @Enumerated(EnumType.STRING)
+    private SyncStatus syncStatus;
 
     @Column(name = "ordering_department_id", nullable = false)
     private Long orderingDepartmentId;
@@ -53,7 +58,8 @@ public class ImagingOrder {
     private String orderingDoctorName;
 
     @Column(name = "patient_class", nullable = false)
-    private String patientClass;
+    @Enumerated(EnumType.STRING)
+    private PatientClass patientClass;
 
     @Column(name = "room")
     private String room;
@@ -110,11 +116,11 @@ public class ImagingOrder {
         this.visitCode = visitCode;
     }
 
-    public String getSource() {
+    public OrderSource getSource() {
         return source;
     }
 
-    public void setSource(String source) {
+    public void setSource(OrderSource source) {
         this.source = source;
     }
 
@@ -126,11 +132,11 @@ public class ImagingOrder {
         this.hisOrderId = hisOrderId;
     }
 
-    public String getSyncStatus() {
+    public SyncStatus getSyncStatus() {
         return syncStatus;
     }
 
-    public void setSyncStatus(String syncStatus) {
+    public void setSyncStatus(SyncStatus syncStatus) {
         this.syncStatus = syncStatus;
     }
 
@@ -150,11 +156,11 @@ public class ImagingOrder {
         this.orderingDoctorName = orderingDoctorName;
     }
 
-    public String getPatientClass() {
+    public PatientClass getPatientClass() {
         return patientClass;
     }
 
-    public void setPatientClass(String patientClass) {
+    public void setPatientClass(PatientClass patientClass) {
         this.patientClass = patientClass;
     }
 

@@ -8,9 +8,15 @@ package com.vrris.pacs.enu;
  * @PreAuthorize (rest.RestSupport) van la SpEL nen giu dang hang so chuoi o do.
  */
 public enum UserRole {
-    ADMIN, CLINICIAN, TECHNICIAN, RADIOLOGIST, APPROVER;
+    ADMIN,        // 0
+    CLINICIAN,    // 1
+    TECHNICIAN,   // 2
+    RADIOLOGIST,  // 3
+    APPROVER      // 4
+    ;
 
-    private static final String AUTHORITY_PREFIX = "ROLE_";
+    /** Tien to Spring Security gan truoc ma vai tro (ROLE_ADMIN...). */
+    public static final String AUTHORITY_PREFIX = "ROLE_";
 
     /** Ten authority Spring Security tuong ung, vi du "ROLE_ADMIN". */
     public String authority() {

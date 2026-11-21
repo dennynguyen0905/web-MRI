@@ -1,7 +1,10 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.DepartmentType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -29,7 +32,8 @@ public class Department {
     private Long parentId;
 
     @Column(name = "type", nullable = false)
-    private String type;
+    @Enumerated(EnumType.STRING)
+    private DepartmentType type;
 
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder;
@@ -69,11 +73,11 @@ public class Department {
         this.parentId = parentId;
     }
 
-    public String getType() {
+    public DepartmentType getType() {
         return type;
     }
 
-    public void setType(String type) {
+    public void setType(DepartmentType type) {
         this.type = type;
     }
 

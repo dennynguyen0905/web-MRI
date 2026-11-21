@@ -9,6 +9,7 @@ import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dto.request.ReportWriteRequest;
 import com.vrris.pacs.dto.response.ReportResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.enu.ReportStatus;
 import com.vrris.pacs.enu.StudyStatus;
 import com.vrris.pacs.exception.ApiException;
@@ -22,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,8 +34,8 @@ import static com.vrris.pacs.service.impl.ServiceSupport.currentUser;
 @Service
 public class ReportServiceImpl implements ReportService {
 
-    private static final Set<String> EDITABLE_REPORT_STATUSES =
-            Set.of(ReportStatus.DRAFT.name(), ReportStatus.RETURNED.name());
+    private static final Set<ReportStatus> EDITABLE_REPORT_STATUSES =
+            EnumSet.of(ReportStatus.DRAFT, ReportStatus.RETURNED);
 
     private final ReportDao reportDao;
     private final StudyDao studyDao;
@@ -59,7 +61,7 @@ public class ReportServiceImpl implements ReportService {
     // Lấy toàn bộ các phiên bản báo cáo của một ca chụp.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "STUDY", entityIdArg = 0)
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.STUDY, entityIdArg = 0)
     public List<ReportResponse> listVersions(Long studyId) {
         Study study = findStudyOrThrow(studyId);
         AuditContext.recordPatientId(resolvePatientId(study));
@@ -70,7 +72,7 @@ public class ReportServiceImpl implements ReportService {
     // Lấy phiên bản báo cáo hiện hành (mới nhất) của một ca chụp.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "REPORT")
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.REPORT)
     public ReportResponse getCurrent(Long studyId) {
         Study study = findStudyOrThrow(studyId);
         Report current = findCurrentOrThrow(studyId);
@@ -82,7 +84,7 @@ public class ReportServiceImpl implements ReportService {
     // Lưu nội dung báo cáo hiện hành; chỉ cho người đang giữ ca (readingUserId) khi ca ở READING và báo cáo đang DRAFT/RETURNED.
     @Override
     @Transactional
-    @Audited(action = AuditAction.UPDATE, entityType = "REPORT")
+    @Audited(action = AuditAction.UPDATE, entityType = AuditEntityType.REPORT)
     public ReportResponse updateCurrent(Long studyId, ReportWriteRequest request) {
         Study study = findStudyOrThrow(studyId);
         Report current = findCurrentOrThrow(studyId);
@@ -92,7 +94,7 @@ public class ReportServiceImpl implements ReportService {
             throw new ApiException(HttpStatus.FORBIDDEN, "REPORT_NOT_HOLDER",
                     "Chi nguoi dang giu ca (dang doc, da mo UNREAD -> READING) duoc luu bao cao");
         }
-        if (!StudyStatus.READING.name().equals(study.getStatus())) {
+        if (StudyStatus.READING != study.getStatus()) {
             throw new ApiException(HttpStatus.CONFLICT, "STUDY_NOT_READING",
                     "Ca chup khong o trang thai READING");
         }

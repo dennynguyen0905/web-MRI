@@ -3,6 +3,7 @@ package com.vrris.pacs.audit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.dao.AuditLogDao;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.model.AuditLog;
 import org.junit.jupiter.api.AfterEach;
@@ -36,40 +37,40 @@ class AuditLogAspectTest {
 
         FakeService self;
 
-        @Audited(action = AuditAction.CREATE, entityType = "OUTER")
+        @Audited(action = AuditAction.CREATE, entityType = AuditEntityType.IMAGING_ORDER)
         public String outer() {
             AuditContext.recordPatientId(7L);
             self.inner();
             return "ok";
         }
 
-        @Audited(action = AuditAction.CREATE, entityType = "INNER")
+        @Audited(action = AuditAction.CREATE, entityType = AuditEntityType.STUDY)
         public String inner() {
             AuditContext.recordPatientId(9L);
             return "ok";
         }
 
         /** Lay patient_id tu tham so NHUNG van ghi them vao AuditContext - truoc day key nay bi ro. */
-        @Audited(action = AuditAction.READ, entityType = "PATIENT", patientIdArg = 0)
+        @Audited(action = AuditAction.READ, entityType = AuditEntityType.PATIENT, patientIdArg = 0)
         public String readWithArg(Long patientId) {
             AuditContext.recordPatientId(999L);
             AuditContext.recordEntityId(888L);
             return "ok";
         }
 
-        @Audited(action = AuditAction.UPDATE, entityType = "STUDY", entityIdArg = 0)
+        @Audited(action = AuditAction.UPDATE, entityType = AuditEntityType.STUDY, entityIdArg = 0)
         public void forbidden(Long studyId) {
             AuditContext.recordPatientId(5L);
             throw new ApiException(HttpStatus.FORBIDDEN, "REPORT_NOT_HOLDER", "khong giu ca");
         }
 
-        @Audited(action = AuditAction.UPDATE, entityType = "STUDY", entityIdArg = 0)
+        @Audited(action = AuditAction.UPDATE, entityType = AuditEntityType.STUDY, entityIdArg = 0)
         public void notFound(Long studyId) {
             AuditContext.recordPatientId(5L);
             throw new ApiException(HttpStatus.NOT_FOUND, "STUDY_NOT_FOUND", "khong co");
         }
 
-        @Audited(action = AuditAction.LOGIN, entityType = "APP_USER")
+        @Audited(action = AuditAction.LOGIN, entityType = AuditEntityType.APP_USER)
         public void badLogin(String username) {
             AuditContext.recordActorUsername(username);
             throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "sai mat khau");
@@ -104,9 +105,9 @@ class AuditLogAspectTest {
         verify(auditLogDao, times(2)).save(captor.capture());
         AuditLog inner = captor.getAllValues().get(0);
         AuditLog outer = captor.getAllValues().get(1);
-        assertThat(inner.getEntityType()).isEqualTo("INNER");
+        assertThat(inner.getEntityType()).isEqualTo(AuditEntityType.STUDY);
         assertThat(inner.getPatientId()).isEqualTo(9L);
-        assertThat(outer.getEntityType()).isEqualTo("OUTER");
+        assertThat(outer.getEntityType()).isEqualTo(AuditEntityType.IMAGING_ORDER);
         assertThat(outer.getPatientId()).isEqualTo(7L);
         assertThat(AuditContext.patientId()).isNull();
     }
@@ -130,7 +131,7 @@ class AuditLogAspectTest {
         ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
         verify(auditLogDao).save(captor.capture());
         AuditLog entry = captor.getValue();
-        assertThat(entry.getAction()).isEqualTo("ACCESS_DENIED");
+        assertThat(entry.getAction()).isEqualTo(AuditAction.ACCESS_DENIED);
         assertThat(entry.getEntityId()).isEqualTo(11L);
         assertThat(entry.getPatientId()).isEqualTo(5L);
         assertThat(entry.getActorUsername()).isEqualTo("ktv_test");
@@ -153,7 +154,7 @@ class AuditLogAspectTest {
 
         ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
         verify(auditLogDao).save(captor.capture());
-        assertThat(captor.getValue().getAction()).isEqualTo("LOGIN_FAILED");
+        assertThat(captor.getValue().getAction()).isEqualTo(AuditAction.LOGIN_FAILED);
         assertThat(captor.getValue().getActorUsername()).hasSize(100);
         assertThat(AuditContext.actorUsername()).isNull();
     }

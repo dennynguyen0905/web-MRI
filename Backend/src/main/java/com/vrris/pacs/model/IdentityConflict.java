@@ -1,7 +1,11 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.ConflictResolution;
+import com.vrris.pacs.enu.ConflictSource;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,9 +18,7 @@ import java.time.LocalDateTime;
  * (IN-05, doc/04-his-ris-reconciliation.md). KHONG doi ten cot / them cot o day - muon doi schema
  * phai them migration V9+ (database/README.md).
  *
- * source/resolution luu String (dung kieu cot DB) - chi dua ra enu.ConflictSource/enu.ConflictResolution
- * o tang dto, mapper.IdentityConflictMapper tu chuyen doi hai chieu (giong cach model.ImagingOrder
- * dang lam voi source/sync_status).
+ * source/resolution la enu.ConflictSource/enu.ConflictResolution, luu ten (name()) vao cot VARCHAR qua @Enumerated(EnumType.STRING) - CSDL khong doi, khong can migration.
  *
  * Pipeline phat hien/tao dong identity_conflict (doi chieu HIS <-> RIS luc dong bo chi dinh) CHUA
  * co trong pham vi nay (xem comment o ImagingOrderServiceImpl) - entity nay chi phuc vu doc/xu ly
@@ -37,7 +39,8 @@ public class IdentityConflict {
     private Long orderId;
 
     @Column(name = "source", nullable = false)
-    private String source;
+    @Enumerated(EnumType.STRING)
+    private ConflictSource source;
 
     @Column(name = "field_name", nullable = false)
     private String fieldName;
@@ -52,7 +55,8 @@ public class IdentityConflict {
     private LocalDateTime detectedAt;
 
     @Column(name = "resolution", nullable = false)
-    private String resolution;
+    @Enumerated(EnumType.STRING)
+    private ConflictResolution resolution;
 
     @Column(name = "resolved_by_user_id")
     private Long resolvedByUserId;
@@ -84,11 +88,11 @@ public class IdentityConflict {
         this.orderId = orderId;
     }
 
-    public String getSource() {
+    public ConflictSource getSource() {
         return source;
     }
 
-    public void setSource(String source) {
+    public void setSource(ConflictSource source) {
         this.source = source;
     }
 
@@ -124,11 +128,11 @@ public class IdentityConflict {
         this.detectedAt = detectedAt;
     }
 
-    public String getResolution() {
+    public ConflictResolution getResolution() {
         return resolution;
     }
 
-    public void setResolution(String resolution) {
+    public void setResolution(ConflictResolution resolution) {
         this.resolution = resolution;
     }
 

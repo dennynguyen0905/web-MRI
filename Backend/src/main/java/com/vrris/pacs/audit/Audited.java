@@ -1,6 +1,7 @@
 package com.vrris.pacs.audit;
 
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -23,7 +24,7 @@ public @interface Audited {
 
     AuditAction action();
 
-    String entityType();
+    AuditEntityType entityType();
 
     /** Chi so tham so chua patient_id (kieu Long/Number); -1 = khong co. */
     int patientIdArg() default -1;

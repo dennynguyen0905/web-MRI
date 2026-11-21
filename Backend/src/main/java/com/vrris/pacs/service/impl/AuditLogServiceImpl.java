@@ -5,6 +5,7 @@ import com.vrris.pacs.dao.AuditLogDao;
 import com.vrris.pacs.dto.response.AuditLogPageResponse;
 import com.vrris.pacs.dto.response.AuditLogResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.mapper.AuditLogMapper;
 import com.vrris.pacs.service.AuditLogService;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static com.vrris.pacs.service.impl.ServiceSupport.DEFAULT_PAGE_SIZE;
+import static com.vrris.pacs.service.impl.ServiceSupport.parseEnumOrNull;
 import static com.vrris.pacs.service.impl.ServiceSupport.safePage;
 import static com.vrris.pacs.service.impl.ServiceSupport.safePageSize;
 
@@ -34,7 +36,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     // Tra cứu audit_log theo nhiều điều kiện lọc (bệnh nhân, người thực hiện, hành động, loại entity, khoảng thời gian), có phân trang.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "AUDIT_LOG")
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.AUDIT_LOG)
     public AuditLogPageResponse search(Long patientId, Long actorUserId, String action, String entityType,
                                         Long entityId, LocalDateTime occurredFrom, LocalDateTime occurredTo,
                                         Integer page, Integer pageSize) {
@@ -42,7 +44,10 @@ public class AuditLogServiceImpl implements AuditLogService {
         int resolvedPageSize = safePageSize(pageSize, DEFAULT_PAGE_SIZE, MAX_AUDIT_PAGE_SIZE);
 
         AuditLogDao.SearchCriteria criteria = new AuditLogDao.SearchCriteria(
-                patientId, actorUserId, action, entityType, entityId,
+                patientId, actorUserId,
+                parseEnumOrNull(action, AuditAction.class, "action"),
+                parseEnumOrNull(entityType, AuditEntityType.class, "entity_type"),
+                entityId,
                 occurredFrom, occurredTo, resolvedPage, resolvedPageSize);
 
         AuditLogDao.SearchResult result = auditLogDao.search(criteria);

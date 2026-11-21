@@ -1,7 +1,11 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.ReportOrigin;
+import com.vrris.pacs.enu.ReportStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,8 +18,8 @@ import java.time.LocalDateTime;
  * Mapping dung bang "report" trong database/migrations/V4__workflow.sql.
  * KHONG doi ten cot / them cot o day - muon doi schema phai them migration V9+ (database/README.md).
  *
- * status/origin luu String (dung kieu cot DB), giong cach model.Study giu status - chi dua ra enum
- * o tang dto. created_by_user_id/approved_by_user_id giu la Long thuan vi chua co model.AppUser.
+ * status/origin la enu.ReportStatus/enu.ReportOrigin, luu ten (name()) vao cot VARCHAR qua @Enumerated(EnumType.STRING) - CSDL khong doi, khong can migration.
+ * created_by_user_id/approved_by_user_id giu la Long thuan vi chua co model.AppUser.
  *
  * Ban ghi "hien hanh" la ban co version lon nhat cua mot study (UK(study_id, version)) -
  * xem dao.ReportDao.findCurrentByStudyId.
@@ -35,10 +39,12 @@ public class Report {
     private Integer version;
 
     @Column(name = "status", nullable = false)
-    private String status;
+    @Enumerated(EnumType.STRING)
+    private ReportStatus status;
 
     @Column(name = "origin", nullable = false)
-    private String origin;
+    @Enumerated(EnumType.STRING)
+    private ReportOrigin origin;
 
     @Column(name = "technique")
     private String technique;
@@ -96,19 +102,19 @@ public class Report {
         this.version = version;
     }
 
-    public String getStatus() {
+    public ReportStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(ReportStatus status) {
         this.status = status;
     }
 
-    public String getOrigin() {
+    public ReportOrigin getOrigin() {
         return origin;
     }
 
-    public void setOrigin(String origin) {
+    public void setOrigin(ReportOrigin origin) {
         this.origin = origin;
     }
 

@@ -1,6 +1,10 @@
 package com.vrris.pacs.rule;
 
 import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.StudyStatus;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -27,12 +31,12 @@ class PatientListCsvExporterTest {
         List<PatientListCsvExporter.PatientRow> rows = List.of(
                 new PatientListCsvExporter.PatientRow(
                         "TEST0001", "HIS0001", "Nguyễn Văn Giả A",
-                        LocalDate.of(1958, 1, 1), DobPrecision.YEAR, "M",
+                        LocalDate.of(1958, 1, 1), DobPrecision.YEAR, Gender.M,
                         "GIA0000000001", "0900000001", "Quận 1, TP.HCM",
                         LocalDateTime.of(2026, 10, 31, 8, 30)),
                 new PatientListCsvExporter.PatientRow(
                         "TEST0002", null, "Lê Thị Giả B",
-                        null, DobPrecision.YEAR, "F",
+                        null, DobPrecision.YEAR, Gender.F,
                         null, null, null,
                         LocalDateTime.of(2026, 10, 31, 9, 0))
         );
@@ -65,9 +69,9 @@ class PatientListCsvExporterTest {
         LocalDate asOf = LocalDate.of(2026, 11, 7);
         List<PatientListCsvExporter.StudyWorklistRow> rows = List.of(
                 new PatientListCsvExporter.StudyWorklistRow(
-                        "2026103100001", "APPROVED", "PH20261031001", "LSVV001", "OUTPATIENT",
+                        "2026103100001", StudyStatus.APPROVED, "PH20261031001", "LSVV001", PatientClass.OUTPATIENT,
                         "TEST0001", "Nguyễn Văn Giả A", LocalDate.of(1990, 5, 10), DobPrecision.DAY,
-                        "M", "GIA0000000001", "Chụp cộng hưởng từ sọ não", "MR", "Sọ não",
+                        Gender.M, "GIA0000000001", "Chụp cộng hưởng từ sọ não", Modality.MR, "Sọ não",
                         "MRI 1.5T Phòng 1", "BS. Chỉ Định A (giả)", "Đau đầu kéo dài",
                         "Chưa phát hiện bất thường (dữ liệu giả).",
                         LocalDateTime.of(2026, 10, 31, 8, 0),

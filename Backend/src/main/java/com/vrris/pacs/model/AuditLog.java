@@ -1,7 +1,11 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -30,10 +34,12 @@ public class AuditLog {
     private String actorUsername;
 
     @Column(name = "action", nullable = false)
-    private String action;
+    @Enumerated(EnumType.STRING)
+    private AuditAction action;
 
     @Column(name = "entity_type", nullable = false)
-    private String entityType;
+    @Enumerated(EnumType.STRING)
+    private AuditEntityType entityType;
 
     @Column(name = "entity_id")
     private Long entityId;
@@ -77,19 +83,19 @@ public class AuditLog {
         this.actorUsername = actorUsername;
     }
 
-    public String getAction() {
+    public AuditAction getAction() {
         return action;
     }
 
-    public void setAction(String action) {
+    public void setAction(AuditAction action) {
         this.action = action;
     }
 
-    public String getEntityType() {
+    public AuditEntityType getEntityType() {
         return entityType;
     }
 
-    public void setEntityType(String entityType) {
+    public void setEntityType(AuditEntityType entityType) {
         this.entityType = entityType;
     }
 

@@ -2,6 +2,8 @@ package com.vrris.pacs.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.dao.PatientDao;
+import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
 import com.vrris.pacs.model.Patient;
 import com.vrris.pacs.security.JwtService;
 import com.vrris.pacs.support.AbstractIntegrationTest;
@@ -286,8 +288,8 @@ class PatientControllerTest extends AbstractIntegrationTest {
         Patient p = new Patient();
         p.setPatientCode(code);
         p.setFullName(fullName);
-        p.setDobPrecision("DAY");
-        p.setGender("U");
+        p.setDobPrecision(DobPrecision.DAY);
+        p.setGender(Gender.U);
         p.setSocialInsuranceNo(socialInsuranceNo);
         LocalDateTime now = LocalDateTime.now();
         p.setCreatedAt(now);

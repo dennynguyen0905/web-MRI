@@ -1,7 +1,11 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,9 +18,7 @@ import java.time.LocalDateTime;
  * Mapping dung bang "patient" trong database/migrations/V3__patient_order_study.sql.
  * KHONG doi ten cot / them cot o day - muon doi schema phai them migration V8+ (database/README.md).
  *
- * dob_precision va gender luu String (dung kieu cot DB) - chi dua ra enu.DobPrecision/enu.Gender o
- * tang dto, mapper.PatientMapper tu chuyen doi hai chieu (giong cach hibernateDao/model.Device +
- * mapper.DeviceMapper dang lam voi modality).
+ * dob_precision/gender la enu.DobPrecision/enu.Gender, luu ten (name()) vao cot VARCHAR qua @Enumerated(EnumType.STRING) - CSDL khong doi, khong can migration.
  *
  * created_at/updated_at/created_by/updated_by do service.impl.PatientServiceImpl dat truc tiep
  * (khong de Hibernate phu thuoc DEFAULT/ON UPDATE CURRENT_TIMESTAMP cua MySQL) - don gian hon cho
@@ -43,10 +45,12 @@ public class Patient {
     private LocalDate dateOfBirth;
 
     @Column(name = "dob_precision", nullable = false)
-    private String dobPrecision;
+    @Enumerated(EnumType.STRING)
+    private DobPrecision dobPrecision;
 
     @Column(name = "gender", nullable = false)
-    private String gender;
+    @Enumerated(EnumType.STRING)
+    private Gender gender;
 
     @Column(name = "social_insurance_no")
     private String socialInsuranceNo;
@@ -109,19 +113,19 @@ public class Patient {
         this.dateOfBirth = dateOfBirth;
     }
 
-    public String getDobPrecision() {
+    public DobPrecision getDobPrecision() {
         return dobPrecision;
     }
 
-    public void setDobPrecision(String dobPrecision) {
+    public void setDobPrecision(DobPrecision dobPrecision) {
         this.dobPrecision = dobPrecision;
     }
 
-    public String getGender() {
+    public Gender getGender() {
         return gender;
     }
 
-    public void setGender(String gender) {
+    public void setGender(Gender gender) {
         this.gender = gender;
     }
 

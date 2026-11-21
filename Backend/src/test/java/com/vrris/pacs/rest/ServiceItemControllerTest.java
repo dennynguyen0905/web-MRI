@@ -1,6 +1,7 @@
 package com.vrris.pacs.rest;
 
 import com.vrris.pacs.dao.ServiceItemDao;
+import com.vrris.pacs.enu.Modality;
 import com.vrris.pacs.model.ServiceItem;
 import com.vrris.pacs.security.JwtService;
 import com.vrris.pacs.support.AbstractIntegrationTest;
@@ -33,9 +34,9 @@ class ServiceItemControllerTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void seed() {
-        save("DV01", "Chup CT so nao", "CT", "So nao", true);
-        save("DV02", "Chup MRI cot song", "MR", "Cot song", true);
-        save("DV03", "Dich vu ngung dung", "CT", "Nguc", false);
+        save("DV01", "Chup CT so nao", Modality.CT, "So nao", true);
+        save("DV02", "Chup MRI cot song", Modality.MR, "Cot song", true);
+        save("DV03", "Dich vu ngung dung", Modality.CT, "Nguc", false);
 
         token = jwtService.generateToken("bs.cdha", List.of("RADIOLOGIST"));
     }
@@ -66,7 +67,7 @@ class ServiceItemControllerTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/service-items")).andExpect(status().isUnauthorized());
     }
 
-    private void save(String code, String name, String modality, String bodyPart, boolean active) {
+    private void save(String code, String name, Modality modality, String bodyPart, boolean active) {
         ServiceItem s = new ServiceItem();
         s.setCode(code);
         s.setName(name);

@@ -16,9 +16,17 @@ import com.vrris.pacs.dto.request.ReportWriteRequest;
 import com.vrris.pacs.dto.request.StudyUpdateRequest;
 import com.vrris.pacs.dto.request.TransitionRequest;
 import com.vrris.pacs.enu.ConflictResolution;
+import com.vrris.pacs.enu.ConflictSource;
+import com.vrris.pacs.enu.DepartmentType;
 import com.vrris.pacs.enu.DobPrecision;
 import com.vrris.pacs.enu.Gender;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.OrderSource;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.ReportOrigin;
+import com.vrris.pacs.enu.ReportStatus;
 import com.vrris.pacs.enu.StudyStatus;
+import com.vrris.pacs.enu.SyncStatus;
 import com.vrris.pacs.model.AppUser;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.IdentityConflict;
@@ -117,7 +125,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
         Department dept = new Department();
         dept.setCode("K01_RBAC");
         dept.setName("Khoa Chan Doan Hinh Anh");
-        dept.setType("KHOA");
+        dept.setType(DepartmentType.KHOA);
         dept.setSortOrder(1);
         dept.setIsActive(true);
         departmentDao.save(dept);
@@ -143,8 +151,8 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
         patient.setPatientCode("BN_RBAC_01");
         patient.setFullName("Nguyen Van A");
         patient.setDateOfBirth(LocalDate.of(1985, 1, 1));
-        patient.setDobPrecision("DAY");
-        patient.setGender("M");
+        patient.setDobPrecision(DobPrecision.DAY);
+        patient.setGender(Gender.M);
         patient.setCreatedAt(LocalDateTime.now());
         patient.setUpdatedAt(LocalDateTime.now());
         patientDao.save(patient);
@@ -153,7 +161,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
         ServiceItem serviceItem = new ServiceItem();
         serviceItem.setCode("MRI_BRAIN_RBAC");
         serviceItem.setName("Chup MRI nao");
-        serviceItem.setModality("MR");
+        serviceItem.setModality(Modality.MR);
         serviceItem.setIsActive(true);
         serviceItemDao.save(serviceItem);
         serviceItemId = serviceItem.getId();
@@ -163,9 +171,9 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
         order.setPatientId(patientId);
         order.setOrderingDepartmentId(departmentId);
         order.setOrderingDoctorName("BS Lam Sang");
-        order.setPatientClass("INPATIENT");
-        order.setSource("MANUAL");
-        order.setSyncStatus("NOT_SYNCED");
+        order.setPatientClass(PatientClass.INPATIENT);
+        order.setSource(OrderSource.MANUAL);
+        order.setSyncStatus(SyncStatus.NOT_SYNCED);
         order.setOrderedAt(LocalDateTime.now());
         order.setCreatedAt(LocalDateTime.now());
         order.setUpdatedAt(LocalDateTime.now());
@@ -185,7 +193,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
         return appUserDao.save(user);
     }
 
-    private Study createStudy(String accNo, String status, String uid, Long readingUserId, Long approvingUserId) {
+    private Study createStudy(String accNo, StudyStatus status, String uid, Long readingUserId, Long approvingUserId) {
         Study study = new Study();
         study.setAccessionNumber(accNo);
         study.setOrderId(orderId);
@@ -200,12 +208,12 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
         return studyDao.save(study);
     }
 
-    private Report createReport(Long studyId, int version, String status, String tech, String concl, Long createdBy) {
+    private Report createReport(Long studyId, int version, ReportStatus status, String tech, String concl, Long createdBy) {
         Report r = new Report();
         r.setStudyId(studyId);
         r.setVersion(version);
         r.setStatus(status);
-        r.setOrigin("MANUAL");
+        r.setOrigin(ReportOrigin.MANUAL);
         r.setTechnique(tech);
         r.setConclusion(concl);
         r.setCreatedByUserId(createdBy);
@@ -249,8 +257,8 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("RBAC-04: APPROVER luu bao cao -> PUT /studies/{id}/reports/current tra 403")
     void rbac04_approver_luu_bao_cao_tra_403() throws Exception {
-        Study study = createStudy("ACC_RBAC_04", "READING", "1.2.3.4", rad1User.getId(), null);
-        createReport(study.getId(), 1, "DRAFT", "KT", "KL", rad1User.getId());
+        Study study = createStudy("ACC_RBAC_04", StudyStatus.READING, "1.2.3.4", rad1User.getId(), null);
+        createReport(study.getId(), 1, ReportStatus.DRAFT, "KT", "KL", rad1User.getId());
 
         ReportWriteRequest req = new ReportWriteRequest("KT moi", "Mo ta", "Chan doan", "Ket luan", "Khuyen nghi");
 
@@ -265,8 +273,8 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("RBAC-05: ADMIN luu bao cao -> PUT /studies/{id}/reports/current tra 403")
     void rbac05_admin_luu_bao_cao_tra_403() throws Exception {
-        Study study = createStudy("ACC_RBAC_05", "READING", "1.2.3.5", rad1User.getId(), null);
-        createReport(study.getId(), 1, "DRAFT", "KT", "KL", rad1User.getId());
+        Study study = createStudy("ACC_RBAC_05", StudyStatus.READING, "1.2.3.5", rad1User.getId(), null);
+        createReport(study.getId(), 1, ReportStatus.DRAFT, "KT", "KL", rad1User.getId());
 
         ReportWriteRequest req = new ReportWriteRequest("KT moi", "Mo ta", "Chan doan", "Ket luan", "Khuyen nghi");
 
@@ -281,8 +289,8 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("RBAC-06: ADMIN chuyen T7 (duyet) -> POST /studies/{id}/transitions tra 403")
     void rbac06_admin_chuyen_t7_duyet_tra_403() throws Exception {
-        Study study = createStudy("ACC_RBAC_06", "APPROVING", "1.2.3.6", rad1User.getId(), approverUser.getId());
-        createReport(study.getId(), 1, "FINAL", "KT", "KL", rad1User.getId());
+        Study study = createStudy("ACC_RBAC_06", StudyStatus.APPROVING, "1.2.3.6", rad1User.getId(), approverUser.getId());
+        createReport(study.getId(), 1, ReportStatus.FINAL, "KT", "KL", rad1User.getId());
 
         TransitionRequest req = new TransitionRequest(StudyStatus.APPROVED, null, null);
 
@@ -315,8 +323,8 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("RBAC-09: RADIOLOGIST thu hai luu bao cao cua ca nguoi khac dang doc -> PUT tra 403")
     void rbac09_radiologist_thu_hai_luu_bao_cao_ca_nguoi_khac_dang_doc_tra_403() throws Exception {
-        Study study = createStudy("ACC_RBAC_09", "READING", "1.2.3.9", rad1User.getId(), null);
-        createReport(study.getId(), 1, "DRAFT", "KT", "KL", rad1User.getId());
+        Study study = createStudy("ACC_RBAC_09", StudyStatus.READING, "1.2.3.9", rad1User.getId(), null);
+        createReport(study.getId(), 1, ReportStatus.DRAFT, "KT", "KL", rad1User.getId());
 
         ReportWriteRequest req = new ReportWriteRequest("KT moi", "Mo ta", "Chan doan", "Ket luan", "Khuyen nghi");
 
@@ -332,8 +340,8 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("RBAC-10: Nguoi vua doc vua co vai tro APPROVER duyet ca minh doc -> T6/T7 tra 403")
     void rbac10_nguoi_vua_doc_vua_co_vai_tro_approver_duyet_ca_minh_doc_tra_403() throws Exception {
         // study co readingUserId = dualUser.getId()
-        Study study = createStudy("ACC_RBAC_10", "READ", "1.2.3.10", dualUser.getId(), null);
-        createReport(study.getId(), 1, "FINAL", "KT", "KL", dualUser.getId());
+        Study study = createStudy("ACC_RBAC_10", StudyStatus.READ, "1.2.3.10", dualUser.getId(), null);
+        createReport(study.getId(), 1, ReportStatus.FINAL, "KT", "KL", dualUser.getId());
 
         TransitionRequest req = new TransitionRequest(StudyStatus.APPROVING, null, null);
 
@@ -349,8 +357,8 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("RBAC-11: RADIOLOGIST xu ly identity-conflict -> POST /resolution tra 403")
     void rbac11_radiologist_xu_ly_identity_conflict_tra_403() throws Exception {
         IdentityConflict conflict = new IdentityConflict();
-        conflict.setResolution("PENDING");
-        conflict.setSource("HIS");
+        conflict.setResolution(ConflictResolution.PENDING);
+        conflict.setSource(ConflictSource.HIS);
         conflict.setFieldName("full_name");
         conflict.setPatientId(patientId);
         conflict.setRisValue("Nguyen Van A");
@@ -371,7 +379,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("RBAC-12: TECHNICIAN huy ca da co study_instance_uid -> T10 tra 422")
     void rbac12_technician_huy_ca_da_co_study_instance_uid_tra_422() throws Exception {
-        Study study = createStudy("ACC_RBAC_12", "SCHEDULED", "1.2.3.12", null, null);
+        Study study = createStudy("ACC_RBAC_12", StudyStatus.SCHEDULED, "1.2.3.12", null, null);
 
         TransitionRequest req = new TransitionRequest(StudyStatus.CANCELLED, "Huy vi benh nhan doi lich", null);
 
@@ -386,7 +394,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("RBAC-13: CLINICIAN dat study_instance_uid -> PATCH /studies/{id} tra 403")
     void rbac13_clinician_dat_study_instance_uid_tra_403() throws Exception {
-        Study study = createStudy("ACC_RBAC_13", "SCHEDULED", null, null, null);
+        Study study = createStudy("ACC_RBAC_13", StudyStatus.SCHEDULED, null, null, null);
 
         StudyUpdateRequest req = new StudyUpdateRequest(
                 null, null, null, null, null, "1.2.3.13.4"
@@ -427,7 +435,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("CLINICIAN goi /transitions bi chan 403 (T1 qua tao ca, khong qua transitions)")
     void clinician_goi_transitions_bi_chan_403() throws Exception {
-        Study study = createStudy("ACC_CLIN_01", "SCHEDULED", null, null, null);
+        Study study = createStudy("ACC_CLIN_01", StudyStatus.SCHEDULED, null, null, null);
         TransitionRequest req = new TransitionRequest(StudyStatus.UNREAD, null, null);
 
         mockMvc.perform(post("/studies/" + study.getId() + "/transitions")
@@ -472,7 +480,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("TECHNICIAN dat study_instance_uid thanh cong 200")
     void technician_dat_study_instance_uid_thanh_cong_200() throws Exception {
-        Study study = createStudy("ACC_TECH_01", "SCHEDULED", null, null, null);
+        Study study = createStudy("ACC_TECH_01", StudyStatus.SCHEDULED, null, null, null);
 
         StudyUpdateRequest req = new StudyUpdateRequest(
                 null, null, null, null, null, "1.2.3.4.5.6.789"
@@ -490,7 +498,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("Luong chuyen trang thai chinh T2 -> T3 -> T5 -> T6 -> T7 thanh cong voi dung vai tro")
     void luong_chuyen_trang_thai_chinh_thanh_cong() throws Exception {
         // 1. Tao ca SCHEDULED da co UID (T1 da xong)
-        Study study = createStudy("ACC_FLOW_MAIN", "SCHEDULED", "1.2.840.10008.flow", null, null);
+        Study study = createStudy("ACC_FLOW_MAIN", StudyStatus.SCHEDULED, "1.2.840.10008.flow", null, null);
 
         // 2. T2: SCHEDULED -> UNREAD boi TECHNICIAN
         TransitionRequest t2Req = new TransitionRequest(StudyStatus.UNREAD, null, null);

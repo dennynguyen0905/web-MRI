@@ -7,6 +7,7 @@ import com.vrris.pacs.dto.request.LoginRequest;
 import com.vrris.pacs.dto.response.CurrentUserResponse;
 import com.vrris.pacs.dto.response.LoginResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.model.AppUser;
 import com.vrris.pacs.model.Role;
@@ -62,7 +63,7 @@ public class AuthServiceImpl implements AuthService {
 
     // Đăng nhập: kiểm khóa tài khoản, so khớp mật khẩu (dùng hash giả nếu user không tồn tại/không active để đồng nhất thời gian phản hồi), phát JWT nếu hợp lệ.
     @Override
-    @Audited(action = AuditAction.LOGIN, entityType = "APP_USER")
+    @Audited(action = AuditAction.LOGIN, entityType = AuditEntityType.APP_USER)
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
         String username = request.getUsername().trim();

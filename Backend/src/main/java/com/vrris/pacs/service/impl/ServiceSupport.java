@@ -81,13 +81,13 @@ final class ServiceSupport {
         return new SortSpec(entityField, direction.equals("asc"));
     }
 
-    // Parse chuỗi thành tên hằng số enum hợp lệ, trả null nếu rỗng, báo lỗi 400 nếu giá trị không thuộc enum.
-    static <E extends Enum<E>> String parseEnumOrNull(String raw, Class<E> enumType, String paramName) {
+    // Parse chuỗi thành hằng số enum hợp lệ, trả null nếu rỗng, báo lỗi 400 nếu giá trị không thuộc enum.
+    static <E extends Enum<E>> E parseEnumOrNull(String raw, Class<E> enumType, String paramName) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
         try {
-            return Enum.valueOf(enumType, raw).name();
+            return Enum.valueOf(enumType, raw);
         } catch (IllegalArgumentException ex) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
                     "Gia tri khong hop le cho tham so '" + paramName + "'");
@@ -140,7 +140,7 @@ final class ServiceSupport {
             return base;
         }
         AgeCalculator.Result result = AgeCalculator.calculate(
-                patient.getDateOfBirth(), DobPrecision.valueOf(patient.getDobPrecision()), LocalDate.now());
+                patient.getDateOfBirth(), patient.getDobPrecision(), LocalDate.now());
         return new PatientResponse(base.id(), base.patientCode(), base.hisPatientId(), base.fullName(),
                 base.dateOfBirth(), base.dobPrecision(), result.years(), result.approximate(),
                 base.gender(), base.socialInsuranceNo(), base.phone(), base.address(),

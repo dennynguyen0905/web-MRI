@@ -6,9 +6,8 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 /**
- * model.IdentityConflict.source/resolution la String trong DB; enu.ConflictSource/enu.ConflictResolution
- * o dto - MapStruct tu sinh valueOf()/name() vi cung ten field va kieu dich la enum (giong cach
- * mapper.ImagingOrderMapper voi source/sync_status).
+ * source/resolution o model va dto deu la enu.ConflictSource/enu.ConflictResolution - MapStruct map
+ * enum -> enum theo ten.
  */
 @Mapper(componentModel = "spring")
 public interface IdentityConflictMapper {

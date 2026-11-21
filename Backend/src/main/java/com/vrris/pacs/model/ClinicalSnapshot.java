@@ -1,7 +1,10 @@
 package com.vrris.pacs.model;
 
+import com.vrris.pacs.enu.SnapshotSource;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -33,7 +36,8 @@ public class ClinicalSnapshot {
     private LocalDateTime fetchedAt;
 
     @Column(name = "source", nullable = false)
-    private String source;
+    @Enumerated(EnumType.STRING)
+    private SnapshotSource source;
 
     public Long getId() {
         return id;
@@ -67,11 +71,11 @@ public class ClinicalSnapshot {
         this.fetchedAt = fetchedAt;
     }
 
-    public String getSource() {
+    public SnapshotSource getSource() {
         return source;
     }
 
-    public void setSource(String source) {
+    public void setSource(SnapshotSource source) {
         this.source = source;
     }
 }

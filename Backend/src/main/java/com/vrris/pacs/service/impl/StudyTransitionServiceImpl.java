@@ -14,6 +14,7 @@ import com.vrris.pacs.dto.response.StatusHistoryEntry;
 import com.vrris.pacs.dto.response.TransitionResponse;
 import com.vrris.pacs.dto.response.UserRefResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.enu.ReportOrigin;
 import com.vrris.pacs.enu.ReportStatus;
 import com.vrris.pacs.enu.StudyStatus;
@@ -89,7 +90,7 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
     // Chuyển trạng thái một ca chụp (T2..T10): xác định bước chuyển hợp lệ qua StudyStateMachine, kiểm quyền/điều kiện qua TransitionPolicy, áp dụng thay đổi rồi ghi lịch sử chuyển trạng thái.
     @Override
     @Transactional
-    @Audited(action = AuditAction.STATUS_CHANGE, entityType = "STUDY", entityIdArg = 0)
+    @Audited(action = AuditAction.STATUS_CHANGE, entityType = AuditEntityType.STUDY, entityIdArg = 0)
     public TransitionResponse transition(Long id, TransitionRequest request) {
         Study study = findStudyOrThrow(studyDao, id);
         AuditContext.recordPatientId(resolvePatientId(imagingOrderDao, study));
@@ -123,8 +124,8 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
 
         StudyStatusHistory history = new StudyStatusHistory();
         history.setStudyId(id);
-        history.setFromStatus(from.name());
-        history.setToStatus(to.name());
+        history.setFromStatus(from);
+        history.setToStatus(to);
         history.setChangedByUserId(caller.getId());
         history.setChangedAt(now);
         history.setReason(blankToNull(request.reason()));
@@ -139,7 +140,7 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
     // Lấy lịch sử chuyển trạng thái của một ca chụp, kèm thông tin người thực hiện từng bước.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "STUDY", entityIdArg = 0)
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.STUDY, entityIdArg = 0)
     public List<StatusHistoryEntry> listStatusHistory(Long studyId) {
         Study study = findStudyOrThrow(studyDao, studyId);
         AuditContext.recordPatientId(resolvePatientId(imagingOrderDao, study));
@@ -164,7 +165,7 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
     // Áp dụng thay đổi dữ liệu tương ứng với từng bước chuyển trạng thái T2..T10 (cập nhật ca chụp và báo cáo liên quan).
     private Report applyEffects(TransitionCode code, Study study, Report currentReport, Long callerId,
                                 LocalDateTime now) {
-        study.setStatus(code.to().name());
+        study.setStatus(code.to());
         return switch (code) {
             case T2 -> {
                 // doc/03 muc 2.2 T2 + openapi Study.completed_at: "Ket thuc chup, dat khi chuyen
@@ -180,7 +181,7 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
                 if (currentReport == null) {
                     yield reportDao.save(newDraft(study.getId(), 1, null, callerId, now));
                 }
-                if (ReportStatus.DRAFT.name().equals(currentReport.getStatus())) {
+                if (ReportStatus.DRAFT == currentReport.getStatus()) {
                     currentReport.setCreatedByUserId(callerId);
                     yield reportDao.save(currentReport);
                 }
@@ -192,7 +193,7 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
             }
             case T5 -> {
                 // TransitionPolicy da dam bao currentReport != null.
-                currentReport.setStatus(ReportStatus.FINAL.name());
+                currentReport.setStatus(ReportStatus.FINAL);
                 yield reportDao.save(currentReport);
             }
             case T6 -> {
@@ -201,7 +202,7 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
             }
             case T7 -> {
                 // TransitionPolicy da dam bao currentReport != null.
-                currentReport.setStatus(ReportStatus.APPROVED.name());
+                currentReport.setStatus(ReportStatus.APPROVED);
                 currentReport.setApprovedByUserId(callerId);
                 currentReport.setApprovedAt(now);
                 yield reportDao.save(currentReport);
@@ -211,7 +212,7 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
                 if (currentReport == null) {
                     yield null;
                 }
-                currentReport.setStatus(ReportStatus.RETURNED.name());
+                currentReport.setStatus(ReportStatus.RETURNED);
                 yield reportDao.save(currentReport);
             }
             case T9 -> {
@@ -233,8 +234,8 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
         Report r = new Report();
         r.setStudyId(studyId);
         r.setVersion(version);
-        r.setStatus(ReportStatus.DRAFT.name());
-        r.setOrigin(template == null ? ReportOrigin.MANUAL.name() : template.getOrigin());
+        r.setStatus(ReportStatus.DRAFT);
+        r.setOrigin(template == null ? ReportOrigin.MANUAL : template.getOrigin());
         if (template != null) {
             r.setTechnique(template.getTechnique());
             r.setFindings(template.getFindings());
@@ -287,24 +288,13 @@ public class StudyTransitionServiceImpl implements StudyTransitionService {
     /** Ma buoc chuyen cho dong lich su; "T1" cho dong tao ca (from_status NULL); null neu du lieu la. */
     // Suy ra mã bước chuyển (T1..T10) cho một dòng lịch sử, dựa trên trạng thái trước/sau; trả null nếu dữ liệu lịch sử không hợp lệ.
     private String resolveHistoryTransitionCode(StudyStatusHistory h) {
-        StudyStatus from = parseOrNull(h.getFromStatus());
-        StudyStatus to = parseOrNull(h.getToStatus());
-        if (h.getFromStatus() == null && to == StudyStatus.SCHEDULED) {
+        StudyStatus from = h.getFromStatus();
+        StudyStatus to = h.getToStatus();
+        if (from == null && to == StudyStatus.SCHEDULED) {
             return "T1";
         }
         TransitionCode code = StudyStateMachine.resolveTransitionCode(from, to);
         return code == null ? null : code.name();
     }
 
-    // Parse chuỗi trạng thái thành enum StudyStatus, trả null nếu giá trị không hợp lệ thay vì ném lỗi.
-    private static StudyStatus parseOrNull(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        try {
-            return StudyStatus.valueOf(raw);
-        } catch (IllegalArgumentException ex) {
-            return null;
-        }
-    }
 }

@@ -1,5 +1,7 @@
 package com.vrris.pacs.dao;
 
+import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.model.AuditLog;
 
 import java.time.LocalDateTime;
@@ -9,7 +11,7 @@ public interface AuditLogDao extends BaseDao<AuditLog, Long> {
 
     SearchResult search(SearchCriteria criteria);
 
-    record SearchCriteria(Long patientId, Long actorUserId, String action, String entityType,
+    record SearchCriteria(Long patientId, Long actorUserId, AuditAction action, AuditEntityType entityType,
                           Long entityId, LocalDateTime occurredFrom, LocalDateTime occurredTo,
                           int page, int pageSize) {
     }
