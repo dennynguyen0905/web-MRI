@@ -63,7 +63,7 @@ public class AuthServiceImpl implements AuthService {
         loginAttempts.remove(username.toLowerCase(Locale.ROOT));
 
         CurrentUserResponse userResponse = toCurrentUserResponse(user);
-        String token = jwtService.generateToken(user.getId(), user.getUsername(), userResponse.roles());
+        String token = jwtService.generateToken(user.getId(), user.getUsername(), userResponse.getRoles());
 
         AuditContext.recordActorUsername(user.getUsername());
         AuditContext.recordEntityId(user.getId());

@@ -758,10 +758,11 @@ public class StudyServiceImpl implements StudyService {
         if (TAB_PENDING.equals(tab)) {
             tabStatuses = Set.of(StudyStatus.SCHEDULED.name());
         } else if (TAB_DONE.equals(tab)) {
-            tabStatuses = new LinkedHashSet<>();
+            Set<String> doneStatuses = new LinkedHashSet<>();
             Arrays.stream(StudyStatus.values())
                     .filter(s -> s != StudyStatus.SCHEDULED)
-                    .forEach(s -> tabStatuses.add(s.name()));
+                    .forEach(s -> doneStatuses.add(s.name()));
+            tabStatuses = doneStatuses;
         }
 
         if (requestedStatuses.isEmpty()) {
