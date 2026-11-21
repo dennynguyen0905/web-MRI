@@ -27,8 +27,6 @@ import com.vrris.pacs.rule.OrderCodeGenerator;
 import com.vrris.pacs.service.ImagingOrderService;
 import com.vrris.pacs.service.StudyService;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,19 +35,15 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
-/**
- * IN-02 (tao tay, sua, gan benh nhan, nhieu ca chup tren mot chi dinh) + IN-15 (audit) qua
- * audit.Audited, dong bo theo doc/15-kien-truc-backend.md muc 10.
- *
- * create() tao imaging_order roi goi StudyService.addToOrder cho tung phan tu "studies" trong
- * CUNG mot transaction (propagation REQUIRED mac dinh cua Spring - @Transactional cua
- * StudyServiceImpl.addToOrder tham gia transaction da mo o day, khong mo moi) - tranh lap lai
- * logic sinh accession_number o hai noi.
- *
- * Doi chieu identity_conflict (chan tao study khi benh nhan co lech PENDING, mo ta trong
- * createImagingOrder cua doc/api/openapi.yaml) la ❓ CHUA duoc nhom xac nhan (doc/02-erd.md muc 9)
- * va can model.IdentityConflict (chua co trong pham vi lan nay) - KHONG lam o day.
- */
+import static com.vrris.pacs.service.impl.ServiceSupport.SortSpec;
+import static com.vrris.pacs.service.impl.ServiceSupport.blankToNull;
+import static com.vrris.pacs.service.impl.ServiceSupport.currentAuth;
+import static com.vrris.pacs.service.impl.ServiceSupport.currentUsername;
+import static com.vrris.pacs.service.impl.ServiceSupport.hasAuthority;
+import static com.vrris.pacs.service.impl.ServiceSupport.parseSort;
+import static com.vrris.pacs.service.impl.ServiceSupport.safePage;
+import static com.vrris.pacs.service.impl.ServiceSupport.safePageSize;
+
 @Service
 public class ImagingOrderServiceImpl implements ImagingOrderService {
 
@@ -58,8 +52,6 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
             "ordered_at", "orderedAt",
             "created_at", "createdAt"
     );
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 200;
 
     private final ImagingOrderDao imagingOrderDao;
     private final PatientDao patientDao;
@@ -89,17 +81,17 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
     @Audited(action = AuditAction.READ, entityType = "IMAGING_ORDER")
     public ImagingOrderPageResponse search(Long patientId, String orderCode, String visitCode,
                                             Integer page, Integer pageSize, String sort) {
-        int safePage = (page == null || page < 1) ? 1 : page;
-        int safePageSize = (pageSize == null || pageSize < 1) ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
-        SortSpec sortSpec = parseSort(sort);
+        int resolvedPage = safePage(page);
+        int resolvedPageSize = safePageSize(pageSize);
+        SortSpec sortSpec = parseSort(sort, SORTABLE_FIELDS, "orderedAt", false);
 
         ImagingOrderDao.SearchCriteria criteria = new ImagingOrderDao.SearchCriteria(
                 patientId, blankToNull(orderCode), blankToNull(visitCode),
-                safePage, safePageSize, sortSpec.field(), sortSpec.ascending());
+                resolvedPage, resolvedPageSize, sortSpec.field(), sortSpec.ascending());
         ImagingOrderDao.SearchResult result = imagingOrderDao.search(criteria);
 
         List<ImagingOrderResponse> items = result.items().stream().map(this::toResponseWithStudies).toList();
-        return new ImagingOrderPageResponse(safePage, safePageSize, result.total(), items);
+        return new ImagingOrderPageResponse(resolvedPage, resolvedPageSize, result.total(), items);
     }
 
     @Override
@@ -117,19 +109,14 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "IMAGING_ORDER_PATIENT_NOT_FOUND",
                     "Khong tim thay benh nhan id=" + request.patientId());
         }
-        if (departmentDao.findById(request.orderingDepartmentId()).isEmpty()) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "IMAGING_ORDER_DEPARTMENT_NOT_FOUND",
-                    "Khong tim thay khoa id=" + request.orderingDepartmentId());
-        }
+        validateDepartment(request.orderingDepartmentId());
 
         LocalDateTime now = LocalDateTime.now();
         LocalDate today = now.toLocalDate();
-        String prefix = OrderCodeGenerator.datePrefix(today);
-        long countToday = imagingOrderDao.countByOrderCodeStartingWith(prefix);
-        String orderCode = OrderCodeGenerator.format(today, (int) countToday + 1);
+        long countToday = imagingOrderDao.countByOrderCodeStartingWith(OrderCodeGenerator.datePrefix(today));
 
         ImagingOrder entity = imagingOrderMapper.toEntity(request);
-        entity.setOrderCode(orderCode);
+        entity.setOrderCode(OrderCodeGenerator.format(today, (int) countToday + 1));
         entity.setSource(OrderSource.MANUAL.name());
         entity.setSyncStatus(SyncStatus.NOT_SYNCED.name());
         entity.setOrderedAt(request.orderedAt() != null ? request.orderedAt() : now);
@@ -137,11 +124,9 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         entity.setUpdatedAt(now);
 
         ImagingOrder saved = imagingOrderDao.save(entity);
-
         List<StudyResponse> studies = request.studies().stream()
                 .map(studyRequest -> studyService.addToOrder(saved.getId(), studyRequest))
                 .toList();
-
         return toResponse(saved, studies);
     }
 
@@ -150,24 +135,17 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
     @Audited(action = AuditAction.UPDATE, entityType = "IMAGING_ORDER")
     public ImagingOrderResponse update(Long id, ImagingOrderUpdateRequest request) {
         ImagingOrder order = findOrThrow(id);
-        if (request.orderingDepartmentId() != null && departmentDao.findById(request.orderingDepartmentId()).isEmpty()) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "IMAGING_ORDER_DEPARTMENT_NOT_FOUND",
-                    "Khong tim thay khoa id=" + request.orderingDepartmentId());
+        if (request.orderingDepartmentId() != null) {
+            validateDepartment(request.orderingDepartmentId());
         }
 
         imagingOrderMapper.updateEntityFromRequest(request, order);
         order.setUpdatedAt(LocalDateTime.now());
-
-        ImagingOrder saved = imagingOrderDao.save(order);
-        return toResponseWithStudies(saved);
+        return toResponseWithStudies(imagingOrderDao.save(order));
     }
 
     @Override
     @Transactional(readOnly = true)
-    // entityIdArg=0 (orderId): ClinicalSnapshotResponse khong co field ten "id"/"entityId" khop
-    // openapi ClinicalSnapshot (chi order_id/source/fetched_at/payload) nen AuditLogAspect khong
-    // tu doan duoc tu ket qua tra ve - phai chi ro tham so. patient_id KHONG lay duoc vi ly do
-    // tuong tu (schema khong co patient_id) - no ky thuat nho, giong cach PrintServiceImpl ghi nhan.
     @Audited(action = AuditAction.READ, entityType = "CLINICAL_SNAPSHOT", entityIdArg = 0)
     public ClinicalSnapshotResponse getClinicalSnapshot(Long orderId) {
         ImagingOrder order = findOrThrow(orderId);
@@ -181,22 +159,18 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
                 snapshot.getOrderId(), snapshot.getSource(), snapshot.getFetchedAt(), readPayload(snapshot));
     }
 
-    /**
-     * D34 (doc/06-rbac-matrix.md muc 5, 9): CLINICIAN chi xem duoc chi dinh do chinh minh chi dinh.
-     * ordering_doctor_name la ten tu do (D10), khong phai khoa toi app_user - de dung duoc, so sanh
-     * voi full_name cua tai khoan dang goi (lay tu username trong JWT subject qua AppUserDao). Ap
-     * dung CHI cho endpoint nay (IN-11) - CHUA mo rong sang GET /imaging-orders, GET /imaging-orders/{id}
-     * (ngoai pham vi ticket nay, xem bang muc 3 cua 06-rbac-matrix.md).
-     */
+    private void validateDepartment(Long departmentId) {
+        if (departmentDao.findById(departmentId).isEmpty()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "IMAGING_ORDER_DEPARTMENT_NOT_FOUND",
+                    "Khong tim thay khoa id=" + departmentId);
+        }
+    }
+
     private void enforceClinicianScope(ImagingOrder order) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        boolean isClinician = authentication != null && authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_CLINICIAN"));
-        if (!isClinician) {
+        if (!hasAuthority(currentAuth(), "ROLE_CLINICIAN")) {
             return;
         }
-        String username = String.valueOf(authentication.getPrincipal());
-        String fullName = appUserDao.findByUsername(username).map(AppUser::getFullName).orElse(null);
+        String fullName = appUserDao.findByUsername(currentUsername()).map(AppUser::getFullName).orElse(null);
         if (fullName == null || !fullName.equals(order.getOrderingDoctorName())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
                     "Chi dinh id=" + order.getId() + " khong thuoc pham vi cua CLINICIAN dang dang nhap.");
@@ -224,35 +198,10 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
 
     private ImagingOrderResponse toResponse(ImagingOrder order, List<StudyResponse> studies) {
         ImagingOrderResponse base = imagingOrderMapper.toResponse(order);
-        return new ImagingOrderResponse(base.id(), base.orderCode(), base.patientId(), base.visitCode(),
+        return new ImagingOrderResponse(
+                base.id(), base.orderCode(), base.patientId(), base.visitCode(),
                 base.source(), base.hisOrderId(), base.syncStatus(), base.orderingDepartmentId(),
                 base.orderingDoctorName(), base.patientClass(), base.room(), base.bed(),
                 base.clinicalDiagnosis(), base.orderedAt(), studies, base.createdAt(), base.updatedAt());
-    }
-
-    private String blankToNull(String value) {
-        return (value == null || value.isBlank()) ? null : value;
-    }
-
-    private SortSpec parseSort(String sort) {
-        if (sort == null || sort.isBlank()) {
-            return new SortSpec("orderedAt", false);
-        }
-        String[] parts = sort.split(",", 2);
-        String rawField = parts[0].trim();
-        String entityField = SORTABLE_FIELDS.get(rawField);
-        if (entityField == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "Gia tri khong hop le cho tham so 'sort': truong '" + rawField + "' khong ho tro sap xep");
-        }
-        String direction = parts.length > 1 ? parts[1].trim().toLowerCase() : "asc";
-        if (!direction.equals("asc") && !direction.equals("desc")) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "Gia tri khong hop le cho tham so 'sort': chieu sap xep phai la 'asc' hoac 'desc'");
-        }
-        return new SortSpec(entityField, direction.equals("asc"));
-    }
-
-    private record SortSpec(String field, boolean ascending) {
     }
 }

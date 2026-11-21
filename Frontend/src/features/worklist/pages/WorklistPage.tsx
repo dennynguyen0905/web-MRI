@@ -13,9 +13,12 @@ import { useAuth, useCurrentUser } from '@/features/auth/hooks/useAuth'
 import { useAsync } from '@/shared/hooks/useAsync'
 import { StudyTransitionDialog } from '@/features/studies/components/StudyTransitionDialog'
 import { type Permission, can, deniedReason } from '@/shared/lib/auth'
+import { compactNumber } from '@/shared/lib/format'
+import { DONE_STATUSES, STATUS_META } from '@/shared/lib/status'
 import { TRANSITIONS, type Transition } from '@/shared/lib/stateMachine'
-import type { StudyStatus, TimeField, WorklistRow, WorklistTab } from '@/shared/lib/types'
-import { Button, Select, cx } from '@/shared/ui/controls'
+import type { StatusCounts, StudyStatus, TimeField, WorklistRow, WorklistTab } from '@/shared/lib/types'
+import { StatusGlyph } from '@/shared/ui/StatusChip'
+import { Button, Checkbox, Select, cx } from '@/shared/ui/controls'
 import { Download, Printer, Warning } from '@/shared/ui/Icon'
 import { DEFAULT_SIDEBAR_FILTERS, Sidebar, type SidebarFilters } from '../components/Sidebar'
 import { Pagination } from '../components/Pagination'
@@ -90,7 +93,6 @@ export function WorklistPage() {
   const { visible: optionalCols, toggle: toggleOptional } = useOptionalColumns()
   const [columnFilterMode, setColumnFilterMode] = useState(false)
   const [modal, setModal] = useState<null | 'ADD' | 'UPDATE' | 'HIS' | 'CLINICAL' | 'REPORT' | 'PRINT'>(null)
-  // Bước chuyển trạng thái gọi thẳng từ panel (T2 Task 10, T10 Task 9); null = không mở hộp thoại.
   const [pendingTransition, setPendingTransition] = useState<Transition | null>(null)
   const [busyExport, setBusyExport] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -99,29 +101,23 @@ export function WorklistPage() {
   const counts = useStatusCounts(refreshKey)
 
   /* ------------------------- Tab mặc định theo vai trò (đăng nhập lần đầu) */
-  // RADIOLOGIST → "Chưa đọc" (UNREAD); APPROVER → "Đọc xong" (READ) hoặc "Đang duyệt" (APPROVING),
-  // chọn tab có nhiều ca hơn, mặc định READ nếu chưa xác định được. CLINICIAN/TECHNICIAN/ADMIN
-  // giữ tab đầu tiên hiện tại ('PENDING'). Chỉ áp dụng một lần lúc vào worklist, không ghi đè
-  // lựa chọn tab sau đó của người dùng. Vai trò lấy từ `useCurrentUser()` — cùng nguồn `auth.ts`.
+  // RADIOLOGIST → bật sẵn các trạng thái trong luồng đọc (UNREAD, READING, READ) để khi mở ca đọc
+  // hoặc chốt đọc ca không bị biến mất khỏi danh sách. APPROVER → bật sẵn (READ, APPROVING, APPROVED).
   const appliedRoleDefaultTab = useRef(false)
   useEffect(() => {
     if (appliedRoleDefaultTab.current) return
     if (user.roles.includes('RADIOLOGIST')) {
       appliedRoleDefaultTab.current = true
       setTab('DONE')
-      setFilters(f => ({ ...f, statuses: ['UNREAD'] }))
+      setFilters(f => ({ ...f, statuses: ['UNREAD', 'READING', 'READ'] }))
     } else if (user.roles.includes('APPROVER')) {
-      if (!counts.data) return // chờ số đếm trạng thái tải xong để biết tab nào nhiều ca hơn
       appliedRoleDefaultTab.current = true
-      const target: StudyStatus = (counts.data.byStatus.APPROVING ?? 0) > (counts.data.byStatus.READ ?? 0)
-        ? 'APPROVING'
-        : 'READ'
       setTab('DONE')
-      setFilters(f => ({ ...f, statuses: [target] }))
+      setFilters(f => ({ ...f, statuses: ['READ', 'APPROVING', 'APPROVED'] }))
     } else {
       appliedRoleDefaultTab.current = true
     }
-  }, [user.roles, counts.data])
+  }, [user.roles])
 
   /* ------------------------------------------------- Bộ lọc gửi lên API */
 
@@ -130,7 +126,7 @@ export function WorklistPage() {
     timeField: topbar.timeField,
     dateFrom: topbar.dateFrom,
     dateTo: topbar.dateTo,
-    // Tab "Chờ" chỉ có SCHEDULED nên không gửi kèm bộ lọc trạng thái của sidebar.
+    // Tab "Chờ" chỉ có SCHEDULED nên không gửi kèm bộ lọc trạng thái của tab "Đã thực hiện".
     statuses: tab === 'DONE' ? filters.statuses : [],
     departmentIds: [],
     deviceIds: filters.deviceIds,
@@ -223,6 +219,19 @@ export function WorklistPage() {
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
 
+  /**
+   * Đảm bảo trạng thái đích sau khi chuyển vẫn nằm trong bộ lọc hiển thị để ca đang thao tác
+   * không bị ẩn mất giữa luồng đọc / duyệt.
+   */
+  const ensureStatusVisible = useCallback((nextStatus?: StudyStatus) => {
+    if (!nextStatus || nextStatus === 'SCHEDULED') return
+    setFilters(f => (
+      f.statuses.includes(nextStatus)
+        ? f
+        : { ...f, statuses: [...f.statuses, nextStatus] }
+    ))
+  }, [])
+
   const resetAll = () => {
     setTopbar(DEFAULT_TOPBAR)
     setFilters(DEFAULT_SIDEBAR_FILTERS)
@@ -252,7 +261,11 @@ export function WorklistPage() {
     const transition = TRANSITIONS.find(t => t.code === code)
     if (!transition) return
     clearForbidden()
-    setPendingTransition(transition)
+    if (code === 'T4' && want === 'study.release') {
+      setPendingTransition({ ...transition, label: 'Giải phóng khóa đọc' })
+    } else {
+      setPendingTransition(transition)
+    }
   }
 
   const handleExportList = async (all = false) => {
@@ -356,38 +369,83 @@ export function WorklistPage() {
 
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-app p-2 desktop:p-3">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-white">
-            <div className="flex min-h-[38px] shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5 desktop:h-[38px] desktop:flex-nowrap desktop:py-0">
-              <TabButton active={tab === 'PENDING'} onClick={() => { setTab('PENDING'); setPage(1) }}>Chờ</TabButton>
-              <TabButton active={tab === 'DONE'} onClick={() => { setTab('DONE'); setPage(1) }}>Đã thực hiện</TabButton>
+            <div className="flex min-h-[38px] shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5">
+              <TabButton
+                active={tab === 'PENDING'}
+                onClick={() => { setTab('PENDING'); setPage(1) }}
+              >
+                Chờ ({compactNumber(counts.data?.byStatus.SCHEDULED ?? 0)})
+              </TabButton>
+              <TabButton
+                active={tab === 'DONE'}
+                onClick={() => {
+                  setTab('DONE')
+                  if (filters.statuses.length === 0) {
+                    patchFilters({ statuses: [...DONE_STATUSES] })
+                  } else {
+                    setPage(1)
+                  }
+                }}
+              >
+                Đã thực hiện
+              </TabButton>
+
+              <span className="mx-1 hidden h-4 w-px bg-line desktop:inline-block" />
+
+              {/* Bộ lọc trạng thái ca chụp đưa lên thanh công cụ phía trên bảng worklist */}
+              <TopStatusFilterBar
+                tab={tab}
+                statuses={filters.statuses}
+                counts={counts.data}
+                onToggleStatus={s => {
+                  if (tab === 'PENDING') {
+                    setTab('DONE')
+                    patchFilters({ statuses: [s] })
+                    return
+                  }
+                  const next = filters.statuses.includes(s)
+                    ? filters.statuses.filter(x => x !== s)
+                    : [...filters.statuses, s]
+                  patchFilters({ statuses: next })
+                }}
+                onToggleAll={checked => {
+                  if (tab === 'PENDING') {
+                    setTab('DONE')
+                    patchFilters({ statuses: [...DONE_STATUSES] })
+                    return
+                  }
+                  patchFilters({ statuses: checked ? [...DONE_STATUSES] : [] })
+                }}
+              />
 
               <div className="ml-auto flex flex-wrap items-center gap-1.5">
-              <div className="w-[150px]">
-                <Select
-                  value={topbar.timeField}
-                  onChange={e => patchTopbar({ timeField: e.target.value as TimeField })}
-                  options={[
-                    { value: 'SCHEDULED', label: 'Thời gian thực hiện' },
-                    { value: 'ORDERED', label: 'Thời gian chỉ định' },
-                    { value: 'COMPLETED', label: 'Thời gian kết thúc' },
-                  ]}
-                />
-              </div>
-              <Button
-                variant="ghost" icon={<Printer size={12} />}
-                disabled={!can(user, 'list.print') || busyExport}
-                title={can(user, 'list.print') ? undefined : deniedReason('list.print')}
-                onClick={() => void handlePrintList(false)}
-              >
-                In danh sách
-              </Button>
-              <Button
-                variant="ghost" icon={<Download size={12} />}
-                disabled={!can(user, 'list.print') || busyExport}
-                title={can(user, 'list.print') ? undefined : deniedReason('list.print')}
-                onClick={() => void handleExportList(false)}
-              >
-                Tải danh sách
-              </Button>
+                <div className="w-[150px]">
+                  <Select
+                    value={topbar.timeField}
+                    onChange={e => patchTopbar({ timeField: e.target.value as TimeField })}
+                    options={[
+                      { value: 'SCHEDULED', label: 'Thời gian thực hiện' },
+                      { value: 'ORDERED', label: 'Thời gian chỉ định' },
+                      { value: 'COMPLETED', label: 'Thời gian kết thúc' },
+                    ]}
+                  />
+                </div>
+                <Button
+                  variant="ghost" icon={<Printer size={12} />}
+                  disabled={!can(user, 'list.print') || busyExport}
+                  title={can(user, 'list.print') ? undefined : deniedReason('list.print')}
+                  onClick={() => void handlePrintList(false)}
+                >
+                  In danh sách
+                </Button>
+                <Button
+                  variant="ghost" icon={<Download size={12} />}
+                  disabled={!can(user, 'list.print') || busyExport}
+                  title={can(user, 'list.print') ? undefined : deniedReason('list.print')}
+                  onClick={() => void handleExportList(false)}
+                >
+                  Tải danh sách
+                </Button>
               </div>
             </div>
 
@@ -441,6 +499,16 @@ export function WorklistPage() {
             onPrint={() => openGated('report.print', 'PRINT')}
             onMarkReceived={() => openTransition('T2', 'study.markReceived')}
             onCancelStudy={() => openTransition('T10', 'study.cancel')}
+            onStartReading={() => openTransition('T3', 'report.write')}
+            onAbandonReading={() => openTransition(
+              'T4',
+              can(user, 'report.write') ? 'report.write' : 'study.release',
+            )}
+            onFinishReading={() => openTransition('T5', 'report.write')}
+            onStartApproving={() => openTransition('T6', 'report.approve')}
+            onApproveStudy={() => openTransition('T7', 'report.approve')}
+            onReturnForRevision={() => openTransition('T8', 'report.approve')}
+            onReopenStudy={() => openTransition('T9', 'study.reopen')}
           />
         )}
       </div>
@@ -465,7 +533,10 @@ export function WorklistPage() {
         onClose={() => setModal(null)}
         row={selected}
         user={user}
-        onChanged={refresh}
+        onChanged={nextStatus => {
+          ensureStatusVisible(nextStatus)
+          refresh()
+        }}
       />
       <PrintModal open={modal === 'PRINT'} onClose={() => setModal(null)} row={selected} user={user} />
       <StudyTransitionDialog
@@ -473,12 +544,75 @@ export function WorklistPage() {
         onClose={() => setPendingTransition(null)}
         row={selected}
         transition={pendingTransition}
-        onDone={() => {
-          // Ca rời tab "Chờ" sau T2/T10 — tải lại cả danh sách lẫn số đếm trạng thái.
-          setSelectedId(null)
+        onDone={result => {
+          const code = pendingTransition?.code
+          const nextStatus = result.study.status
+          // Với T2/T10, ca rời khỏi tab "Chờ" nên bỏ chọn ở tab "Chờ";
+          // Với các bước đọc/duyệt (T3..T9), giữ nguyên ca đang chọn và bật trạng thái đích trong bộ lọc.
+          if (code === 'T2' || code === 'T10') {
+            setSelectedId(null)
+          } else {
+            ensureStatusVisible(nextStatus)
+          }
           refresh()
+          // Khi mở ca để đọc (T3) hoặc mở ca để duyệt (T6), tự động mở cửa sổ Báo cáo kết quả.
+          if (code === 'T3' || code === 'T6') {
+            setModal('REPORT')
+          }
         }}
       />
+    </div>
+  )
+}
+
+function TopStatusFilterBar({
+  tab,
+  statuses,
+  counts,
+  onToggleStatus,
+  onToggleAll,
+}: {
+  tab: WorklistTab
+  statuses: StudyStatus[]
+  counts: StatusCounts | null
+  onToggleStatus: (status: StudyStatus) => void
+  onToggleAll: (checked: boolean) => void
+}) {
+  const isDoneTab = tab === 'DONE'
+  const allOn = isDoneTab && DONE_STATUSES.every(s => statuses.includes(s))
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+      {DONE_STATUSES.map(s => {
+        const checked = isDoneTab && statuses.includes(s)
+        const count = counts?.byStatus[s] ?? 0
+        return (
+          <div
+            key={s}
+            className="flex h-6 items-center gap-1 rounded px-1 transition-colors hover:bg-line-soft"
+          >
+            <Checkbox
+              checked={checked}
+              onChange={() => onToggleStatus(s)}
+              label={
+                <span className="inline-flex items-center gap-1 text-[11.5px] text-ink-2">
+                  <StatusGlyph status={s} />
+                  <span>{STATUS_META[s].label}</span>
+                  <span className="text-[10.5px] tabular-nums text-ink-4">({compactNumber(count)})</span>
+                </span>
+              }
+            />
+          </div>
+        )
+      })}
+
+      <div className="flex h-6 items-center gap-1 rounded px-1 transition-colors hover:bg-line-soft">
+        <Checkbox
+          checked={allOn}
+          onChange={v => onToggleAll(v)}
+          label={<span className="text-[11.5px] font-medium text-ink-2">Tất cả</span>}
+        />
+      </div>
     </div>
   )
 }

@@ -6,10 +6,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Luong chinh (thang hang) theo README Phan 4 - CHUA dua cac mui ten (?) vao (bo do khi dang doc,
- * tra lai de sua khi dang duyet, mo lai khi da duyet xong, huy chi dinh) vi chua duoc nhom xac
- * nhan (README Phan 9 cau 1, doc/03-state-machine.md). Khi co cau tra loi, cap nhat LINEAR_FLOW
- * (hoac them cau truc rieng cho chuyen lui) va StudyStateMachineTest tuong ung.
+ * State machine ca chup (doc/03-state-machine.md, Frontend/src/shared/lib/stateMachine.ts).
+ * R-05: rule/ chi phu thuoc enu va JDK.
  */
 public final class StudyStateMachine {
 
@@ -44,5 +42,42 @@ public final class StudyStateMachine {
     public static Set<StudyStatus> allowedNextStates(StudyStatus from) {
         StudyStatus next = LINEAR_FLOW.get(from);
         return next == null ? Set.of() : Set.of(next);
+    }
+
+    /**
+     * Tra ma chuyen trang thai (T2..T10) cho moi buoc hop le trong vong doi ca chup
+     * (bao gom luong chinh T2, T3, T5, T6, T7 va cac nhanh ngoai le T4, T8, T9, T10).
+     * Tra null neu cap (from, to) khong hop le.
+     */
+    public static String resolveTransitionCode(StudyStatus from, StudyStatus to) {
+        if (from == null || to == null) {
+            return null;
+        }
+        return switch (from) {
+            case SCHEDULED -> switch (to) {
+                case UNREAD -> "T2";
+                case CANCELLED -> "T10";
+                default -> null;
+            };
+            case UNREAD -> to == StudyStatus.READING ? "T3" : null;
+            case READING -> switch (to) {
+                case UNREAD -> "T4";
+                case READ -> "T5";
+                default -> null;
+            };
+            case READ -> to == StudyStatus.APPROVING ? "T6" : null;
+            case APPROVING -> switch (to) {
+                case APPROVED -> "T7";
+                case READING -> "T8";
+                default -> null;
+            };
+            case APPROVED -> to == StudyStatus.READING ? "T9" : null;
+            case CANCELLED -> null;
+        };
+    }
+
+    public static boolean isExceptionalTransition(StudyStatus from, StudyStatus to) {
+        String code = resolveTransitionCode(from, to);
+        return "T4".equals(code) || "T8".equals(code) || "T9".equals(code) || "T10".equals(code);
     }
 }

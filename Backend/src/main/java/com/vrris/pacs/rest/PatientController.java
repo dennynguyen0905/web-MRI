@@ -8,14 +8,10 @@ import com.vrris.pacs.dto.response.PatientPageResponse;
 import com.vrris.pacs.dto.response.PatientResponse;
 import com.vrris.pacs.service.PatientService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -25,26 +21,19 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
+import static com.vrris.pacs.rest.RestSupport.READ_ROLES;
+import static com.vrris.pacs.rest.RestSupport.WRITE_ORDER_ROLES;
+import static com.vrris.pacs.rest.RestSupport.attachment;
 
-/**
- * 4 endpoint /patients theo doc/api/openapi.yaml (operationId listPatients/getPatient/
- * createPatient/updatePatient): danh sach + tim theo ma/ten, xem, tao (chan trung patient_code -
- * IN-01), sua tung phan. x-allowed-roles cua openapi.yaml: doc (ca 5 vai tro), ghi (ADMIN/
- * CLINICIAN/TECHNICIAN).
- */
 @RestController
+@RequestMapping("/patients")
 @Tag(name = "patients", description = "Quan ly benh nhan")
 public class PatientController {
-
-    private static final String READ_ROLES =
-            "hasAnyAuthority('ROLE_ADMIN','ROLE_CLINICIAN','ROLE_TECHNICIAN','ROLE_RADIOLOGIST','ROLE_APPROVER')";
-    private static final String WRITE_ROLES =
-            "hasAnyAuthority('ROLE_ADMIN','ROLE_CLINICIAN','ROLE_TECHNICIAN')";
 
     private final PatientService patientService;
 
@@ -52,59 +41,45 @@ public class PatientController {
         this.patientService = patientService;
     }
 
-    @GetMapping(path = "/patients", produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Tim benh nhan", description = "Tim theo ma, ho ten hoac BHXH (tham so q), hoac loc rieng patient_code/full_name.")
+    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Tim benh nhan")
     @ApiResponse(responseCode = "200", description = "Danh sach benh nhan")
     @PreAuthorize(READ_ROLES)
     public PatientPageResponse listPatients(
-            @Parameter(description = "Tim tu do tren ma benh nhan, ho ten, BHXH") @RequestParam(required = false) String q,
-            @Parameter(description = "Loc theo ma benh nhan") @RequestParam(name = "patient_code", required = false) String patientCode,
-            @Parameter(description = "Loc theo ho ten") @RequestParam(name = "full_name", required = false) String fullName,
-            @Parameter(description = "So trang, bat dau tu 1") @RequestParam(required = false) Integer page,
-            @Parameter(description = "So dong moi trang") @RequestParam(name = "page_size", required = false) Integer pageSize,
-            @Parameter(description = "<field>,<asc|desc>, vi du full_name,asc") @RequestParam(required = false) String sort
+            @RequestParam(required = false) String q,
+            @RequestParam(name = "patient_code", required = false) String patientCode,
+            @RequestParam(name = "full_name", required = false) String fullName,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(name = "page_size", required = false) Integer pageSize,
+            @RequestParam(required = false) String sort
     ) {
         return patientService.search(q, patientCode, fullName, page, pageSize, sort);
     }
 
-    @GetMapping(path = "/patients/export", produces = "text/csv;charset=UTF-8")
-    @Operation(
-            summary = "Xuat danh sach benh nhan dang CSV (UTF-8 kem BOM)",
-            description = "De xuat IN-25 (doc/01-scope.md muc 3.1 & muc 9, doc/06-rbac-matrix.md muc 3). "
-                    + "Ghi audit_log action EXPORT (patient_id co neu 1 benh nhan, NULL neu nhieu - doc/09 muc 2.2).")
+    @GetMapping(path = "/export", produces = "text/csv;charset=UTF-8")
+    @Operation(summary = "Xuat danh sach benh nhan dang CSV (UTF-8 kem BOM)")
     @ApiResponse(responseCode = "200", description = "File CSV (UTF-8 kem BOM)")
     @PreAuthorize(READ_ROLES)
     public ResponseEntity<Resource> exportPatients(
-            @Parameter(description = "Tim tu do tren ma benh nhan, ho ten, BHXH") @RequestParam(required = false) String q,
-            @Parameter(description = "Loc theo ma benh nhan") @RequestParam(name = "patient_code", required = false) String patientCode,
-            @Parameter(description = "Loc theo ho ten") @RequestParam(name = "full_name", required = false) String fullName,
-            @Parameter(description = "<field>,<asc|desc>, vi du full_name,asc") @RequestParam(required = false) String sort
+            @RequestParam(required = false) String q,
+            @RequestParam(name = "patient_code", required = false) String patientCode,
+            @RequestParam(name = "full_name", required = false) String fullName,
+            @RequestParam(required = false) String sort
     ) {
-        ExportDocumentResponse document = patientService.exportCsv(q, patientCode, fullName, sort);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentDisposition(ContentDisposition.attachment()
-                .filename(document.fileName(), StandardCharsets.UTF_8)
-                .build());
-        return ResponseEntity.ok()
-                .headers(headers)
-                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
-                .contentLength(document.content().length)
-                .body(new ByteArrayResource(document.content()));
+        ExportDocumentResponse doc = patientService.exportCsv(q, patientCode, fullName, sort);
+        return attachment(doc.fileName(), "text/csv;charset=UTF-8", doc.content());
     }
 
-    @PostMapping(path = "/patients/export-events", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(path = "/export-events", consumes = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(
-            summary = "Ghi nhan mot lan xuat hoac in danh sach tu trinh duyet",
-            description = "Khong tra file. Ghi audit_log action EXPORT (IN-15, doc/09 muc 2.2).")
+    @Operation(summary = "Ghi nhan mot lan xuat hoac in danh sach tu trinh duyet")
     @ApiResponse(responseCode = "204", description = "Da ghi nhan")
     @PreAuthorize(READ_ROLES)
     public void recordExportEvent(@Valid @RequestBody ListExportEventRequest request) {
         patientService.recordExportEvent(request);
     }
 
-    @GetMapping(path = "/patients/{patientId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(path = "/{patientId}", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Chi tiet benh nhan")
     @ApiResponse(responseCode = "200", description = "Benh nhan")
     @PreAuthorize(READ_ROLES)
@@ -112,19 +87,19 @@ public class PatientController {
         return patientService.getById(patientId);
     }
 
-    @PostMapping(path = "/patients", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Tao benh nhan", description = "Chan trung patient_code (IN-01). Khong nhan age.")
+    @Operation(summary = "Tao benh nhan")
     @ApiResponse(responseCode = "201", description = "Da tao")
-    @PreAuthorize(WRITE_ROLES)
+    @PreAuthorize(WRITE_ORDER_ROLES)
     public PatientResponse createPatient(@Valid @RequestBody PatientCreateRequest request) {
         return patientService.create(request);
     }
 
-    @PatchMapping(path = "/patients/{patientId}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Sua thong tin benh nhan", description = "Cap nhat tung phan. Khong doi duoc patient_code.")
+    @PatchMapping(path = "/{patientId}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Sua thong tin benh nhan")
     @ApiResponse(responseCode = "200", description = "Da cap nhat")
-    @PreAuthorize(WRITE_ROLES)
+    @PreAuthorize(WRITE_ORDER_ROLES)
     public PatientResponse updatePatient(@PathVariable Long patientId, @Valid @RequestBody PatientUpdateRequest request) {
         return patientService.update(patientId, request);
     }

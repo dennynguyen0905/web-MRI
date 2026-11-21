@@ -17,25 +17,21 @@ import com.vrris.pacs.model.Report;
 import com.vrris.pacs.model.Study;
 import com.vrris.pacs.service.ReportService;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-/**
- * IN-10 - xem Javadoc service.ReportService. Doc study.status/reading_user_id truc tiep qua
- * dao.StudyDao (KHONG qua service.StudyService) de tranh phu thuoc vong voi StudyServiceImpl dang
- * duoc sua o IN-08 cung luc (phoi hop qua tin nhan giua cac phien, xem lich su thay doi README).
- */
+import static com.vrris.pacs.service.impl.ServiceSupport.currentUser;
+
 @Service
 public class ReportServiceImpl implements ReportService {
 
     private static final String STATUS_READING = "READING";
-    private static final String STATUS_DRAFT = "DRAFT";
+    private static final Set<String> EDITABLE_REPORT_STATUSES = Set.of("DRAFT", "RETURNED");
 
     private final ReportDao reportDao;
     private final StudyDao studyDao;
@@ -67,8 +63,7 @@ public class ReportServiceImpl implements ReportService {
     public ReportResponse getCurrent(Long studyId) {
         Study study = findStudyOrThrow(studyId);
         AuditContext.recordPatientId(resolvePatientId(study));
-        Report current = findCurrentOrThrow(studyId);
-        return reportMapper.toResponse(current);
+        return reportMapper.toResponse(findCurrentOrThrow(studyId));
     }
 
     @Override
@@ -78,7 +73,7 @@ public class ReportServiceImpl implements ReportService {
         Study study = findStudyOrThrow(studyId);
         Report current = findCurrentOrThrow(studyId);
 
-        Long callerId = resolveCallerId();
+        Long callerId = currentUser(appUserDao).map(AppUser::getId).orElse(null);
         if (callerId == null || study.getReadingUserId() == null || !study.getReadingUserId().equals(callerId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "REPORT_NOT_HOLDER",
                     "Chi nguoi dang giu ca (dang doc, da mo UNREAD -> READING) duoc luu bao cao");
@@ -87,9 +82,9 @@ public class ReportServiceImpl implements ReportService {
             throw new ApiException(HttpStatus.CONFLICT, "STUDY_NOT_READING",
                     "Ca chup khong o trang thai READING");
         }
-        if (!STATUS_DRAFT.equals(current.getStatus())) {
+        if (!EDITABLE_REPORT_STATUSES.contains(current.getStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, "REPORT_NOT_DRAFT",
-                    "Bao cao hien hanh khong con la DRAFT - version moi duoc tao khi chuyen trang thai, "
+                    "Bao cao hien hanh khong con la DRAFT hoac RETURNED - version moi duoc tao khi chuyen trang thai, "
                             + "khong qua endpoint nay");
         }
 
@@ -120,16 +115,6 @@ public class ReportServiceImpl implements ReportService {
         return reportDao.findCurrentByStudyId(studyId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "REPORT_NOT_FOUND",
                         "Ca chup id=" + studyId + " chua co bao cao"));
-    }
-
-    private Long resolveCallerId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null) {
-            return null;
-        }
-        return appUserDao.findByUsername(String.valueOf(authentication.getPrincipal()))
-                .map(AppUser::getId)
-                .orElse(null);
     }
 
     private Long resolvePatientId(Study study) {

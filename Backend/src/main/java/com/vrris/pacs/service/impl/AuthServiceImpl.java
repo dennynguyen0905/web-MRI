@@ -13,8 +13,6 @@ import com.vrris.pacs.model.Role;
 import com.vrris.pacs.security.JwtService;
 import com.vrris.pacs.service.AuthService;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,15 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Xử lý xác thực đăng nhập/đăng xuất và lấy thông tin người dùng hiện tại (IN-13).
- *
- * Khóa tài khoản sau 5 lần sai liên tiếp trong 15 phút (doc/09 mục 1.4) được đếm trong bộ nhớ
- * (ghi nợ kỹ thuật cho đồ án 8 tuần).
- */
+import static com.vrris.pacs.service.impl.ServiceSupport.currentUser;
+
 @Service
 public class AuthServiceImpl implements AuthService {
 
@@ -41,13 +36,9 @@ public class AuthServiceImpl implements AuthService {
     private final AppUserDao appUserDao;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-
-    // Lưu số lần đăng nhập sai và thời điểm khóa trong bộ nhớ
     private final Map<String, AttemptInfo> loginAttempts = new ConcurrentHashMap<>();
 
-    public AuthServiceImpl(AppUserDao appUserDao,
-                           PasswordEncoder passwordEncoder,
-                           JwtService jwtService) {
+    public AuthServiceImpl(AppUserDao appUserDao, PasswordEncoder passwordEncoder, JwtService jwtService) {
         this.appUserDao = appUserDao;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
@@ -58,39 +49,22 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
         String username = request.getUsername().trim();
-
         if (isAccountLocked(username)) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", INVALID_CREDENTIALS_MSG);
         }
 
         AppUser user = appUserDao.findByUsername(username).orElse(null);
-
-        if (user == null || !Boolean.TRUE.equals(user.getIsActive()) ||
-                !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+        if (user == null || !Boolean.TRUE.equals(user.getIsActive())
+                || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             recordFailedAttempt(username);
             throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", INVALID_CREDENTIALS_MSG);
         }
 
-        // Đăng nhập thành công: xóa lịch sử đăng nhập sai
-        resetFailedAttempts(username);
+        loginAttempts.remove(username.toLowerCase(Locale.ROOT));
 
-        List<String> roleCodes = user.getRoles().stream()
-                .map(Role::getCode)
-                .sorted()
-                .toList();
+        CurrentUserResponse userResponse = toCurrentUserResponse(user);
+        String token = jwtService.generateToken(user.getId(), user.getUsername(), userResponse.roles());
 
-        String token = jwtService.generateToken(user.getId(), user.getUsername(), roleCodes);
-
-        CurrentUserResponse userResponse = new CurrentUserResponse(
-                user.getId(),
-                user.getUsername(),
-                user.getFullName(),
-                user.getEmail(),
-                user.getDepartmentId(),
-                roleCodes
-        );
-
-        // Cung cấp thông tin audit log qua AuditContext
         AuditContext.recordActorUsername(user.getUsername());
         AuditContext.recordEntityId(user.getId());
 
@@ -100,65 +74,55 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional(readOnly = true)
     public CurrentUserResponse getCurrentUser() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Chua dang nhap hoac token khong hop le");
-        }
+        AppUser user = currentUser(appUserDao)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Chua dang nhap hoac token khong hop le"));
+        return toCurrentUserResponse(user);
+    }
 
-        String username = auth.getName();
-        AppUser user = appUserDao.findByUsername(username)
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Nguoi dung khong ton tai"));
+    @Override
+    public void logout() {
+        // Stateless JWT: frontend xóa token, token tự hết hạn theo TTL.
+    }
 
+    private CurrentUserResponse toCurrentUserResponse(AppUser user) {
         List<String> roleCodes = user.getRoles().stream()
                 .map(Role::getCode)
                 .sorted()
                 .toList();
-
         return new CurrentUserResponse(
                 user.getId(),
                 user.getUsername(),
                 user.getFullName(),
                 user.getEmail(),
                 user.getDepartmentId(),
-                roleCodes
-        );
+                roleCodes);
     }
 
-    @Override
-    public void logout() {
-        // Trong 8 tuần: không duy trì blacklist phía server. Frontend xóa token, token tự hết hạn tự nhiên.
-    }
-
-    private synchronized boolean isAccountLocked(String username) {
-        String key = username.toLowerCase();
+    private boolean isAccountLocked(String username) {
+        String key = username.toLowerCase(Locale.ROOT);
         AttemptInfo info = loginAttempts.get(key);
-        if (info != null && info.lockedUntil != null) {
-            if (Instant.now().isBefore(info.lockedUntil)) {
-                return true;
-            } else {
-                // Khóa đã hết hạn: reset lại trạng thái
-                loginAttempts.remove(key);
-            }
+        if (info == null || info.lockedUntil() == null) {
+            return false;
         }
+        if (Instant.now().isBefore(info.lockedUntil())) {
+            return true;
+        }
+        loginAttempts.remove(key, info);
         return false;
     }
 
-    private synchronized void recordFailedAttempt(String username) {
-        String key = username.toLowerCase();
-        AttemptInfo info = loginAttempts.computeIfAbsent(key, k -> new AttemptInfo());
-        info.failedCount++;
-        if (info.failedCount >= MAX_FAILED_ATTEMPTS) {
-            info.lockedUntil = Instant.now().plus(LOCKOUT_DURATION_MINUTES, ChronoUnit.MINUTES);
-        }
+    private void recordFailedAttempt(String username) {
+        String key = username.toLowerCase(Locale.ROOT);
+        loginAttempts.compute(key, (k, current) -> {
+            int count = (current == null ? 0 : current.failedCount()) + 1;
+            Instant lockedUntil = count >= MAX_FAILED_ATTEMPTS
+                    ? Instant.now().plus(LOCKOUT_DURATION_MINUTES, ChronoUnit.MINUTES)
+                    : (current == null ? null : current.lockedUntil());
+            return new AttemptInfo(count, lockedUntil);
+        });
     }
 
-    private synchronized void resetFailedAttempts(String username) {
-        loginAttempts.remove(username.toLowerCase());
-    }
-
-    private static class AttemptInfo {
-        int failedCount;
-        Instant lockedUntil;
+    private record AttemptInfo(int failedCount, Instant lockedUntil) {
     }
 }
-
