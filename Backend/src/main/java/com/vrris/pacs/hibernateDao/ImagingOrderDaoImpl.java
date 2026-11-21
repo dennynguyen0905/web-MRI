@@ -75,8 +75,8 @@ public class ImagingOrderDaoImpl extends AbstractHibernateDao<ImagingOrder, Long
         return predicates.toArray(new Predicate[0]);
     }
 
-    private jakarta.persistence.criteria.Order order(CriteriaBuilder cb, Root<ImagingOrder> root, SearchCriteria criteria) {
+    private jakarta.persistence.criteria.Order[] order(CriteriaBuilder cb, Root<ImagingOrder> root, SearchCriteria criteria) {
         Path<Object> sortPath = root.get(criteria.sortField());
-        return criteria.ascending() ? cb.asc(sortPath) : cb.desc(sortPath);
+        return orderWithIdTieBreaker(cb, sortPath, root.get("id"), criteria.ascending());
     }
 }

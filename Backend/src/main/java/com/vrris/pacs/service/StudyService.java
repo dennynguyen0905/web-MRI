@@ -2,14 +2,10 @@ package com.vrris.pacs.service;
 
 import com.vrris.pacs.dto.request.StudyCreateRequest;
 import com.vrris.pacs.dto.request.StudyUpdateRequest;
-import com.vrris.pacs.dto.request.TransitionRequest;
-import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.StatusCountsResponse;
-import com.vrris.pacs.dto.response.StatusHistoryEntry;
 import com.vrris.pacs.dto.response.StudyDetailResponse;
 import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
-import com.vrris.pacs.dto.response.TransitionResponse;
 import com.vrris.pacs.dto.response.ViewerLinkResponse;
 
 import java.time.LocalDate;
@@ -70,7 +66,8 @@ public interface StudyService {
 
     /**
      * Them mot ca chup vao chi dinh da co (IN-02, operationId addStudyToOrder). Trang thai luon
-     * SCHEDULED, accession_number sinh tu dong (rule.AccessionNumberGenerator).
+     * SCHEDULED, accession_number sinh tu dong, nguyen tu (dao.DailySequenceDao + rule.AccessionNumberGenerator).
+     * Het so trong ngay -> ApiException (ACCESSION_SEQUENCE_EXHAUSTED, 409).
      * Khong tim thay chi dinh -> ApiException (IMAGING_ORDER_NOT_FOUND, 404).
      * service_item_id/device_id khong ton tai -> ApiException (STUDY_SERVICE_ITEM_NOT_FOUND /
      * STUDY_DEVICE_NOT_FOUND, 422).
@@ -78,27 +75,11 @@ public interface StudyService {
     StudyResponse addToOrder(Long orderId, StudyCreateRequest request);
 
     /**
-     * Xuat danh sach ca chup / benh nhan tren worklist ra file CSV UTF-8 kem BOM (IN-25,
-     * GET /studies/export). Ghi audit_log action EXPORT (patient_id co neu danh sach chi thuoc
-     * 1 benh nhan, NULL neu nhieu - doc/09-bao-mat-toan-ven-du-lieu.md muc 2.2).
-     */
-    ExportDocumentResponse exportCsv(Long orderId, String status, Long deviceId,
-                                     String q, String patientCode, String fullName, String sort);
-
-    /**
      * Sua thong tin ca chup (PATCH /studies/{id}, operationId updateStudy).
      * Chi TECHNICIAN va ADMIN duoc dat study_instance_uid; CLINICIAN dat truong nay se bi chan 403 (RBAC-13).
+     * Ca da APPROVED hoac CANCELLED -> ApiException (STUDY_NOT_EDITABLE, 409) ❓ (doc/03, doc/05 chua
+     * chot trang thai nao duoc sua - tam chan hai trang thai cuoi/da khoa).
+     * study_instance_uid da gan cho ca khac -> ApiException (STUDY_INSTANCE_UID_DUPLICATE, 409).
      */
     StudyResponse update(Long id, StudyUpdateRequest request);
-
-    /**
-     * Chuyen trang thai ca chup theo luong T1-T10 (POST /studies/{id}/transitions, operationId transitionStudy).
-     * Kiem tra chat che vai tro (ADMIN, TECHNICIAN, RADIOLOGIST, APPROVER) va dieu kien nghiep vu.
-     */
-    TransitionResponse transition(Long id, TransitionRequest request);
-
-    /**
-     * Luan chuyen lich su trang thai cua mot ca chup (GET /studies/{id}/status-history).
-     */
-    List<StatusHistoryEntry> listStatusHistory(Long studyId);
 }

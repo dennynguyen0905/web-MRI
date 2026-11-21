@@ -37,7 +37,13 @@ export function transitionsFrom(status: StudyStatus): Transition[] {
   return TRANSITIONS.filter(t => t.from === status)
 }
 
-/** Nội dung báo cáo chỉ sửa được khi ca đang đọc (`PUT …/reports/current` yêu cầu `READING`). */
+/**
+ * Form báo cáo có cho gõ hay không.
+ *
+ * `PUT …/reports/current` của backend chỉ nhận ca đang `READING`. Ca còn `UNREAD` vẫn cho gõ vì
+ * khi lưu, `features/reports/lib/reportSteps.ts` tự mở ca (T3: `UNREAD → READING`) trước rồi mới
+ * gửi `PUT`. Các trạng thái khác chỉ xem.
+ */
 export function canEditReport(status: StudyStatus): boolean {
   return status === 'READING' || status === 'UNREAD'
 }

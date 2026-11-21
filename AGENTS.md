@@ -75,13 +75,13 @@ Chỉ ghi lệnh đã chạy thử được trong phiên làm việc gần nhấ
 |---|---|---|
 | Bật database (MySQL + Flyway) | `cd database && docker compose up -d` | ✅ (chạy thật trên MySQL 8.4.9, `database/README.md`) |
 | Xem Flyway đã chạy gì | `docker compose logs flyway` (trong `database/`) | ✅ |
-| Build + test backend (ArchUnit + Testcontainers) | `cd Backend && mvn verify` | ✅ (**192/192 test, BUILD SUCCESS**, 2026-11-12 — **phải bật Docker Desktop trước**, nếu không mọi test DAO/controller đỏ với "Could not find a valid Docker environment") |
+| Build + test backend (ArchUnit + Testcontainers) | `cd Backend && mvn verify` | ✅ (**371/371 test, BUILD SUCCESS**, 2026-11-21 — **phải bật Docker Desktop trước**, nếu không mọi test DAO/controller đỏ với "Could not find a valid Docker environment") |
 | Chạy backend (cần database đã bật) | `cd Backend && mvn spring-boot:run` | Chưa kiểm chứng trong phiên này — theo `Backend/README.md` |
 | Chạy frontend (dev) | `cd Frontend && npm install && npm run dev` | ✅ (2026-11-06, chạy ở chế độ mock mặc định) |
 | Build frontend | `cd Frontend && npm run build` | ✅ (2026-11-06) |
 | Lint frontend | `cd Frontend && npx eslint src` | ✅ (2026-11-12, 0 lỗi) |
-| Test frontend (vitest) | `cd Frontend && npm run test` | ✅ (2026-11-12, **42/42**) |
-| Gọi backend thật thay vì mock | `cd Frontend && VITE_API_MODE=live npm run dev` | ⚠️ Chạy được nhưng **chưa đăng nhập được** — backend chưa có `/auth/login` |
+| Test frontend (vitest) | `cd Frontend && npm run test` | ✅ (2026-11-21, **80/80**) |
+| Gọi backend thật thay vì mock | `cd Frontend && VITE_API_MODE=live npm run dev` | ⚠️ Backend nay đã có `POST /auth/login`; lỗi audit trong transaction `readOnly` từng làm login trả 500 trên MySQL thật đã sửa (2026-11-21, kiểm bằng test Testcontainers) — **chưa chạy thử end-to-end ở chế độ `live`** |
 | Xuất sơ đồ Mermaid (`.mmd` → `.png`) | `npx --yes @mermaid-js/mermaid-cli -i "doc/diagrams/<ten>.mmd" -o "doc/diagrams/<ten>.png" -b white -s 2` | ✅ (chạy được trong phiên tạo `doc/08-hl7-message-spec.md` và `doc/10-lien-ket-he-thong.md`, 2026-11-05 — môi trường trước đó từng báo không chạy được, xem `doc/02-erd.md` mục 0; **3 ảnh cũ (`02-erd`, `01-ranh-gioi-he-thong`, `05-state-machine`) vẫn chưa được xuất lại dù lệnh đã chạy được — cần ai đó làm, không tự ý xuất lại ảnh người khác chưa nhờ** |
 
 ## 6. Quy ước tài liệu
@@ -108,7 +108,7 @@ Lấy từ **README mục 7.2** (cập nhật 2026-11-12) — không tự ước
 | Có rồi | Chưa có |
 |---|---|
 | Frontend **đã nối lớp API** (mock server + chế độ `live`), đăng nhập + chặn route; nút "Xem ảnh" (IN-23); **ba modal tạo/sửa đã gửi dữ liệu thật**; nút **"Đánh dấu đã có ảnh" (T2)** và **"Hủy ca" (T10)** | Màn audit log (`audit.view`), quản lý người dùng, màn "Danh sách lệch dữ liệu" (`conflict.resolve`), nút "Giải phóng khóa mềm" (`study.release`) — xem `doc/06b` mục 3 |
-| Backend: reference-data, patient, imaging-order, worklist (IN-07/IN-09), StudyDetail, report (IN-10), clinical-snapshot (IN-11), identity-conflict (IN-05), in phiếu PDF, deep-link OHIF; `mvn verify` xanh **192/192** | Backend: `/auth/login`, **`POST /studies/{id}/transitions`** (KAN-31) và **`PATCH /studies/{id}`** (KAN-34) — cả hai đã có trong `openapi.yaml` và trong mock server, Frontend đã gọi sẵn; RBAC đầy đủ (JWT hiện chỉ đọc claim `roles` thô) |
+| Backend: reference-data, patient, imaging-order, worklist (IN-07/IN-09), StudyDetail, report (IN-10), clinical-snapshot (IN-11), identity-conflict (IN-05), in phiếu PDF, deep-link OHIF, `/auth/login`, `POST /studies/{id}/transitions` (T2–T10), `PATCH /studies/{id}`, khóa lạc quan + sinh số tuần tự (`V9`); `mvn verify` xanh **371/371** (2026-11-21) | Backend: RBAC đầy đủ (JWT hiện chỉ đọc claim `roles` thô); các điểm ❓ sau review 2026-11-21 (README mục 11) |
 | `database/` — MySQL 8.4 + Flyway qua Docker Compose (V1–V8, 14 bảng + seed giả); `deploy/docker/` + `deploy/k8s/` + `deploy/compose/` (đã tích hợp Orthanc + OHIF Viewer) | `kubectl apply` trên cụm thật (mới dựng offline bằng `kubectl kustomize`) |
 | `doc/api/openapi.yaml` (nháp v0.2, 28 endpoint — thêm viewer-link và 2 endpoint in, ❓ chưa chốt) | — |
 | Bộ tài liệu thiết kế 01–16 (đều nháp, xem README mục 6.0 cho trạng thái từng file) | Nhóm xác nhận các bản nháp — chưa file nào ở trạng thái ✅ |

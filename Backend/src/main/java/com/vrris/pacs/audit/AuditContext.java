@@ -8,9 +8,15 @@ package com.vrris.pacs.audit;
  * tren path nhung audit_log.entity_id phai la report.id, entity_type = REPORT).
  *
  * Dung ThreadLocal vi AuditLogAspect.around() doc gia tri NGAY SAU joinPoint.proceed() tra ve,
- * CUNG thread/transaction (dong bo, xem Javadoc AuditLogAspect) - khong di qua request/thread khac.
- * AuditLogAspect LUON doc (consume*) dung mot lan cho moi key, ca khi method @Audited nem exception,
- * de khong de sot gia tri sang request sau tren thread bi servlet container tai su dung.
+ * CUNG thread (dong bo, xem Javadoc AuditLogAspect) - khong di qua request/thread khac.
+ *
+ * Pham vi: moi lan goi method @Audited co pham vi rieng. AuditLogAspect goi {@link #suspend()} khi
+ * vao method (cat gia tri cua method @Audited ben ngoai, neu dang long nhau - vi du
+ * ImagingOrderServiceImpl.create goi StudyService.addToOrder) va {@link #restore(Scope)} trong
+ * finally khi ra - nen: (1) method trong khong doc nham/khong xoa mat gia tri cua method ngoai;
+ * (2) sau method ngoai cung, moi key deu duoc xoa, ke ca khi method nem exception hay khi id da lay
+ * duoc tu tham so (truoc day key khong duoc consume trong truong hop do -> ro sang request sau tren
+ * thread bi servlet container tai su dung).
  *
  * service.impl KHONG tu ghi audit_log qua class nay (van la AOP, dong bo, dong quy uoc
  * doc/15-kien-truc-backend.md muc 10) - chi cung cap du lieu cho AuditLogAspect dung.
@@ -24,6 +30,10 @@ public final class AuditContext {
     private static final ThreadLocal<Object> AFTER = new ThreadLocal<>();
 
     private AuditContext() {
+    }
+
+    /** Gia tri dang dat cua method @Audited ben ngoai, cat tam khi vao method @Audited long ben trong. */
+    record Scope(Long patientId, Long entityId, String actorUsername, Object before, Object after) {
     }
 
     public static void recordActorUsername(String username) {
@@ -48,29 +58,54 @@ public final class AuditContext {
         AFTER.set(snapshot);
     }
 
-    static Long consumePatientId() {
-        return consume(PATIENT_ID);
+    static Long patientId() {
+        return PATIENT_ID.get();
     }
 
-    static Long consumeEntityId() {
-        return consume(ENTITY_ID);
+    static Long entityId() {
+        return ENTITY_ID.get();
     }
 
-    public static String consumeActorUsername() {
-        return consume(ACTOR_USERNAME);
+    static String actorUsername() {
+        return ACTOR_USERNAME.get();
     }
 
-    static Object consumeBefore() {
-        return consume(BEFORE);
+    static Object before() {
+        return BEFORE.get();
     }
 
-    static Object consumeAfter() {
-        return consume(AFTER);
+    static Object after() {
+        return AFTER.get();
     }
 
-    private static <T> T consume(ThreadLocal<T> threadLocal) {
-        T value = threadLocal.get();
-        threadLocal.remove();
-        return value;
+    /** Cat gia tri hien tai (cua method ngoai, neu co) va xoa sach cho method sap chay. */
+    static Scope suspend() {
+        Scope outer = new Scope(PATIENT_ID.get(), ENTITY_ID.get(), ACTOR_USERNAME.get(), BEFORE.get(), AFTER.get());
+        clear();
+        return outer;
+    }
+
+    /** Xoa gia tri cua method vua xong va tra lai gia tri cua method ngoai (null o tang ngoai cung). */
+    static void restore(Scope outer) {
+        clear();
+        set(PATIENT_ID, outer.patientId());
+        set(ENTITY_ID, outer.entityId());
+        set(ACTOR_USERNAME, outer.actorUsername());
+        set(BEFORE, outer.before());
+        set(AFTER, outer.after());
+    }
+
+    private static void clear() {
+        PATIENT_ID.remove();
+        ENTITY_ID.remove();
+        ACTOR_USERNAME.remove();
+        BEFORE.remove();
+        AFTER.remove();
+    }
+
+    private static <T> void set(ThreadLocal<T> threadLocal, T value) {
+        if (value != null) {
+            threadLocal.set(value);
+        }
     }
 }

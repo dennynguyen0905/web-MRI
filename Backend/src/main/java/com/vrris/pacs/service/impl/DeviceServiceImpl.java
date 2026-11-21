@@ -18,11 +18,13 @@ public class DeviceServiceImpl implements DeviceService {
     private final DeviceDao deviceDao;
     private final DeviceMapper deviceMapper;
 
+    // Khởi tạo service với DAO và mapper của máy chụp.
     public DeviceServiceImpl(DeviceDao deviceDao, DeviceMapper deviceMapper) {
         this.deviceDao = deviceDao;
         this.deviceMapper = deviceMapper;
     }
 
+    // Lấy danh sách máy chụp, có thể lọc theo khoa và modality.
     @Override
     @Transactional(readOnly = true)
     public List<DeviceResponse> listDevices(Long departmentId, String modality) {

@@ -38,7 +38,10 @@ export function ReportModal({ open, onClose, row, user, onChanged }: {
   onChanged: (nextStatus?: StudyStatus) => void
 }) {
   const studyId = row?.study.id ?? null
-  const { report, history, loading, saving, error, saveDraft, transition } = useStudyReport(studyId, open)
+  // Thao tác nhiều bước lỗi giữa chừng (ví dụ T3 xong, lưu nháp lỗi) vẫn báo trạng thái mới lên
+  // worklist để màn hình không kẹt ở trạng thái cũ.
+  const { report, history, loading, saving, error, saveDraft, transition } =
+    useStudyReport(studyId, open, nextStatus => onChanged(nextStatus))
 
   const [draft, setDraft] = useState<ReportDraft>(() => draftFromReport(null))
   const [reason, setReason] = useState('')

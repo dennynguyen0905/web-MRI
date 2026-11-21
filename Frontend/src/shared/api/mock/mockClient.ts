@@ -10,7 +10,7 @@ import type {
   StatusHistoryEntryDto, StudyDto, TransitionRequestDto, TransitionResultDto, WorklistRowDto,
 } from '../dto'
 import { TRANSITIONS } from '@/shared/lib/stateMachine'
-import type { ReportStatus, StudyStatus } from '@/shared/lib/types'
+import type { RoleCode, StudyStatus } from '@/shared/lib/types'
 import {
   CLINICAL_SNAPSHOTS, DEMO_PASSWORD, DEPARTMENTS, DEVICES, IMAGING_ORDERS, PATIENTS, REPORTS,
   SERVICE_ITEMS, STATUS_HISTORY, STUDIES, USERS, userRef,
@@ -35,6 +35,36 @@ let patientSeq = patients.length + 1
 let orderSeq = orders.length + 1
 let studySeq = studies.length + 1
 let currentUserId: number | null = null
+
+const refill = <T extends object>(target: T[], source: readonly T[]) => {
+  target.splice(0, target.length, ...source.map(x => ({ ...x })))
+}
+
+/**
+ * Đưa mock server về đúng seed ban đầu và đăng xuất. Chỉ dùng trong test: trạng thái mock là
+ * biến cấp module (dùng chung mọi `createMockClient()`), test nào sửa dữ liệu phải gọi hàm này
+ * trong `beforeEach` để không phụ thuộc thứ tự chạy.
+ */
+export function resetMockState(): void {
+  refill(patients, PATIENTS)
+  refill(orders, IMAGING_ORDERS)
+  refill(studies, STUDIES)
+  refill(reports, REPORTS)
+  refill(history, STATUS_HISTORY)
+  historySeq = history.length + 1
+  reportSeq = reports.length + 1
+  patientSeq = patients.length + 1
+  orderSeq = orders.length + 1
+  studySeq = studies.length + 1
+  currentUserId = null
+}
+
+/**
+ * CHỈ DÙNG TRONG TEST: truy cập thẳng dữ liệu mock để dựng tình huống không tạo được qua API
+ * (ví dụ ca APPROVING mất báo cáo do dữ liệu lệch — backend vẫn phải chặn T7). Gọi
+ * `resetMockState()` sau đó để trả lại seed.
+ */
+export const mockDbForTests = { studies, reports }
 
 /* ------------------------------------------------------------------ Tiện ích */
 
@@ -109,8 +139,13 @@ function timeFieldValue(study: StudyDto, order: { ordered_at: string }, field: s
 
 function requireAuth() {
   if (currentUserId == null) {
-    throw new ApiError(401, 'UNAUTHENTICATED', 'Chưa đăng nhập hoặc phiên đã hết hạn.')
+    // Cùng mã với security.RestAuthenticationEntryPoint của backend.
+    throw new ApiError(401, 'UNAUTHORIZED', 'Chưa đăng nhập hoặc token không hợp lệ.')
   }
+}
+
+function hasRole(role: RoleCode): boolean {
+  return USERS.find(u => u.id === currentUserId)?.roles.includes(role) ?? false
 }
 
 /* --------------------------------------------------------------- Định tuyến */
@@ -200,67 +235,191 @@ function listStudies(query: Record<string, QueryValue>): PageDto<WorklistRowDto>
   }
 }
 
+/* -------------------------------------------- Chuyển trạng thái (khớp backend) */
+
+/*
+ * Bám đúng `service/impl/StudyServiceImpl.transition` + `applyT2..applyT10` của backend: cùng
+ * HTTP status, cùng mã lỗi, cùng thứ tự kiểm (vai trò → người giữ ca → điều kiện → lý do), để
+ * Frontend ở chế độ `mock` gặp đúng những lỗi sẽ gặp ở chế độ `live`.
+ */
+
+const forbidden = (message: string) => new ApiError(403, 'FORBIDDEN', message)
+
+function requireRole(allowed: boolean, message: string) {
+  if (!allowed) throw forbidden(message)
+}
+
+function requireReason(reason: string | null | undefined, message: string) {
+  if (!reason?.trim()) throw new ApiError(422, 'TRANSITION_REASON_REQUIRED', message)
+}
+
+const userIdOf = (ref: { id?: number | null } | null | undefined): number | null => ref?.id ?? null
+
+function requireReadingHolder(study: StudyDto, callerId: number, message: string) {
+  if (userIdOf(study.reading_user) !== callerId) {
+    throw new ApiError(403, 'REPORT_NOT_HOLDER', message)
+  }
+}
+
+function requireApprovingHolder(study: StudyDto, callerId: number, message: string) {
+  if (userIdOf(study.approving_user) !== callerId) {
+    throw new ApiError(403, 'NOT_APPROVING_HOLDER', message)
+  }
+}
+
+function requireApproverNotReader(study: StudyDto, report: ReportDto | undefined, callerId: number) {
+  if (userIdOf(study.reading_user) === callerId || userIdOf(report?.created_by) === callerId) {
+    throw new ApiError(403, 'APPROVER_CANNOT_BE_READER', 'Người duyệt không được là người đọc báo cáo.')
+  }
+}
+
+function newDraftReport(studyId: number, version: number, authorId: number, template?: ReportDto): ReportDto {
+  const report: ReportDto = {
+    id: reportSeq++,
+    study_id: studyId,
+    version,
+    status: 'DRAFT',
+    origin: template?.origin ?? 'MANUAL',
+    technique: template?.technique ?? null,
+    findings: template?.findings ?? null,
+    diagnosis: template?.diagnosis ?? null,
+    conclusion: template?.conclusion ?? null,
+    recommendation: template?.recommendation ?? null,
+    created_by: userRef(authorId),
+    created_at: new Date().toISOString(),
+    approved_by: null,
+    approved_at: null,
+  }
+  reports.push(report)
+  return report
+}
+
 function applyTransition(studyId: number, body: TransitionRequestDto): TransitionResultDto {
   const study = studies.find(s => s.id === studyId)
   if (!study) throw new ApiError(404, 'STUDY_NOT_FOUND', 'Không tìm thấy ca chụp.')
 
+  const callerId = currentUserId!
+  const isAdmin = hasRole('ADMIN')
+  const isTech = hasRole('TECHNICIAN')
+  const isRadiologist = hasRole('RADIOLOGIST')
+  const isApprover = hasRole('APPROVER')
+  if (!isAdmin && !isTech && !isRadiologist && !isApprover) {
+    // Backend chặn ở @PreAuthorize(TRANSITION_ROLES) — CLINICIAN không chuyển trạng thái.
+    throw forbidden('Không có quyền chuyển trạng thái ca chụp.')
+  }
+
   const from = study.status
   const to = body.to_status
-  const actor = userRef(currentUserId!)
-  const now = new Date().toISOString()
   const transition = TRANSITIONS.find(t => t.from === from && t.to === to)
-
   if (!transition) {
-    throw new ApiError(
-      422, 'STUDY_INVALID_TRANSITION',
-      `Không chuyển được từ ${from} sang ${to}.`)
+    throw new ApiError(409, 'INVALID_TRANSITION', `Không cho phép chuyển trạng thái từ ${from} sang ${to}.`)
   }
 
-  // Nhánh ngoại lệ (bỏ dở, trả lại, mở lại, hủy) bắt buộc có lý do — SM-11, `openapi.yaml`
-  // ghi rõ "chuỗi chỉ có khoảng trắng bị từ chối".
-  if (transition.exceptional && !body.reason?.trim()) {
-    throw new ApiError(422, 'TRANSITION_REASON_REQUIRED', 'Thao tác này bắt buộc nhập lý do.')
-  }
-
-  // T2: chỉ đánh dấu được khi PACS đã có ảnh, tức là ca đã có `study_instance_uid` (SM-12).
-  if (transition.code === 'T2' && !study.study_instance_uid) {
-    throw new ApiError(
-      422, 'STUDY_NO_DICOM_IMAGE',
-      'Ca chụp chưa có StudyInstanceUID — chưa có ảnh trong PACS để đánh dấu đã nhận.')
-  }
-
-  // T10: chỉ hủy được ca chưa có ảnh (RBAC-12).
-  if (transition.code === 'T10' && study.study_instance_uid) {
-    throw new ApiError(
-      422, 'STUDY_ALREADY_HAS_IMAGE',
-      'Ca chụp đã có ảnh trong PACS nên không hủy được.')
-  }
-
+  const now = new Date().toISOString()
   let report = currentReportOf(studyId)
 
-  // T5: chốt đọc bắt buộc có kỹ thuật và kết luận (SM-05).
-  if (transition.code === 'T5') {
-    if (!report || !report.technique?.trim() || !report.conclusion?.trim()) {
-      throw new ApiError(
-        422, 'REPORT_INCOMPLETE',
-        'Kỹ thuật và kết luận không được để trống khi chốt đọc.')
-    }
-  }
+  switch (transition.code) {
+    case 'T2':
+      requireRole(isAdmin || isTech, 'Chỉ KTV và Admin được chuyển SCHEDULED → UNREAD.')
+      if (!study.study_instance_uid) {
+        throw new ApiError(422, 'STUDY_NO_DICOM_IMAGE', 'Chưa có study_instance_uid, không thể chuyển sang UNREAD.')
+      }
+      study.status = 'UNREAD'
+      // openapi Study.completed_at: "Kết thúc chụp, đặt khi chuyển SCHEDULED → UNREAD" (khớp backend).
+      study.completed_at ??= now
+      break
 
-  study.status = to
-  if (to === 'READING' && from === 'UNREAD') {
-    study.started_at ??= now
-    study.reading_user = actor
-  }
-  if (to === 'READING' && (from === 'APPROVING' || from === 'APPROVED')) {
-    study.approving_user = null
-  }
-  if (to === 'UNREAD' && from === 'READING') study.reading_user = null
-  if (to === 'UNREAD' && from === 'SCHEDULED') study.completed_at ??= now
-  if (to === 'APPROVING') study.approving_user = actor
-  if (to === 'APPROVED') {
-    study.approving_user = actor
-    study.completed_at = now
+    case 'T3':
+      requireRole(isRadiologist, 'Chỉ BS CĐHA được mở ca để đọc.')
+      if (study.reading_user && userIdOf(study.reading_user) !== callerId) {
+        throw new ApiError(409, 'STUDY_LOCKED_BY_ANOTHER', 'Ca chụp đang được mở đọc bởi bác sĩ khác.')
+      }
+      study.status = 'READING'
+      study.reading_user = userRef(callerId)
+      // started_at/completed_at là thời gian CHỤP — T3 (mở đọc) không đặt started_at (khớp backend).
+      // Chỉ tạo DRAFT v1 khi chưa có báo cáo; bản RETURNED/DRAFT có sẵn giữ nguyên trạng thái.
+      if (!report) report = newDraftReport(studyId, 1, callerId)
+      else if (report.status === 'DRAFT') report.created_by = userRef(callerId)
+      break
+
+    case 'T4':
+      if (!isAdmin) {
+        requireRole(isRadiologist, 'Không có quyền giải phóng khóa hoặc bỏ dở ca chụp.')
+        requireReadingHolder(study, callerId, 'Chỉ người đang giữ ca được bỏ dở.')
+      }
+      requireReason(body.reason, 'T4 (bỏ dở) bắt buộc có lý do.')
+      study.status = 'UNREAD'
+      study.reading_user = null
+      break
+
+    case 'T5':
+      requireRole(isRadiologist, 'Chỉ BS CĐHA được chốt đọc ca chụp.')
+      requireReadingHolder(study, callerId, 'Chỉ người đang giữ ca được chốt đọc.')
+      if (!report || !report.technique?.trim() || !report.conclusion?.trim()) {
+        throw new ApiError(422, 'REPORT_INCOMPLETE', 'Kỹ thuật và kết luận không được để trống khi chốt đọc.')
+      }
+      study.status = 'READ'
+      report.status = 'FINAL'
+      break
+
+    case 'T6':
+      requireRole(isApprover, 'Chỉ BS duyệt được mở ca để duyệt.')
+      requireApproverNotReader(study, report, callerId)
+      study.status = 'APPROVING'
+      study.approving_user = userRef(callerId)
+      break
+
+    case 'T7':
+      if (isAdmin && !isApprover) {
+        throw new ApiError(403, 'ADMIN_CANNOT_APPROVE', 'Admin không được duyệt báo cáo.')
+      }
+      requireRole(isApprover, 'Chỉ BS duyệt được duyệt ca chụp.')
+      requireApprovingHolder(study, callerId, 'Chỉ người đã mở duyệt được duyệt ca chụp này.')
+      requireApproverNotReader(study, report, callerId)
+      if (!report) {
+        throw new ApiError(422, 'REPORT_INCOMPLETE', 'Ca chụp chưa có báo cáo, không thể duyệt.')
+      }
+      study.status = 'APPROVED'
+      // Không ghi đè completed_at (thời gian chụp, đặt ở T2) — khớp backend.
+      report.status = 'APPROVED'
+      report.approved_by = userRef(callerId)
+      report.approved_at = now
+      break
+
+    case 'T8':
+      requireRole(isApprover, 'Chỉ BS duyệt được trả lại ca chụp để sửa.')
+      requireApprovingHolder(study, callerId, 'Chỉ người đang mở duyệt được trả lại ca chụp này.')
+      requireReason(body.reason, 'T8 (trả lại) bắt buộc có lý do.')
+      study.status = 'READING'
+      study.approving_user = null
+      if (report) report.status = 'RETURNED'
+      break
+
+    case 'T9':
+      requireRole(isAdmin || isApprover, 'Chỉ Admin hoặc BS duyệt được mở lại ca đã duyệt.')
+      requireReason(body.reason, 'T9 (mở lại ca đã duyệt) bắt buộc có lý do.')
+      study.status = 'READING'
+      study.approving_user = null
+      // Giữ completed_at: đó là thời gian kết thúc chụp, không phải thời điểm duyệt (khớp backend).
+      if (report) {
+        const authorId = userIdOf(study.reading_user) ?? callerId
+        report = newDraftReport(studyId, report.version + 1, authorId, report)
+      }
+      break
+
+    case 'T10':
+      requireRole(isAdmin || isTech, 'Chỉ Admin và KTV được hủy ca chụp.')
+      if (study.study_instance_uid) {
+        throw new ApiError(
+          422, 'CANNOT_CANCEL_STUDY_WITH_IMAGE',
+          'Không thể hủy ca chụp đã có ảnh trong PACS (study_instance_uid khác null).')
+      }
+      requireReason(body.reason, 'T10 (hủy ca chụp) bắt buộc có lý do.')
+      study.status = 'CANCELLED'
+      break
+
+    default:
+      throw new ApiError(409, 'INVALID_TRANSITION', `Không cho phép chuyển trạng thái từ ${from} sang ${to}.`)
   }
 
   const entry: StatusHistoryEntryDto = {
@@ -269,53 +428,12 @@ function applyTransition(studyId: number, body: TransitionRequestDto): Transitio
     from_status: from,
     to_status: to,
     transition_code: transition.code,
-    changed_by: actor,
+    changed_by: userRef(callerId),
     changed_at: now,
-    reason: body.reason ?? null,
-    note: body.note ?? null,
+    reason: body.reason?.trim() || null,
+    note: body.note?.trim() || null,
   }
   history.push(entry)
-
-  // Trạng thái báo cáo đi kèm bước chuyển:
-  // - T3 (UNREAD -> READING): tạo DRAFT v1 nếu chưa có
-  // - T5 (READING -> READ): DRAFT/RETURNED -> FINAL (giữ cùng version, SM-03)
-  // - T7 (APPROVING -> APPROVED): FINAL -> APPROVED
-  // - T8 (APPROVING -> READING): FINAL -> RETURNED (giữ cùng version, SM-03)
-  // - T9 (APPROVED -> READING): giữ bản APPROVED cũ, tạo bản DRAFT mới version + 1 (SM-04)
-  const nextReportStatus: ReportStatus | null =
-    to === 'READ' ? 'FINAL'
-      : to === 'APPROVED' ? 'APPROVED'
-        : to === 'READING' ? (from === 'APPROVING' ? 'RETURNED' : 'DRAFT')
-          : null
-
-  if (nextReportStatus) {
-    if (!report) {
-      report = {
-        id: reportSeq++, study_id: studyId, version: 1, status: nextReportStatus, origin: 'MANUAL',
-        technique: null, findings: null, diagnosis: null, conclusion: null, recommendation: null,
-        created_by: actor, created_at: now, approved_by: null, approved_at: null,
-      }
-      reports.push(report)
-    } else if (from === 'APPROVED' && to === 'READING') {
-      report = {
-        ...report,
-        id: reportSeq++,
-        version: report.version + 1,
-        status: 'DRAFT',
-        created_by: study.reading_user ?? actor,
-        created_at: now,
-        approved_by: null,
-        approved_at: null,
-      }
-      reports.push(report)
-    } else {
-      report.status = nextReportStatus
-    }
-    if (to === 'APPROVED') {
-      report.approved_by = actor
-      report.approved_at = now
-    }
-  }
 
   return { study, history_entry: entry, report: report ?? null }
 }
@@ -373,6 +491,19 @@ function createPatient(body: Record<string, unknown>) {
 function updatePatient(patientId: number, body: Record<string, unknown>) {
   const patient = patients.find(p => p.id === patientId)
   if (!patient) throw new ApiError(404, 'PATIENT_NOT_FOUND', 'Không tìm thấy bệnh nhân.')
+
+  // Khớp PatientServiceImpl.update: ngoài ADMIN/TECHNICIAN, gửi BẤT KỲ trường định danh nào
+  // (khác null) là bị từ chối — kể cả khi giá trị không đổi. Frontend vì vậy chỉ gửi trường đã đổi.
+  const identityFields = ['full_name', 'date_of_birth', 'dob_precision', 'gender', 'social_insurance_no']
+  if (!hasRole('ADMIN') && !hasRole('TECHNICIAN') && identityFields.some(f => body[f] != null)) {
+    throw new ApiError(403, 'FORBIDDEN', 'CLINICIAN không được sửa các trường định danh bệnh nhân (D24).')
+  }
+  const bhxh = str(body.social_insurance_no)
+  if (bhxh && patients.some(p => p.id !== patientId && p.social_insurance_no === bhxh)) {
+    throw new ApiError(
+      409, 'PATIENT_SUSPECTED_DUPLICATE',
+      `Mã BHXH "${bhxh}" đã gắn với một bệnh nhân khác — cần đối chiếu.`)
+  }
 
   // PATCH là cập nhật từng phần: chỉ ghi đè trường thực sự được gửi lên.
   if ('full_name' in body && str(body.full_name)) patient.full_name = str(body.full_name)!
@@ -518,6 +649,11 @@ function updateStudy(studyId: number, body: Record<string, unknown>) {
   const study = studies.find(s => s.id === studyId)
   if (!study) throw new ApiError(404, 'STUDY_NOT_FOUND', 'Không tìm thấy ca chụp.')
 
+  // Khớp StudyServiceImpl.update: chỉ TECHNICIAN/ADMIN được đặt study_instance_uid.
+  if (body.study_instance_uid != null && !hasRole('ADMIN') && !hasRole('TECHNICIAN')) {
+    throw new ApiError(403, 'FORBIDDEN', 'Chỉ KTV và Admin được đặt study_instance_uid.')
+  }
+
   if ('service_item_id' in body && body.service_item_id != null) {
     const id = Number(body.service_item_id)
     if (!SERVICE_ITEMS.some(s => s.id === id)) {
@@ -599,7 +735,7 @@ export function createMockClient(): HttpClient {
       const { username, password } = req.body as { username: string; password: string }
       const user = USERS.find(u => u.username === username.trim().toLowerCase())
       if (!user || password !== DEMO_PASSWORD) {
-        throw new ApiError(401, 'BAD_CREDENTIALS', 'Tên đăng nhập hoặc mật khẩu không đúng.')
+        throw new ApiError(401, 'UNAUTHORIZED', 'Tên đăng nhập hoặc mật khẩu không đúng.')
       }
       currentUserId = user.id
       const res: LoginResponseDto = {
@@ -683,23 +819,26 @@ export function createMockClient(): HttpClient {
         return r
       }
       if (method === 'PUT') {
+        // Cùng thứ tự kiểm với ReportServiceImpl.updateCurrent của backend.
         const study = studies.find(s => s.id === id)
         if (!study) throw new ApiError(404, 'STUDY_NOT_FOUND', 'Không tìm thấy ca chụp.')
+        const r = currentReportOf(id)
+        if (!r) throw new ApiError(404, 'REPORT_NOT_FOUND', `Ca chụp id=${id} chưa có báo cáo.`)
+        if (study.reading_user?.id == null || study.reading_user.id !== currentUserId) {
+          throw new ApiError(403, 'REPORT_NOT_HOLDER', 'Chỉ người đang giữ ca (đang đọc) được lưu báo cáo.')
+        }
         if (study.status !== 'READING') {
-          throw new ApiError(409, 'STUDY_NOT_READING', 'Chỉ sửa được báo cáo khi ca đang ở trạng thái Đang đọc.')
+          throw new ApiError(409, 'STUDY_NOT_READING', 'Ca chụp không ở trạng thái READING.')
+        }
+        if (r.status !== 'DRAFT' && r.status !== 'RETURNED') {
+          throw new ApiError(409, 'REPORT_NOT_DRAFT', 'Báo cáo hiện hành không còn là DRAFT hoặc RETURNED.')
         }
         const body = req.body as ReportWriteDto
-        let r = currentReportOf(id)
-        if (!r) {
-          r = {
-            id: reportSeq++, study_id: id, version: 1, status: 'DRAFT', origin: 'MANUAL',
-            technique: null, findings: null, diagnosis: null, conclusion: null, recommendation: null,
-            created_by: userRef(currentUserId!), created_at: new Date().toISOString(),
-            approved_by: null, approved_at: null,
-          }
-          reports.push(r)
-        }
-        Object.assign(r, body)
+        r.technique = body.technique ?? null
+        r.findings = body.findings ?? null
+        r.diagnosis = body.diagnosis ?? null
+        r.conclusion = body.conclusion ?? null
+        r.recommendation = body.recommendation ?? null
         return r
       }
     }
@@ -780,7 +919,9 @@ export function createMockClient(): HttpClient {
     if ((m = matchPath('/imaging-orders/:id/clinical-snapshot', path)) && method === 'GET') {
       const id = Number(m.id)
       const payload = CLINICAL_SNAPSHOTS[id]
-      if (!payload) throw new ApiError(404, 'SNAPSHOT_NOT_FOUND', 'Chỉ định này chưa có snapshot lâm sàng.')
+      if (!payload) {
+        throw new ApiError(404, 'CLINICAL_SNAPSHOT_NOT_FOUND', `Chỉ định id=${id} chưa có dữ liệu lâm sàng.`)
+      }
       const res: ClinicalSnapshotDto = {
         order_id: id,
         source: 'SEED',

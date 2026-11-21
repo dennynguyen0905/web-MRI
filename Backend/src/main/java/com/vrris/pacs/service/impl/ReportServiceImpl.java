@@ -9,6 +9,8 @@ import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dto.request.ReportWriteRequest;
 import com.vrris.pacs.dto.response.ReportResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.ReportStatus;
+import com.vrris.pacs.enu.StudyStatus;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.mapper.ReportMapper;
 import com.vrris.pacs.model.AppUser;
@@ -30,8 +32,8 @@ import static com.vrris.pacs.service.impl.ServiceSupport.currentUser;
 @Service
 public class ReportServiceImpl implements ReportService {
 
-    private static final String STATUS_READING = "READING";
-    private static final Set<String> EDITABLE_REPORT_STATUSES = Set.of("DRAFT", "RETURNED");
+    private static final Set<String> EDITABLE_REPORT_STATUSES =
+            Set.of(ReportStatus.DRAFT.name(), ReportStatus.RETURNED.name());
 
     private final ReportDao reportDao;
     private final StudyDao studyDao;
@@ -39,6 +41,7 @@ public class ReportServiceImpl implements ReportService {
     private final AppUserDao appUserDao;
     private final ReportMapper reportMapper;
 
+    // Khởi tạo service với các DAO liên quan (báo cáo, ca chụp, chỉ định, người dùng) và mapper báo cáo.
     public ReportServiceImpl(ReportDao reportDao, StudyDao studyDao, ImagingOrderDao imagingOrderDao,
                               AppUserDao appUserDao, ReportMapper reportMapper) {
         this.reportDao = reportDao;
@@ -48,24 +51,35 @@ public class ReportServiceImpl implements ReportService {
         this.reportMapper = reportMapper;
     }
 
+    /**
+     * Doc NHIEU version bao cao cua mot ca - khong co mot report.id duy nhat de lam entity_id, nen
+     * ghi entity_type = STUDY, entity_id = studyId (quy uoc: entity_id luon la id cua dung loai
+     * entity_type; truoc day ghi entity_type = REPORT nhung entity_id lai la studyId).
+     */
+    // Lấy toàn bộ các phiên bản báo cáo của một ca chụp.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "REPORT", entityIdArg = 0)
+    @Audited(action = AuditAction.READ, entityType = "STUDY", entityIdArg = 0)
     public List<ReportResponse> listVersions(Long studyId) {
         Study study = findStudyOrThrow(studyId);
         AuditContext.recordPatientId(resolvePatientId(study));
         return reportDao.findAllByStudyId(studyId).stream().map(reportMapper::toResponse).toList();
     }
 
+    /** Doc bao cao hien hanh: entity_type = REPORT, entity_id = report.id (khong phai studyId). */
+    // Lấy phiên bản báo cáo hiện hành (mới nhất) của một ca chụp.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "REPORT", entityIdArg = 0)
+    @Audited(action = AuditAction.READ, entityType = "REPORT")
     public ReportResponse getCurrent(Long studyId) {
         Study study = findStudyOrThrow(studyId);
+        Report current = findCurrentOrThrow(studyId);
         AuditContext.recordPatientId(resolvePatientId(study));
-        return reportMapper.toResponse(findCurrentOrThrow(studyId));
+        AuditContext.recordEntityId(current.getId());
+        return reportMapper.toResponse(current);
     }
 
+    // Lưu nội dung báo cáo hiện hành; chỉ cho người đang giữ ca (readingUserId) khi ca ở READING và báo cáo đang DRAFT/RETURNED.
     @Override
     @Transactional
     @Audited(action = AuditAction.UPDATE, entityType = "REPORT")
@@ -78,7 +92,7 @@ public class ReportServiceImpl implements ReportService {
             throw new ApiException(HttpStatus.FORBIDDEN, "REPORT_NOT_HOLDER",
                     "Chi nguoi dang giu ca (dang doc, da mo UNREAD -> READING) duoc luu bao cao");
         }
-        if (!STATUS_READING.equals(study.getStatus())) {
+        if (!StudyStatus.READING.name().equals(study.getStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, "STUDY_NOT_READING",
                     "Ca chup khong o trang thai READING");
         }
@@ -105,24 +119,28 @@ public class ReportServiceImpl implements ReportService {
         return reportMapper.toResponse(saved);
     }
 
+    // Tìm ca chụp theo id, báo lỗi 404 nếu không tồn tại.
     private Study findStudyOrThrow(Long studyId) {
         return studyDao.findById(studyId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "STUDY_NOT_FOUND",
                         "Khong tim thay ca chup id=" + studyId));
     }
 
+    // Tìm báo cáo hiện hành của một ca chụp, báo lỗi 404 nếu ca chưa có báo cáo nào.
     private Report findCurrentOrThrow(Long studyId) {
         return reportDao.findCurrentByStudyId(studyId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "REPORT_NOT_FOUND",
                         "Ca chup id=" + studyId + " chua co bao cao"));
     }
 
+    // Tra ra id bệnh nhân của một ca chụp thông qua chỉ định chụp liên quan.
     private Long resolvePatientId(Study study) {
         return imagingOrderDao.findById(study.getOrderId())
                 .map(ImagingOrder::getPatientId)
                 .orElse(null);
     }
 
+    // Chụp lại (snapshot) các trường nội dung của báo cáo để dùng làm giá trị trước/sau khi ghi audit_log.
     private Map<String, Object> snapshot(Report report) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("status", report.getStatus());

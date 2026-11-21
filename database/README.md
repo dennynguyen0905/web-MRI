@@ -70,6 +70,7 @@ Bệnh nhân mẫu mã `TEST0001`…`TEST0008`, tên có hậu tố "Giả", là
 | `V6__clinical_snapshot.sql` | `clinical_snapshot` |
 | `V7__seed_demo_data.sql` | chỉ có dữ liệu giả, không tạo bảng |
 | `V8__rbac_and_demo_extras.sql` | chỉ bổ sung dữ liệu giả còn thiếu (tài khoản demo thứ hai, `his_order_id` khớp `his-mock/orders.json`, một ca `CANCELLED`) — không tạo bảng. Xem `doc/12-seed-data-va-kich-ban-demo.md` mục 3.2 |
+| `V9__optimistic_lock_and_daily_sequence.sql` | thêm cột `row_version` (khóa lạc quan) cho `study`, `report`, `imaging_order`; tạo bảng `daily_sequence` sinh `accession_number`/`order_code` nguyên tử, khởi tạo từ dữ liệu đang có. Xem `doc/02-erd.md` mục 4.12. 🟡 Mới chạy trên MySQL 8.0.36 (Testcontainers), **chưa chạy trên MySQL 8.4.9 của `docker compose`** |
 
 Ngoài 14 bảng trên, Flyway tự tạo thêm bảng `flyway_schema_history` để ghi nhớ đã chạy file nào. Đừng sửa bảng này.
 
@@ -101,7 +102,7 @@ Backend nối vào `jdbc:mysql://localhost:3307/vr_ris` bằng user `ris`. **C�
 | Dev local (vòng hằng ngày) | **Docker Compose này** (`database/docker-compose.yml`, như từ trước tới nay) | `spring.flyway.enabled=false` (`Backend/src/main/resources/application.yml`, không đổi) |
 | Cụm Kubernetes (local, tuần 3 và 8) | **Backend tự chạy** lúc khởi động — không có container flyway riêng như docker-compose trong k8s | Profile `k8s` (`Backend/src/main/resources/application-k8s.yml`): `spring.flyway.enabled=true`, đọc `classpath:db/migration` |
 
-Dù chạy ở đâu, cả hai đều dùng **đúng nội dung** `database/migrations/` (nguồn duy nhất): Docker Compose đọc trực tiếp qua volume; backend ở k8s đọc bản mà `maven-resources-plugin` (`Backend/pom.xml`) copy từ `database/migrations/` vào `target/classes/db/migration` lúc build — không có file `.sql` nào được chép tay/commit trùng. Cả hai cũng dùng chung bảng `flyway_schema_history` (trong cùng schema `vr_ris`) nên không bị lệch version. Test của backend (`Backend/src/test/resources/application.yml`) vẫn là cách thứ ba, riêng: tự chạy Flyway nhưng trỏ `filesystem:../database/migrations`, chỉ tới `V6` (không seed `V7`/`V8`) — không đổi.
+Dù chạy ở đâu, cả hai đều dùng **đúng nội dung** `database/migrations/` (nguồn duy nhất): Docker Compose đọc trực tiếp qua volume; backend ở k8s đọc bản mà `maven-resources-plugin` (`Backend/pom.xml`) copy từ `database/migrations/` vào `target/classes/db/migration` lúc build — không có file `.sql` nào được chép tay/commit trùng. Cả hai cũng dùng chung bảng `flyway_schema_history` (trong cùng schema `vr_ris`) nên không bị lệch version. Test của backend (`Backend/src/test/resources/application.yml`) vẫn là cách thứ ba, riêng: tự chạy Flyway nhưng trỏ `filesystem:../database/migrations`, chạy tới `V6`, bỏ qua seed `V7`/`V8`, rồi chạy tiếp `V9` trở đi (`Backend/src/test/java/com/vrris/pacs/support/SchemaMigrationsAfterSeedConfig.java`, từ 2026-11-21).
 
 ## Trạng thái kiểm tra (2026-11-07, cập nhật từ 2026-11-05)
 

@@ -4,9 +4,14 @@ import com.vrris.pacs.dao.BaseDao;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Order;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -15,6 +20,9 @@ import java.util.Optional;
  * Truy van dong (bo loc worklist, cay khoa...) viet them o tung XxxDaoImpl bang Criteria API.
  */
 public abstract class AbstractHibernateDao<T, ID> implements BaseDao<T, ID> {
+
+    /** Ky tu escape dung chung cho moi menh de LIKE tim kiem tu do (xem {@link #containsPattern}). */
+    protected static final char LIKE_ESCAPE = '\\';
 
     protected final EntityManager entityManager;
     private final Class<T> entityClass;
@@ -38,16 +46,20 @@ public abstract class AbstractHibernateDao<T, ID> implements BaseDao<T, ID> {
         return entityManager.createQuery(query).getResultList();
     }
 
+    /**
+     * Id sinh boi IDENTITY (xem model/*.java): id == null -> entity moi -> persist. Id khac null ->
+     * entity da co trong DB (managed hoac detached) -> merge. Truoc day dua vao
+     * entityManager.contains(): entity detached co id bi persist nham va nem EntityExistsException.
+     * Tra ve ban managed - noi goi phai dung gia tri tra ve, khong dung tham so truyen vao.
+     */
     @Override
     public T save(T entity) {
-        // Id sinh boi IDENTITY (xem model/*.java): entity moi (chua persist) luon la transient,
-        // entityManager.contains(...) tra false -> persist; entity da lay ra tu DB roi sua ->
-        // contains tra true -> merge. Du voi nhu cau CRUD don gian cua skeleton nay.
-        if (entityManager.contains(entity)) {
-            return entityManager.merge(entity);
+        Object id = entityManager.getEntityManagerFactory().getPersistenceUnitUtil().getIdentifier(entity);
+        if (id == null) {
+            entityManager.persist(entity);
+            return entity;
         }
-        entityManager.persist(entity);
-        return entity;
+        return entityManager.merge(entity);
     }
 
     @Override
@@ -61,5 +73,35 @@ public abstract class AbstractHibernateDao<T, ID> implements BaseDao<T, ID> {
 
     protected Class<T> entityClass() {
         return entityClass;
+    }
+
+    /**
+     * Chuoi "%value%" da escape % _ \ do nguoi dung nhap - nhap "_" hay "%" phai tim dung ky tu do,
+     * khong bien thanh wildcard khop moi dong. Dung kem {@link #LIKE_ESCAPE} trong cb.like(...).
+     */
+    protected static String containsPattern(String value) {
+        StringBuilder sb = new StringBuilder(value.length() + 2).append('%');
+        for (char c : value.toCharArray()) {
+            if (c == '%' || c == '_' || c == LIKE_ESCAPE) {
+                sb.append(LIKE_ESCAPE);
+            }
+            sb.append(c);
+        }
+        return sb.append('%').toString();
+    }
+
+    /** LIKE '%value%' (da escape), khong phan biet hoa thuong. */
+    protected Predicate containsIgnoreCase(CriteriaBuilder cb, Expression<String> path, String value) {
+        return cb.like(cb.lower(path), containsPattern(value.toLowerCase(Locale.ROOT)), LIKE_ESCAPE);
+    }
+
+    /**
+     * Sap xep theo truong nguoi dung chon roi theo id cung chieu - cot phu duy nhat de phan trang on
+     * dinh (khong lap/mat dong giua cac trang khi nhieu dong trung gia tri sap xep).
+     */
+    protected Order[] orderWithIdTieBreaker(CriteriaBuilder cb, Path<?> sortPath, Path<?> idPath, boolean ascending) {
+        return ascending
+                ? new Order[]{cb.asc(sortPath), cb.asc(idPath)}
+                : new Order[]{cb.desc(sortPath), cb.desc(idPath)};
     }
 }

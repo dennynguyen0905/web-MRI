@@ -10,7 +10,9 @@ import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
 import com.vrris.pacs.dto.response.TransitionResponse;
 import com.vrris.pacs.dto.response.ViewerLinkResponse;
+import com.vrris.pacs.service.StudyExportService;
 import com.vrris.pacs.service.StudyService;
+import com.vrris.pacs.service.StudyTransitionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -44,9 +46,14 @@ import static com.vrris.pacs.rest.RestSupport.attachment;
 public class StudyController {
 
     private final StudyService studyService;
+    private final StudyTransitionService studyTransitionService;
+    private final StudyExportService studyExportService;
 
-    public StudyController(StudyService studyService) {
+    public StudyController(StudyService studyService, StudyTransitionService studyTransitionService,
+                           StudyExportService studyExportService) {
         this.studyService = studyService;
+        this.studyTransitionService = studyTransitionService;
+        this.studyExportService = studyExportService;
     }
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
@@ -99,6 +106,7 @@ public class StudyController {
     @GetMapping(path = "/export", produces = "text/csv;charset=UTF-8")
     @Operation(summary = "Xuat danh sach ca chup dang CSV (UTF-8 kem BOM)")
     @ApiResponse(responseCode = "200", description = "File CSV (UTF-8 kem BOM)")
+    @ApiResponse(responseCode = "422", description = "Bo loc khop qua nhieu dong (EXPORT_TOO_MANY_ROWS)")
     @PreAuthorize(READ_ROLES)
     public ResponseEntity<Resource> exportStudies(
             @RequestParam(name = "order_id", required = false) Long orderId,
@@ -109,7 +117,7 @@ public class StudyController {
             @RequestParam(name = "full_name", required = false) String fullName,
             @RequestParam(required = false) String sort
     ) {
-        ExportDocumentResponse doc = studyService.exportCsv(orderId, status, deviceId, q, patientCode, fullName, sort);
+        ExportDocumentResponse doc = studyExportService.exportCsv(orderId, status, deviceId, q, patientCode, fullName, sort);
         return attachment(doc.fileName(), "text/csv;charset=UTF-8", doc.content());
     }
 
@@ -133,7 +141,9 @@ public class StudyController {
     @PatchMapping(path = "/{studyId}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Sua thong tin ca chup")
     @ApiResponse(responseCode = "200", description = "Da cap nhat")
+    @ApiResponse(responseCode = "400", description = "study_instance_uid khong dung dinh dang DICOM UID")
     @ApiResponse(responseCode = "403", description = "CLINICIAN dat study_instance_uid hoac sai vai tro")
+    @ApiResponse(responseCode = "409", description = "Ca da APPROVED/CANCELLED hoac study_instance_uid trung ca khac")
     @PreAuthorize(WRITE_ORDER_ROLES)
     public StudyResponse updateStudy(@PathVariable Long studyId, @Valid @RequestBody StudyUpdateRequest request) {
         return studyService.update(studyId, request);
@@ -144,7 +154,7 @@ public class StudyController {
     @ApiResponse(responseCode = "200", description = "Da chuyen trang thai")
     @PreAuthorize(TRANSITION_ROLES)
     public TransitionResponse transitionStudy(@PathVariable Long studyId, @Valid @RequestBody TransitionRequest request) {
-        return studyService.transition(studyId, request);
+        return studyTransitionService.transition(studyId, request);
     }
 
     @GetMapping(path = "/{studyId}/status-history", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -152,6 +162,6 @@ public class StudyController {
     @ApiResponse(responseCode = "200", description = "Danh sach lich su chuyen trang thai")
     @PreAuthorize(READ_ROLES)
     public List<StatusHistoryEntry> listStatusHistory(@PathVariable Long studyId) {
-        return studyService.listStatusHistory(studyId);
+        return studyTransitionService.listStatusHistory(studyId);
     }
 }

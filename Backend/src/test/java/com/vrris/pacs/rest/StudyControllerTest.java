@@ -21,15 +21,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -582,6 +587,103 @@ class StudyControllerTest extends AbstractIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.study_instance_uid").value("1.2.826.0.1.3680043.8.498.10000002"));
         }
+    }
+
+    @Test
+    void list_tab_va_status_giao_nhau_rong_tra_0_ca_khong_phai_tat_ca() throws Exception {
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "READ", null, null);
+
+        mockMvc.perform(get("/studies").param("tab", "PENDING").param("status", "READ")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0))
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void get_chi_tiet_ghi_audit_READ_kem_patient_id_va_entity_id() throws Exception {
+        mockMvc.perform(get("/studies/" + studyId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        Integer auditCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'READ' AND entity_type = 'STUDY' "
+                        + "AND entity_id = ? AND patient_id = ?",
+                Integer.class, studyId, patientId);
+        assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void patch_tra_400_khi_study_instance_uid_sai_dinh_dang() throws Exception {
+        String tooLong = "1." + "2".repeat(63);
+        for (String bad : List.of("", "abc", "1..2", "1.2.", tooLong)) {
+            mockMvc.perform(patch("/studies/" + studyId)
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(java.util.Map.of("study_instance_uid", bad))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        }
+    }
+
+    @Test
+    void patch_tra_409_khi_study_instance_uid_da_gan_cho_ca_khac() throws Exception {
+        saveStudyWithUid("2026103100002", orderId, serviceItemId, "UNREAD", "1.2.840.10008.999");
+
+        mockMvc.perform(patch("/studies/" + studyId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"study_instance_uid\":\"1.2.840.10008.999\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STUDY_INSTANCE_UID_DUPLICATE"));
+    }
+
+    @Test
+    void patch_dat_lai_dung_uid_hien_tai_khong_bao_trung() throws Exception {
+        Study study = saveStudyWithUid("2026103100002", orderId, serviceItemId, "SCHEDULED", "1.2.840.10008.777");
+
+        mockMvc.perform(patch("/studies/" + study.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"study_instance_uid\":\"1.2.840.10008.777\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void patch_tra_409_khi_ca_da_APPROVED_hoac_CANCELLED() throws Exception {
+        for (String finalStatus : List.of("APPROVED", "CANCELLED")) {
+            Study study = saveStudy("20261031000" + (finalStatus.equals("APPROVED") ? "11" : "12"),
+                    orderId, serviceItemId, deviceId, finalStatus, null, null);
+            mockMvc.perform(patch("/studies/" + study.getId())
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"scheduled_at\":\"2026-11-20T08:00:00\"}"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("STUDY_NOT_EDITABLE"));
+        }
+    }
+
+    @Test
+    void them_ca_sinh_accession_tuan_tu_va_bo_qua_so_da_dung() throws Exception {
+        String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        // Gia lap du lieu da co so 00001 cua hom nay (tao sau khi migration V9 khoi tao daily_sequence).
+        saveStudy(today + "00001", orderId, serviceItemId, deviceId, "SCHEDULED", null, null);
+        String body = "{\"service_item_id\":" + serviceItemId + ",\"scheduled_at\":\"2026-11-20T08:00:00\"}";
+
+        mockMvc.perform(post("/imaging-orders/" + orderId + "/studies")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().is2xxSuccessful())
+                .andExpect(jsonPath("$.accession_number").value(today + "00002"))
+                .andExpect(jsonPath("$.status").value("SCHEDULED"));
+
+        mockMvc.perform(post("/imaging-orders/" + orderId + "/studies")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().is2xxSuccessful())
+                .andExpect(jsonPath("$.accession_number").value(today + "00003"));
     }
 
     private Study saveStudyWithUid(String accessionNumber, Long orderId, Long serviceItemId, String status, String studyInstanceUid) {

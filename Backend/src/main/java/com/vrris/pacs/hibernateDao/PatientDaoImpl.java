@@ -67,21 +67,22 @@ public class PatientDaoImpl extends AbstractHibernateDao<Patient, Long> implemen
             predicates.add(cb.equal(root.get("patientCode"), criteria.patientCode()));
         }
         if (criteria.fullName() != null && !criteria.fullName().isBlank()) {
-            predicates.add(cb.like(root.get("fullName"), "%" + criteria.fullName() + "%"));
+            // Collation utf8mb4_0900_ai_ci da khong phan biet hoa thuong - chi can escape wildcard.
+            predicates.add(cb.like(root.get("fullName"), containsPattern(criteria.fullName()), LIKE_ESCAPE));
         }
         if (criteria.q() != null && !criteria.q().isBlank()) {
-            String like = "%" + criteria.q() + "%";
+            String like = containsPattern(criteria.q());
             predicates.add(cb.or(
-                    cb.like(root.get("patientCode"), like),
-                    cb.like(root.get("fullName"), like),
-                    cb.like(cb.coalesce(root.get("socialInsuranceNo"), ""), like)
+                    cb.like(root.get("patientCode"), like, LIKE_ESCAPE),
+                    cb.like(root.get("fullName"), like, LIKE_ESCAPE),
+                    cb.like(cb.coalesce(root.get("socialInsuranceNo"), ""), like, LIKE_ESCAPE)
             ));
         }
         return predicates.toArray(new Predicate[0]);
     }
 
-    private jakarta.persistence.criteria.Order order(CriteriaBuilder cb, Root<Patient> root, SearchCriteria criteria) {
+    private jakarta.persistence.criteria.Order[] order(CriteriaBuilder cb, Root<Patient> root, SearchCriteria criteria) {
         Path<Object> sortPath = root.get(criteria.sortField());
-        return criteria.ascending() ? cb.asc(sortPath) : cb.desc(sortPath);
+        return orderWithIdTieBreaker(cb, sortPath, root.get("id"), criteria.ascending());
     }
 }

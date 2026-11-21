@@ -333,6 +333,12 @@ Hai điều này không làm bây giờ nhưng đã biết trước: his_message
 - **Giá trị cột:** `entity_type = 'STUDY'`, `entity_id = study.id`, `patient_id` = bệnh nhân của study. `before_value` / `after_value` để NULL (không phải hành vi sửa). ❓ Có ghi thêm `study_instance_uid` vào `after_value` để tiện đối chiếu với log Orthanc hay không — **chưa chốt**.
 - **Hệ quả:** nếu viewer mở trực tiếp bằng URL dán tay (không qua RIS) thì **không có dòng audit nào** — đây chính là lý do OHIF không được mở công khai (nguyên tắc bất biến ở README mục 0; `01-scope.md` IN-19 điểm 3).
 - Migration: thêm vào `V5__audit_and_conflict.sql` chỉ là **sửa COMMENT** của cột (cột đang là `VARCHAR(20)`, không có `CHECK`/`ENUM`). Theo mục 7, **không sửa V1–V7 đã vào `main`** → cần file mới (V8) chỉ để đổi comment, hoặc để comment lệch và coi tài liệu này là chuẩn ❓ chưa chốt.
+- Bổ sung (2026-11-21, 🟡 chưa xác nhận): backend còn ghi hai giá trị `LOGIN_FAILED` (đăng nhập sai) và `ACCESS_DENIED` (403 ở tầng service), ghi trong transaction riêng để không bị rollback theo lỗi. Cột vẫn `VARCHAR(20)` nên không cần migration ❓ nhóm chưa chốt có giữ hai giá trị này không.
+
+4.12. Khóa lạc quan và bộ sinh số tuần tự (🟡 nháp, thêm 2026-11-21 bằng `V9__optimistic_lock_and_daily_sequence.sql`).
+- Cột `row_version BIGINT NOT NULL DEFAULT 0` ở `study`, `report`, `imaging_order`, map vào `@Version` của Hibernate. Hai yêu cầu đồng thời sửa cùng bản ghi (ví dụ hai bác sĩ cùng T3 mở đọc một ca) thì yêu cầu sau nhận 409 `CONCURRENT_MODIFICATION`. Tên `row_version`, không phải `version`, vì `report.version` đã là số phiên bản báo cáo (mục 4.10).
+- Bảng `daily_sequence (seq_key VARCHAR(32) PK, seq_value INT)`: cấp số tăng dần trong ngày cho `accession_number` (khóa `ACC:<YYYYMMDD>`, mục 4.3) và `order_code` (khóa `ORD:PH<YYYYMMDD>`) bằng `INSERT … ON DUPLICATE KEY UPDATE seq_value = LAST_INSERT_ID(seq_value + 1)`. Cách cũ "đếm số bản ghi trong ngày + 1" sinh trùng số khi hai yêu cầu chạy cùng lúc. Migration khởi tạo bảng từ số lớn nhất đang có để không cấp lại số của dữ liệu seed.
+- Đây là bảng thứ 15 (ngoài 14 bảng ở mục 2), chỉ phục vụ kỹ thuật, không mang dữ liệu bệnh nhân.
 
 ## 5. Vì sao thông tin lâm sàng là JSON chứ không phải 15 bảng
 

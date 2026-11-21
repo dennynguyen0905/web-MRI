@@ -35,7 +35,10 @@ public interface StudyDao extends BaseDao<Study, Long> {
      * (WorklistRow day du) - response hien tai van la StudyResponse (xem Javadoc StudyController),
      * CHUA lam o day, ngoai pham vi IN-07 cho lan sua nay.
      *
-     * Tat ca danh sach null/rong = khong loc theo dieu kien do. statuses/deviceIds/departmentIds da
+     * Tat ca danh sach null/rong = khong loc theo dieu kien do, TRU statuses: null = khong loc, rong
+     * = khong khop dong nao (service tra rong khi giao tab x status khong co phan tu chung, vi du
+     * tab=PENDING&amp;status=READ - truoc day rong bi hieu nham la "khong loc" va tra ca worklist).
+     * statuses/deviceIds/departmentIds da
      * duoc service validate + chuan hoa (vi du StudyStatus.valueOf) truoc khi xuong day; departmentIds
      * da duoc mo rong ca nhanh con (rule.DepartmentTreeExpander) - DAO khong tu doan cay khoa.
      * sortField la ten field CUA ENTITY (vi du "scheduledAt", "patientCode") - service da doi ten

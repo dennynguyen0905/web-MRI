@@ -138,6 +138,36 @@ class ReportControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void getCurrentReport_ghi_audit_REPORT_voi_entity_id_la_report_id_khong_phai_study_id() throws Exception {
+        saveReport(studyId, 1, "DRAFT", "KT v1", "KL v1", null, null);
+        Report current = saveReport(studyId, 2, "FINAL", "KT v2", "KL v2", null, null);
+
+        mockMvc.perform(get("/studies/" + studyId + "/reports/current")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken))
+                .andExpect(status().isOk());
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT entity_id, patient_id FROM audit_log WHERE action = 'READ' AND entity_type = 'REPORT' "
+                        + "ORDER BY id DESC LIMIT 1");
+        assertThat(((Number) row.get("entity_id")).longValue()).isEqualTo(current.getId());
+        assertThat(((Number) row.get("patient_id")).longValue()).isEqualTo(patientId);
+    }
+
+    @Test
+    void listReports_ghi_audit_STUDY_voi_entity_id_la_study_id() throws Exception {
+        saveReport(studyId, 1, "DRAFT", "KT v1", "KL v1", null, null);
+
+        mockMvc.perform(get("/studies/" + studyId + "/reports")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken))
+                .andExpect(status().isOk());
+
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'READ' AND entity_type = 'STUDY' "
+                        + "AND entity_id = ? AND patient_id = ?", Integer.class, studyId, patientId);
+        assertThat(count).isEqualTo(1);
+    }
+
+    @Test
     void getCurrentReport_tra_404_khi_study_chua_co_bao_cao() throws Exception {
         mockMvc.perform(get("/studies/" + studyId + "/reports/current")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + holderToken))

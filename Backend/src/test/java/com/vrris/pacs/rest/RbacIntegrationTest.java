@@ -389,7 +389,7 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
         Study study = createStudy("ACC_RBAC_13", "SCHEDULED", null, null, null);
 
         StudyUpdateRequest req = new StudyUpdateRequest(
-                null, null, null, null, null, "1.2.3.13.mri.new"
+                null, null, null, null, null, "1.2.3.13.4"
         );
 
         mockMvc.perform(patch("/studies/" + study.getId())

@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '@/shared/api/http'
 import { useAsync } from '@/shared/hooks/useAsync'
 import type { Report, StatusHistoryEntry, StudyStatus } from '@/shared/lib/types'
 import * as reportApi from '../api/reportApi'
+import { ReportStepError, performSaveDraft, performTransition } from '../lib/reportSteps'
 
 export interface ReportDraft {
   technique: string
@@ -27,11 +28,18 @@ export function draftFromReport(report: Report | null): ReportDraft {
   }
 }
 
-const hasAnyDraftContent = (d: ReportDraft): boolean =>
-  Object.values(d).some(v => v.trim() !== '')
-
-/** Báo cáo hiện hành + lịch sử trạng thái của một ca, kèm hai thao tác ghi. */
-export function useStudyReport(studyId: number | null, enabled: boolean) {
+/**
+ * Báo cáo hiện hành + lịch sử trạng thái của một ca, kèm hai thao tác ghi.
+ *
+ * `onStatusChanged` được gọi khi một thao tác nhiều bước lỗi giữa chừng **sau khi** trạng thái ca
+ * trên máy chủ đã đổi (ví dụ T3 thành công rồi lưu nháp lỗi) — màn hình cần tải lại để không còn
+ * hiển thị trạng thái cũ. Trường hợp thành công thì giá trị trả về của thao tác đã mang trạng thái mới.
+ */
+export function useStudyReport(
+  studyId: number | null,
+  enabled: boolean,
+  onStatusChanged?: (status: StudyStatus) => void,
+) {
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState<ApiError | null>(null)
 
@@ -47,37 +55,49 @@ export function useStudyReport(studyId: number | null, enabled: boolean) {
     { enabled: enabled && studyId != null },
   )
 
-  const run = useCallback(async <T>(fn: () => Promise<T>): Promise<T> => {
+  // `reload` của useAsync ổn định (useCallback với deps rỗng); object `report`/`history` thì tạo
+  // mới mỗi lần render nên không đưa chúng vào deps của useCallback bên dưới.
+  const reloadReport = report.reload
+  const reloadHistory = history.reload
+
+  // Giữ callback mới nhất mà không làm các thao tác bên dưới đổi danh tính mỗi lần render.
+  const onStatusChangedRef = useRef(onStatusChanged)
+  useEffect(() => {
+    onStatusChangedRef.current = onStatusChanged
+  })
+
+  const run = useCallback(async (fn: () => Promise<StudyStatus | undefined>): Promise<StudyStatus | undefined> => {
     setSaving(true)
     setActionError(null)
     try {
-      return await fn()
+      const next = await fn()
+      reloadReport()
+      reloadHistory()
+      return next
     } catch (err) {
-      setActionError(err instanceof ApiError ? err : new ApiError(0, 'UNKNOWN', 'Thao tác không thành công.'))
-      throw err
+      const original = err instanceof ReportStepError ? err.original : err
+      setActionError(original instanceof ApiError
+        ? original
+        : new ApiError(0, 'UNKNOWN', 'Thao tác không thành công.'))
+      if (err instanceof ReportStepError) {
+        // Trạng thái ca đã đổi trên máy chủ. Chỉ tải lại lịch sử — tải lại báo cáo sẽ làm form
+        // ghi đè nội dung bác sĩ vừa gõ mà chưa lưu được.
+        reloadHistory()
+        onStatusChangedRef.current?.(err.reachedStatus)
+      }
+      throw original
     } finally {
       setSaving(false)
     }
-  }, [])
+  }, [reloadReport, reloadHistory])
 
   const saveDraft = useCallback(async (
     draft: ReportDraft,
     currentStatus?: StudyStatus,
   ): Promise<StudyStatus | undefined> => {
     if (studyId == null) return undefined
-    return run(async () => {
-      let nextStatus = currentStatus
-      // Nếu bác sĩ nhập nháp ngay khi ca còn ở UNREAD thì tự động mở ca (T3: UNREAD -> READING) trước khi lưu.
-      if (currentStatus === 'UNREAD') {
-        await reportApi.transitionStudy(studyId, 'READING', null)
-        nextStatus = 'READING'
-      }
-      await reportApi.saveReportDraft(studyId, draft)
-      report.reload()
-      history.reload()
-      return nextStatus
-    })
-  }, [studyId, run, report, history])
+    return run(() => performSaveDraft(reportApi, studyId, draft, currentStatus))
+  }, [studyId, run])
 
   const transition = useCallback(async (
     to: StudyStatus,
@@ -86,37 +106,13 @@ export function useStudyReport(studyId: number | null, enabled: boolean) {
     currentStatus?: StudyStatus,
   ): Promise<StudyStatus | undefined> => {
     if (studyId == null) return undefined
-    return run(async () => {
-      // Nếu mở ca để đọc (T3: UNREAD -> READING) mà bác sĩ đã gõ sẵn nội dung trên form thì lưu luôn sau khi mở.
-      if (to === 'READING' && currentStatus === 'UNREAD') {
-        await reportApi.transitionStudy(studyId, 'READING', reason)
-        if (hasAnyDraftContent(draft)) {
-          await reportApi.saveReportDraft(studyId, draft)
-        }
-        report.reload()
-        history.reload()
-        return 'READING'
-      }
+    return run(() => performTransition(reportApi, studyId, to, draft, reason, currentStatus))
+  }, [studyId, run])
 
-      // Lưu nội dung trước khi chốt (T5: -> READ), để bản chính thức mang đúng những gì bác sĩ vừa gõ.
-      if (to === 'READ') {
-        if (currentStatus === 'UNREAD') {
-          await reportApi.transitionStudy(studyId, 'READING', null)
-        }
-        try {
-          await reportApi.saveReportDraft(studyId, draft)
-        } catch (err) {
-          // Ca không còn ở READING thì bước chuyển bên dưới sẽ báo lỗi rõ hơn.
-          if (!(err instanceof ApiError) || err.status !== 409) throw err
-        }
-      }
-
-      await reportApi.transitionStudy(studyId, to, reason)
-      report.reload()
-      history.reload()
-      return to
-    })
-  }, [studyId, run, report, history])
+  const reload = useCallback(() => {
+    reloadReport()
+    reloadHistory()
+  }, [reloadReport, reloadHistory])
 
   return {
     report: report.data ?? null,
@@ -126,9 +122,6 @@ export function useStudyReport(studyId: number | null, enabled: boolean) {
     error: actionError ?? report.error,
     saveDraft,
     transition,
-    reload: () => {
-      report.reload()
-      history.reload()
-    },
+    reload,
   }
 }

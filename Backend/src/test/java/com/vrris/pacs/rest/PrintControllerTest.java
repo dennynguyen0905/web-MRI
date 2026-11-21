@@ -193,7 +193,7 @@ class PrintControllerTest extends AbstractIntegrationTest {
         // doc/09 muc 2.2). Kiem ca patient_id vi do la khoa de truy vet theo benh nhan.
         Integer rows = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM audit_log WHERE action = 'PRINT' AND patient_id = ? "
-                        + "AND entity_type = 'study' AND entity_id = ? AND actor_username = 'bscdha'",
+                        + "AND entity_type = 'STUDY' AND entity_id = ? AND actor_username = 'bscdha'",
                 Integer.class, patientId, studyId);
 
         assertThat(rows).isEqualTo(1);
