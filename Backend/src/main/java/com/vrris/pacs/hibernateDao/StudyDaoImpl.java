@@ -122,8 +122,11 @@ public class StudyDaoImpl extends AbstractHibernateDao<Study, Long> implements S
                 criteria.departmentIds(), criteria.deviceIds(), criteria.modality(), criteria.patientClass(),
                 criteria.patientCode(), criteria.fullName(), criteria.visitCode(), criteria.orderCode(),
                 criteria.timeField(), criteria.dateFrom(), criteria.dateTo());
-        if (criteria.statuses() != null && !criteria.statuses().isEmpty()) {
-            predicates.add(studyRoot.get("status").in(criteria.statuses()));
+        if (criteria.statuses() != null) {
+            // null = khong loc; rong = khong khop dong nao (xem Javadoc dao.StudyDao.SearchCriteria).
+            predicates.add(criteria.statuses().isEmpty()
+                    ? cb.disjunction()
+                    : studyRoot.get("status").in(criteria.statuses()));
         }
         return predicates.toArray(new Predicate[0]);
     }
@@ -187,10 +190,6 @@ public class StudyDaoImpl extends AbstractHibernateDao<Study, Long> implements S
         return predicates;
     }
 
-    private Predicate containsIgnoreCase(CriteriaBuilder cb, Path<String> path, String value) {
-        return cb.like(cb.lower(path), "%" + value.toLowerCase() + "%");
-    }
-
     private Path<LocalDateTime> timeFieldPath(Root<Study> studyRoot, Root<ImagingOrder> orderRoot, String timeField) {
         if ("orderedAt".equals(timeField)) {
             return orderRoot.get("orderedAt");
@@ -213,7 +212,7 @@ public class StudyDaoImpl extends AbstractHibernateDao<Study, Long> implements S
         return cb.or(cb.exists(deviceDept), orderRoot.get("orderingDepartmentId").in(departmentIds));
     }
 
-    private jakarta.persistence.criteria.Order order(CriteriaBuilder cb, Root<Study> studyRoot,
+    private jakarta.persistence.criteria.Order[] order(CriteriaBuilder cb, Root<Study> studyRoot,
                                                        Root<ImagingOrder> orderRoot, Root<Patient> patientRoot,
                                                        SearchCriteria criteria) {
         Path<?> sortPath = switch (criteria.sortField()) {
@@ -227,6 +226,6 @@ public class StudyDaoImpl extends AbstractHibernateDao<Study, Long> implements S
             case "createdAt" -> studyRoot.get("createdAt");
             default -> studyRoot.get("scheduledAt");
         };
-        return criteria.ascending() ? cb.asc(sortPath) : cb.desc(sortPath);
+        return orderWithIdTieBreaker(cb, sortPath, studyRoot.get("id"), criteria.ascending());
     }
 }

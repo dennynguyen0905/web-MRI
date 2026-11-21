@@ -1,5 +1,6 @@
 package com.vrris.pacs.service.impl;
 
+import com.vrris.pacs.audit.AuditContext;
 import com.vrris.pacs.audit.Audited;
 import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dto.request.ListExportEventRequest;
@@ -48,11 +49,13 @@ public class PatientServiceImpl implements PatientService {
     private final PatientDao patientDao;
     private final PatientMapper patientMapper;
 
+    // Khởi tạo service với DAO và mapper của bệnh nhân.
     public PatientServiceImpl(PatientDao patientDao, PatientMapper patientMapper) {
         this.patientDao = patientDao;
         this.patientMapper = patientMapper;
     }
 
+    // Tra cứu danh sách bệnh nhân theo từ khóa/mã/tên, có phân trang và sắp xếp, kèm tính tuổi.
     @Override
     @Transactional(readOnly = true)
     @Audited(action = AuditAction.READ, entityType = "PATIENT")
@@ -73,13 +76,15 @@ public class PatientServiceImpl implements PatientService {
         return new PatientPageResponse(resolvedPage, resolvedPageSize, result.total(), items);
     }
 
+    // Lấy chi tiết một bệnh nhân theo id, kèm tính tuổi.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "PATIENT")
+    @Audited(action = AuditAction.READ, entityType = "PATIENT", patientIdArg = 0, entityIdArg = 0)
     public PatientResponse getById(Long id) {
         return toPatientResponseWithAge(findOrThrow(id), patientMapper);
     }
 
+    // Tạo bệnh nhân mới; chặn trùng mã bệnh nhân và nghi trùng người qua số BHXH.
     @Override
     @Transactional
     @Audited(action = AuditAction.CREATE, entityType = "PATIENT")
@@ -98,16 +103,19 @@ public class PatientServiceImpl implements PatientService {
         entity.setCreatedBy(actor);
         entity.setUpdatedBy(actor);
 
-        return toPatientResponseWithAge(patientDao.save(entity), patientMapper);
+        Patient saved = patientDao.save(entity);
+        AuditContext.recordPatientId(saved.getId());
+        return toPatientResponseWithAge(saved, patientMapper);
     }
 
+    // Cập nhật thông tin bệnh nhân; chặn CLINICIAN sửa trường định danh thực sự thay đổi (D24) và chặn nghi trùng BHXH.
     @Override
     @Transactional
-    @Audited(action = AuditAction.UPDATE, entityType = "PATIENT")
+    @Audited(action = AuditAction.UPDATE, entityType = "PATIENT", patientIdArg = 0, entityIdArg = 0)
     public PatientResponse update(Long id, PatientUpdateRequest request) {
         Patient patient = findOrThrow(id);
 
-        if (!hasAnyAuthority(currentAuth(), "ROLE_ADMIN", "ROLE_TECHNICIAN") && hasIdentityFieldChange(request)) {
+        if (!hasAnyAuthority(currentAuth(), "ROLE_ADMIN", "ROLE_TECHNICIAN") && hasIdentityFieldChange(patient, request)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
                     "CLINICIAN khong duoc sua cac truong dinh danh benh nhan (D24)");
         }
@@ -121,6 +129,7 @@ public class PatientServiceImpl implements PatientService {
         return toPatientResponseWithAge(patientDao.save(patient), patientMapper);
     }
 
+    // Xuất danh sách bệnh nhân (theo điều kiện lọc hiện tại) ra file CSV.
     @Override
     @Transactional
     @Audited(action = AuditAction.EXPORT, entityType = "PATIENT")
@@ -156,6 +165,7 @@ public class PatientServiceImpl implements PatientService {
                 singlePatientId);
     }
 
+    // Ghi nhận sự kiện đã xuất danh sách bệnh nhân (phục vụ audit_log), không trả dữ liệu.
     @Override
     @Transactional
     @Audited(action = AuditAction.EXPORT, entityType = "PATIENT")
@@ -165,20 +175,32 @@ public class PatientServiceImpl implements PatientService {
         }
     }
 
-    private boolean hasIdentityFieldChange(PatientUpdateRequest request) {
-        return request.fullName() != null
-                || request.dateOfBirth() != null
-                || request.dobPrecision() != null
-                || request.gender() != null
-                || request.socialInsuranceNo() != null;
+    /**
+     * Chi coi la "sua truong dinh danh" khi gia tri gui len KHAC gia tri dang luu - form FE gui lai ca
+     * cac truong khong doi (ho ten, ngay sinh...) khi CLINICIAN chi sua SDT/dia chi, khong duoc chan 403.
+     */
+    // Kiểm tra request cập nhật có thực sự đổi giá trị trường định danh (họ tên, ngày sinh, giới tính, BHXH) so với dữ liệu đang lưu hay không.
+    private boolean hasIdentityFieldChange(Patient patient, PatientUpdateRequest request) {
+        return changed(request.fullName(), patient.getFullName())
+                || changed(request.dateOfBirth(), patient.getDateOfBirth())
+                || changed(request.dobPrecision() == null ? null : request.dobPrecision().name(), patient.getDobPrecision())
+                || changed(request.gender() == null ? null : request.gender().name(), patient.getGender())
+                || changed(request.socialInsuranceNo(), patient.getSocialInsuranceNo());
     }
 
+    // So sánh giá trị mới gửi lên với giá trị hiện tại, coi là "đổi" chỉ khi giá trị mới khác null và khác giá trị cũ.
+    private static boolean changed(Object requested, Object current) {
+        return requested != null && !requested.equals(current);
+    }
+
+    // Tìm bệnh nhân theo id, báo lỗi 404 nếu không tồn tại.
     private Patient findOrThrow(Long id) {
         return patientDao.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PATIENT_NOT_FOUND",
                         "Khong tim thay benh nhan id=" + id));
     }
 
+    // Chặn tạo/sửa bệnh nhân nếu số BHXH đã gắn với một bệnh nhân khác (nghi trùng người).
     private void rejectSuspectedDuplicateBhxh(String socialInsuranceNo, Long excludePatientId) {
         if (socialInsuranceNo == null || socialInsuranceNo.isBlank()) {
             return;

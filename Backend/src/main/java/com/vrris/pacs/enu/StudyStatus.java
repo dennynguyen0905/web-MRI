@@ -1,11 +1,12 @@
 package com.vrris.pacs.enu;
 
 /**
- * 7 trang thai ca chup theo README Phan 4 / doc/02-erd.md muc 4.5. CANCELLED them vao cho IN-09
- * (GET /studies/status-counts phai dem du 7 nhom, khop doc/api/openapi.yaml schema StatusCounts) -
- * pham vi them nay CHI la gia tri enum de nhan dien/dem, KHONG dong nghia voi T10 (SCHEDULED ->
- * CANCELLED) da duoc xac nhan: rule.StudyStateMachine.LINEAR_FLOW chua co nhanh nao di den/di tu
- * CANCELLED, van ❓ cho toi khi nhom xac nhan dieu kien/vai trò (doc/03-state-machine.md muc 2.2 T10).
+ * 7 trang thai ca chup theo README Phan 4 / doc/02-erd.md muc 4.5 / doc/03-state-machine.md muc 2.1.
+ *
+ * Cac buoc chuyen hop le (T2..T10) dinh nghia o rule.TransitionCode / rule.StudyStateMachine, ke ca
+ * T10 (SCHEDULED -> CANCELLED) da duoc cai o backend tu 2026-11-12. Vai tro/dieu kien cua cac nhanh
+ * ngoai le T4, T8, T9, T10 van la DE XUAT ❓ chua duoc nhom xac nhan (doc/03 muc 2.3) - neu nhom
+ * chot khac thi sua o rule.TransitionPolicy. CANCELLED la trang thai cuoi, khong co buoc chuyen di.
  */
 public enum StudyStatus {
     SCHEDULED, UNREAD, READING, READ, APPROVING, APPROVED, CANCELLED

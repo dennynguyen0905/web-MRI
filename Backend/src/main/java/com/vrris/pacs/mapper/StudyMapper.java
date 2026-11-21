@@ -28,5 +28,6 @@ public interface StudyMapper {
     @Mapping(target = "approvingUserId", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "rowVersion", ignore = true)
     Study toEntity(StudyCreateRequest request);
 }

@@ -11,6 +11,14 @@ export interface AsyncState<T> {
  * Hook gọi API dùng chung. Nhóm chưa chốt TanStack Query (README 8.2–8.3) nên tạm dùng
  * hook tự viết — đủ cho worklist và các màn hiện có. Nếu sau này đưa TanStack Query vào,
  * chỉ các hook trong `features/<ten>/hooks` phải sửa, component không đụng tới.
+ *
+ * **Ràng buộc `deps`:** chỉ truyền giá trị nguyên thủy (số, chuỗi, boolean, null) hoặc giá trị đã
+ * ổn định qua các lần render. `deps` được so sánh bằng `Object.is` như `useEffect`; một object hay
+ * mảng tạo mới mỗi lần render (ví dụ `[filters]` với `filters = { ... }` dựng ngay trong component)
+ * sẽ làm effect chạy lại sau mỗi render → gọi API liên tục. Cần phụ thuộc vào object thì truyền
+ * khóa nguyên thủy đại diện (ví dụ `JSON.stringify(filters)`, xem `useWorklist`).
+ *
+ * `run` không cần nằm trong `deps`: hook luôn gọi bản `run` mới nhất.
  */
 export function useAsync<T>(
   run: (signal: AbortSignal) => Promise<T>,

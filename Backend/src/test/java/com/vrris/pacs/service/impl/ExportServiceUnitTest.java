@@ -2,24 +2,14 @@ package com.vrris.pacs.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.audit.AuditLogAspect;
-import com.vrris.pacs.dao.AppUserDao;
 import com.vrris.pacs.dao.AuditLogDao;
-import com.vrris.pacs.dao.DepartmentDao;
-import com.vrris.pacs.dao.DeviceDao;
-import com.vrris.pacs.dao.ImagingOrderDao;
 import com.vrris.pacs.dao.PatientDao;
-import com.vrris.pacs.dao.ReportDao;
-import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
-import com.vrris.pacs.dao.StudyStatusHistoryDao;
+import com.vrris.pacs.dao.StudyLookupDao;
 import com.vrris.pacs.dto.request.ListExportEventRequest;
 import com.vrris.pacs.dto.response.ExportDocumentResponse;
-import com.vrris.pacs.mapper.DeviceMapper;
-import com.vrris.pacs.mapper.ImagingOrderMapper;
+import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.mapper.PatientMapper;
-import com.vrris.pacs.mapper.ReportMapper;
-import com.vrris.pacs.mapper.ServiceItemMapper;
-import com.vrris.pacs.mapper.StudyMapper;
 import com.vrris.pacs.model.AuditLog;
 import com.vrris.pacs.model.Device;
 import com.vrris.pacs.model.ImagingOrder;
@@ -30,7 +20,9 @@ import com.vrris.pacs.model.Study;
 import com.vrris.pacs.rest.PatientController;
 import com.vrris.pacs.rest.StudyController;
 import com.vrris.pacs.service.PatientService;
+import com.vrris.pacs.service.StudyExportService;
 import com.vrris.pacs.service.StudyService;
+import com.vrris.pacs.service.StudyTransitionService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,11 +38,12 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,13 +56,9 @@ class ExportServiceUnitTest {
     private AuditLogDao auditLogDao;
     private PatientDao patientDao;
     private StudyDao studyDao;
-    private ImagingOrderDao imagingOrderDao;
-    private ServiceItemDao serviceItemDao;
-    private DeviceDao deviceDao;
-    private ReportDao reportDao;
+    private StudyLookupDao studyLookupDao;
 
     private PatientService proxiedPatientService;
-    private StudyService proxiedStudyService;
     private PatientController patientController;
     private StudyController studyController;
 
@@ -78,30 +67,26 @@ class ExportServiceUnitTest {
         auditLogDao = mock(AuditLogDao.class);
         patientDao = mock(PatientDao.class);
         studyDao = mock(StudyDao.class);
-        imagingOrderDao = mock(ImagingOrderDao.class);
-        serviceItemDao = mock(ServiceItemDao.class);
-        deviceDao = mock(DeviceDao.class);
-        reportDao = mock(ReportDao.class);
+        studyLookupDao = mock(StudyLookupDao.class);
 
-        AuditLogAspect aspect = new AuditLogAspect(auditLogDao, new ObjectMapper());
+        // Khong co transaction that trong unit test -> aspect ghi qua TransactionTemplate (REQUIRES_NEW)
+        // tren transaction manager gia; auditLogDao.save van duoc goi dong bo nhu truoc.
+        AuditLogAspect aspect = new AuditLogAspect(auditLogDao, new ObjectMapper(),
+                mock(org.springframework.transaction.PlatformTransactionManager.class));
 
         PatientServiceImpl rawPatientService = new PatientServiceImpl(patientDao, mock(PatientMapper.class));
         AspectJProxyFactory patientProxyFactory = new AspectJProxyFactory(rawPatientService);
         patientProxyFactory.addAspect(aspect);
         proxiedPatientService = patientProxyFactory.getProxy();
 
-        StudyServiceImpl rawStudyService = new StudyServiceImpl(
-                studyDao, imagingOrderDao, serviceItemDao, deviceDao, mock(DepartmentDao.class),
-                patientDao, reportDao, mock(AppUserDao.class), mock(StudyStatusHistoryDao.class),
-                mock(StudyMapper.class), mock(ImagingOrderMapper.class),
-                mock(ServiceItemMapper.class), mock(DeviceMapper.class), mock(PatientMapper.class),
-                mock(ReportMapper.class));
-        AspectJProxyFactory studyProxyFactory = new AspectJProxyFactory(rawStudyService);
+        StudyExportServiceImpl rawStudyExportService = new StudyExportServiceImpl(studyDao, studyLookupDao);
+        AspectJProxyFactory studyProxyFactory = new AspectJProxyFactory(rawStudyExportService);
         studyProxyFactory.addAspect(aspect);
-        proxiedStudyService = studyProxyFactory.getProxy();
+        StudyExportService proxiedStudyExportService = studyProxyFactory.getProxy();
 
         patientController = new PatientController(proxiedPatientService);
-        studyController = new StudyController(proxiedStudyService);
+        studyController = new StudyController(mock(StudyService.class), mock(StudyTransitionService.class),
+                proxiedStudyExportService);
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("ktv_test", null, List.of()));
@@ -206,11 +191,11 @@ class ExportServiceUnitTest {
         report.setConclusion("Bình thường");
 
         when(studyDao.search(any())).thenReturn(new StudyDao.SearchResult(List.of(s1), 1));
-        when(imagingOrderDao.findById(301L)).thenReturn(Optional.of(order));
-        when(patientDao.findById(101L)).thenReturn(Optional.of(patient));
-        when(serviceItemDao.findById(10L)).thenReturn(Optional.of(service));
-        when(deviceDao.findById(20L)).thenReturn(Optional.of(device));
-        when(reportDao.findCurrentByStudyId(501L)).thenReturn(Optional.of(report));
+        when(studyLookupDao.findAllByIds(ImagingOrder.class, List.of(301L))).thenReturn(List.of(order));
+        when(studyLookupDao.findAllByIds(Patient.class, List.of(101L))).thenReturn(List.of(patient));
+        when(studyLookupDao.findAllByIds(ServiceItem.class, List.of(10L))).thenReturn(List.of(service));
+        when(studyLookupDao.findAllByIds(Device.class, List.of(20L))).thenReturn(List.of(device));
+        when(studyLookupDao.findCurrentReportsByStudyIds(List.of(501L))).thenReturn(List.of(report));
 
         ResponseEntity<org.springframework.core.io.Resource> response = studyController.exportStudies(
                 null, "SCHEDULED", null, null, "BN-FAKE-201", null, null);
@@ -228,6 +213,44 @@ class ExportServiceUnitTest {
         assertThat(log.getAction()).isEqualTo("EXPORT");
         assertThat(log.getEntityType()).isEqualTo("STUDY");
         assertThat(log.getPatientId()).isEqualTo(101L);
+    }
+
+    @Test
+    void export_worklist_vuot_gioi_han_tra_422_thay_vi_cat_bot_im_lang() {
+        when(studyDao.search(any())).thenReturn(new StudyDao.SearchResult(List.of(), 5001));
+
+        assertThatThrownBy(() -> studyController.exportStudies(null, null, null, null, null, null, null))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    assertThat(((ApiException) ex).getCode()).isEqualTo("EXPORT_TOO_MANY_ROWS");
+                });
+        verify(auditLogDao, never()).save(any());
+    }
+
+    @Test
+    void export_worklist_theo_order_id_lay_moi_ca_cua_chi_dinh_khong_qua_search() {
+        Study s1 = new Study();
+        s1.setId(601L);
+        s1.setOrderId(401L);
+        s1.setServiceItemId(10L);
+        s1.setAccessionNumber("2026110700001");
+        s1.setStatus("UNREAD");
+        Study s2 = new Study();
+        s2.setId(602L);
+        s2.setOrderId(401L);
+        s2.setServiceItemId(10L);
+        s2.setAccessionNumber("2026110700002");
+        s2.setStatus("SCHEDULED");
+        when(studyDao.findByOrderId(401L)).thenReturn(List.of(s1, s2));
+
+        ResponseEntity<org.springframework.core.io.Resource> response = studyController.exportStudies(
+                401L, "UNREAD", null, null, null, null, null);
+
+        String csv = new String(((org.springframework.core.io.ByteArrayResource) response.getBody()).getByteArray(),
+                StandardCharsets.UTF_8);
+        assertThat(csv).contains("2026110700001").doesNotContain("2026110700002");
+        verify(studyDao, never()).search(any());
     }
 
     private Patient fakePatient(Long id, String code, String name, LocalDate dob, String precision) {

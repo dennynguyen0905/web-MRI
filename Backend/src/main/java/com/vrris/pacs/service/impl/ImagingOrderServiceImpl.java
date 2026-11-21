@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.audit.Audited;
 import com.vrris.pacs.dao.AppUserDao;
 import com.vrris.pacs.dao.ClinicalSnapshotDao;
+import com.vrris.pacs.dao.DailySequenceDao;
 import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.ImagingOrderDao;
 import com.vrris.pacs.dao.PatientDao;
@@ -18,6 +19,7 @@ import com.vrris.pacs.dto.response.StudyResponse;
 import com.vrris.pacs.enu.AuditAction;
 import com.vrris.pacs.enu.OrderSource;
 import com.vrris.pacs.enu.SyncStatus;
+import com.vrris.pacs.enu.UserRole;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.mapper.ImagingOrderMapper;
 import com.vrris.pacs.model.AppUser;
@@ -61,11 +63,14 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
     private final ClinicalSnapshotDao clinicalSnapshotDao;
     private final AppUserDao appUserDao;
     private final ObjectMapper objectMapper;
+    private final DailySequenceDao dailySequenceDao;
 
+    // Khởi tạo service với các DAO/mapper/service liên quan đến chỉ định chụp.
     public ImagingOrderServiceImpl(ImagingOrderDao imagingOrderDao, PatientDao patientDao,
                                     DepartmentDao departmentDao, ImagingOrderMapper imagingOrderMapper,
                                     StudyService studyService, ClinicalSnapshotDao clinicalSnapshotDao,
-                                    AppUserDao appUserDao, ObjectMapper objectMapper) {
+                                    AppUserDao appUserDao, ObjectMapper objectMapper,
+                                    DailySequenceDao dailySequenceDao) {
         this.imagingOrderDao = imagingOrderDao;
         this.patientDao = patientDao;
         this.departmentDao = departmentDao;
@@ -74,8 +79,10 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         this.clinicalSnapshotDao = clinicalSnapshotDao;
         this.appUserDao = appUserDao;
         this.objectMapper = objectMapper;
+        this.dailySequenceDao = dailySequenceDao;
     }
 
+    // Tra cứu danh sách chỉ định chụp theo bệnh nhân/mã phiếu/mã LSVV, có phân trang và sắp xếp.
     @Override
     @Transactional(readOnly = true)
     @Audited(action = AuditAction.READ, entityType = "IMAGING_ORDER")
@@ -94,6 +101,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         return new ImagingOrderPageResponse(resolvedPage, resolvedPageSize, result.total(), items);
     }
 
+    // Lấy chi tiết một chỉ định chụp theo id, kèm danh sách ca chụp con.
     @Override
     @Transactional(readOnly = true)
     @Audited(action = AuditAction.READ, entityType = "IMAGING_ORDER")
@@ -101,6 +109,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         return toResponseWithStudies(findOrThrow(id));
     }
 
+    // Tạo chỉ định chụp mới (sinh order_code nguyên tử qua daily_sequence), đồng thời tạo các ca chụp con kèm theo.
     @Override
     @Transactional
     @Audited(action = AuditAction.CREATE, entityType = "IMAGING_ORDER")
@@ -112,11 +121,9 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         validateDepartment(request.orderingDepartmentId());
 
         LocalDateTime now = LocalDateTime.now();
-        LocalDate today = now.toLocalDate();
-        long countToday = imagingOrderDao.countByOrderCodeStartingWith(OrderCodeGenerator.datePrefix(today));
 
         ImagingOrder entity = imagingOrderMapper.toEntity(request);
-        entity.setOrderCode(OrderCodeGenerator.format(today, (int) countToday + 1));
+        entity.setOrderCode(nextOrderCode(now.toLocalDate()));
         entity.setSource(OrderSource.MANUAL.name());
         entity.setSyncStatus(SyncStatus.NOT_SYNCED.name());
         entity.setOrderedAt(request.orderedAt() != null ? request.orderedAt() : now);
@@ -127,9 +134,10 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         List<StudyResponse> studies = request.studies().stream()
                 .map(studyRequest -> studyService.addToOrder(saved.getId(), studyRequest))
                 .toList();
-        return toResponse(saved, studies);
+        return imagingOrderMapper.toResponse(saved, studies);
     }
 
+    // Cập nhật thông tin chỉ định chụp (khoa chỉ định, bác sĩ, chẩn đoán lâm sàng...).
     @Override
     @Transactional
     @Audited(action = AuditAction.UPDATE, entityType = "IMAGING_ORDER")
@@ -144,6 +152,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         return toResponseWithStudies(imagingOrderDao.save(order));
     }
 
+    // Lấy dữ liệu lâm sàng (clinical_snapshot) của một chỉ định chụp; chặn CLINICIAN xem chỉ định không phải của mình.
     @Override
     @Transactional(readOnly = true)
     @Audited(action = AuditAction.READ, entityType = "CLINICAL_SNAPSHOT", entityIdArg = 0)
@@ -159,6 +168,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
                 snapshot.getOrderId(), snapshot.getSource(), snapshot.getFetchedAt(), readPayload(snapshot));
     }
 
+    // Kiểm tra khoa chỉ định có tồn tại không, báo lỗi 422 nếu không tìm thấy.
     private void validateDepartment(Long departmentId) {
         if (departmentDao.findById(departmentId).isEmpty()) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "IMAGING_ORDER_DEPARTMENT_NOT_FOUND",
@@ -166,8 +176,9 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         }
     }
 
+    // Nếu người gọi là CLINICIAN thì chỉ cho xem chỉ định do chính bác sĩ đó chỉ định, báo lỗi 403 nếu không khớp.
     private void enforceClinicianScope(ImagingOrder order) {
-        if (!hasAuthority(currentAuth(), "ROLE_CLINICIAN")) {
+        if (!hasAuthority(currentAuth(), UserRole.CLINICIAN.authority())) {
             return;
         }
         String fullName = appUserDao.findByUsername(currentUsername()).map(AppUser::getFullName).orElse(null);
@@ -177,6 +188,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         }
     }
 
+    // Parse payload JSON của clinical_snapshot, báo lỗi 500 nếu dữ liệu lưu không phải JSON hợp lệ.
     private JsonNode readPayload(ClinicalSnapshot snapshot) {
         try {
             return objectMapper.readTree(snapshot.getPayload());
@@ -186,22 +198,36 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
         }
     }
 
+    // Tìm chỉ định chụp theo id, báo lỗi 404 nếu không tồn tại.
     private ImagingOrder findOrThrow(Long id) {
         return imagingOrderDao.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "IMAGING_ORDER_NOT_FOUND",
                         "Khong tim thay chi dinh id=" + id));
     }
 
+    // Chuyển chỉ định chụp sang DTO kèm danh sách ca chụp con lấy từ StudyService.
     private ImagingOrderResponse toResponseWithStudies(ImagingOrder order) {
-        return toResponse(order, studyService.listByOrderId(order.getId()));
+        return imagingOrderMapper.toResponse(order, studyService.listByOrderId(order.getId()));
     }
 
-    private ImagingOrderResponse toResponse(ImagingOrder order, List<StudyResponse> studies) {
-        ImagingOrderResponse base = imagingOrderMapper.toResponse(order);
-        return new ImagingOrderResponse(
-                base.id(), base.orderCode(), base.patientId(), base.visitCode(),
-                base.source(), base.hisOrderId(), base.syncStatus(), base.orderingDepartmentId(),
-                base.orderingDoctorName(), base.patientClass(), base.room(), base.bed(),
-                base.clinicalDiagnosis(), base.orderedAt(), studies, base.createdAt(), base.updatedAt());
+    /**
+     * Cap order_code nguyen tu qua bang daily_sequence (V9); bo qua so da bi dung (du lieu tao sau
+     * khi migration khoi tao sequence) thay vi de UNIQUE uk_imaging_order_code vo -> 500.
+     */
+    // Cấp order_code kế tiếp theo ngày, bỏ qua số đã bị dùng trước đó để tránh vi phạm UNIQUE.
+    private String nextOrderCode(LocalDate date) {
+        String key = OrderCodeGenerator.sequenceKey(date);
+        while (true) {
+            int sequence = dailySequenceDao.next(key);
+            if (sequence > OrderCodeGenerator.MAX_SEQUENCE_PER_DAY) {
+                throw new ApiException(HttpStatus.CONFLICT, "ORDER_CODE_SEQUENCE_EXHAUSTED",
+                        "Da het so phieu chi dinh trong ngay " + date
+                                + " (toi da " + OrderCodeGenerator.MAX_SEQUENCE_PER_DAY + ")");
+            }
+            String candidate = OrderCodeGenerator.format(date, sequence);
+            if (imagingOrderDao.findByOrderCode(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
     }
 }

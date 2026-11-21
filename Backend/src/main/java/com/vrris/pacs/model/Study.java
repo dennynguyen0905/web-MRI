@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.time.LocalDateTime;
 
@@ -74,6 +75,11 @@ public class Study {
 
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    /** Khoa lac quan (V9, cot row_version) - hai yeu cau dong thoi khong cung ghi duoc (doc/03 muc 2.4 dieu 5). */
+    @Version
+    @Column(name = "row_version", nullable = false)
+    private Long rowVersion;
 
     public Long getId() {
         return id;
@@ -201,5 +207,13 @@ public class Study {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Long getRowVersion() {
+        return rowVersion;
+    }
+
+    public void setRowVersion(Long rowVersion) {
+        this.rowVersion = rowVersion;
     }
 }

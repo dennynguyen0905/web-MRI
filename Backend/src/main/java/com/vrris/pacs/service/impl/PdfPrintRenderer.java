@@ -51,6 +51,7 @@ public class PdfPrintRenderer {
 
     private final String configuredFontPath;
 
+    // Khởi tạo renderer với đường dẫn font Unicode được cấu hình (nếu có) qua app.print.font-path.
     public PdfPrintRenderer(@Value("${app.print.font-path:}") String configuredFontPath) {
         this.configuredFontPath = configuredFontPath;
     }
@@ -71,6 +72,7 @@ public class PdfPrintRenderer {
      * @param emptyNote  ghi chu khi khong co du lieu
      * @param footer     dong chan trang (nguoi in, thoi diem in)
      */
+    // Dựng và xuất một file PDF phiếu in hoàn chỉnh (tiêu đề, thông tin bệnh nhân, nội dung, bảng, chân trang).
     public byte[] render(String title, List<Line> patient, List<Line> body, Table table,
                          String emptyNote, String footer) {
         BaseFont base = loadBaseFont();
@@ -120,6 +122,7 @@ public class PdfPrintRenderer {
         return out.toByteArray();
     }
 
+    // Tạo một đoạn tiêu đề phần (section) trong phiếu, có khoảng cách trên/dưới chuẩn.
     private Paragraph section(String text, Font font) {
         Paragraph p = new Paragraph(text, font);
         p.setSpacingBefore(12f);
@@ -127,6 +130,7 @@ public class PdfPrintRenderer {
         return p;
     }
 
+    // Dựng bảng 2 cột dạng "nhãn : giá trị" không viền, dùng cho các khối thông tin trong phiếu.
     private PdfPTable lineTable(List<Line> lines, Font font) {
         PdfPTable table = new PdfPTable(new float[]{1f, 2.2f});
         table.setWidthPercentage(100);
@@ -137,6 +141,7 @@ public class PdfPrintRenderer {
         return table;
     }
 
+    // Tạo một cell PDF không viền, thay giá trị rỗng/null bằng dấu gạch ngang.
     private PdfPCell borderless(String text, Font font) {
         PdfPCell cell = new PdfPCell(new Paragraph(text, font));
         cell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
@@ -144,6 +149,7 @@ public class PdfPrintRenderer {
         return cell;
     }
 
+    // Dựng bảng dữ liệu nhiều cột (ví dụ danh sách xét nghiệm/thuốc) kèm dòng tiêu đề.
     private PdfPTable dataTable(Table data, Font normal, Font header) {
         PdfPTable table = new PdfPTable(data.headers().size());
         table.setWidthPercentage(100);
@@ -163,6 +169,7 @@ public class PdfPrintRenderer {
         return table;
     }
 
+    // Tìm và nạp font Unicode TTF theo thứ tự ưu tiên (cấu hình trước, rồi các đường dẫn hệ thống); báo lỗi 503 nếu không có font nào dùng được.
     private BaseFont loadBaseFont() {
         // Dat app.print.font-path tuc la chi dinh ro font nao - khong am tham dung font khac,
         // vi font sai co the ra phieu mat dau tieng Viet ma khong ai biet.

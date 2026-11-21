@@ -11,14 +11,14 @@ import java.util.Objects;
  * tien to "PH" + YYYYMMDD + 3 chu so tang dan trong ngay. ❓ Chua co nguoi xac nhan rieng cho dinh
  * dang nay - neu nhom chot khac thi sua lai o day va o service.impl.ImagingOrderServiceImpl.
  *
- * Thuan Java, khong dung DB (giong rule.AccessionNumberGenerator) - dem so chi dinh da tao trong
- * ngay thuoc ve service (can ImagingOrderDao.countByOrderCodeStartingWith).
+ * Thuan Java, khong dung DB (giong rule.AccessionNumberGenerator) - cap so tiep theo trong ngay
+ * thuoc ve service (dao.DailySequenceDao, bang daily_sequence V9).
  */
 public final class OrderCodeGenerator {
 
     private static final String PREFIX = "PH";
     private static final DateTimeFormatter DATE_PREFIX = DateTimeFormatter.BASIC_ISO_DATE;
-    private static final int MAX_SEQUENCE_PER_DAY = 999;
+    public static final int MAX_SEQUENCE_PER_DAY = 999;
 
     private OrderCodeGenerator() {
     }
@@ -26,6 +26,14 @@ public final class OrderCodeGenerator {
     public static String datePrefix(LocalDate date) {
         Objects.requireNonNull(date, "date");
         return PREFIX + date.format(DATE_PREFIX);
+    }
+
+    /**
+     * Khoa trong bang daily_sequence (V9) cho ngay nay - dao.DailySequenceDao cap so tiep theo
+     * nguyen tu theo khoa nay (khop cach khoi tao trong database/migrations/V9).
+     */
+    public static String sequenceKey(LocalDate date) {
+        return "ORD:" + datePrefix(date);
     }
 
     public static String format(LocalDate date, int sequenceOfDay) {

@@ -56,6 +56,7 @@ public class PrintServiceImpl implements PrintService {
     private final PdfPrintRenderer renderer;
     private final ObjectMapper objectMapper;
 
+    // Khởi tạo service với các DAO cần để gom dữ liệu phiếu in và renderer PDF.
     public PrintServiceImpl(PatientDao patientDao, StudyDao studyDao, ImagingOrderDao imagingOrderDao,
                             ServiceItemDao serviceItemDao, DeviceDao deviceDao, ReportDao reportDao,
                             ClinicalSnapshotDao clinicalSnapshotDao, PdfPrintRenderer renderer,
@@ -71,9 +72,10 @@ public class PrintServiceImpl implements PrintService {
         this.objectMapper = objectMapper;
     }
 
+    // Gom dữ liệu bệnh nhân/ca chụp/báo cáo/clinical_snapshot theo từng phần (FUNCTIONAL/OVERVIEW/LABS/DRUGS/SURGERY) và render ra PDF.
     @Override
     @Transactional
-    @Audited(action = AuditAction.PRINT, entityType = "study", patientIdArg = 0, entityIdArg = 1)
+    @Audited(action = AuditAction.PRINT, entityType = "STUDY", patientIdArg = 0, entityIdArg = 1)
     public PrintDocumentResponse render(Long patientId, Long studyId, PrintSection section) {
         Context ctx = load(patientId, studyId);
         List<PdfPrintRenderer.Line> patientLines = patientLines(ctx);
@@ -128,9 +130,10 @@ public class PrintServiceImpl implements PrintService {
                 pdf);
     }
 
+    // Ghi nhận sự kiện đã in các phần của phiếu (phục vụ audit_log), không trả dữ liệu.
     @Override
     @Transactional
-    @Audited(action = AuditAction.PRINT, entityType = "study", patientIdArg = 0, entityIdArg = 1)
+    @Audited(action = AuditAction.PRINT, entityType = "STUDY", patientIdArg = 0, entityIdArg = 1)
     public void recordPrintEvent(Long patientId, Long studyId, List<PrintSection> sections) {
         Context ctx = load(patientId, studyId);
         log.info("Ghi su kien in: benh nhan {}, ca chup {}, cac phan {}",
@@ -148,6 +151,7 @@ public class PrintServiceImpl implements PrintService {
     ) {
     }
 
+    // Nạp toàn bộ dữ liệu liên quan (bệnh nhân, ca chụp, chỉ định, dịch vụ, máy, báo cáo, clinical_snapshot) cho một lần in; kiểm ca chụp thuộc đúng bệnh nhân.
     private Context load(Long patientId, Long studyId) {
         Patient patient = patientDao.findById(patientId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PATIENT_NOT_FOUND", "Khong tim thay benh nhan."));
@@ -168,6 +172,7 @@ public class PrintServiceImpl implements PrintService {
                 clinicalSnapshotDao.findByOrderId(order.getId()));
     }
 
+    // Dựng danh sách dòng "nhãn : giá trị" thông tin bệnh nhân/chỉ định để in ở đầu phiếu.
     private List<PdfPrintRenderer.Line> patientLines(Context ctx) {
         Patient p = ctx.patient();
         String ageText = p.getDateOfBirth() == null
@@ -189,6 +194,7 @@ public class PrintServiceImpl implements PrintService {
         );
     }
 
+    // Lấy một field (node) cụ thể trong payload JSON của clinical_snapshot, trả null nếu thiếu hoặc JSON không hợp lệ.
     private JsonNode snapshotNode(Context ctx, String field) {
         return ctx.snapshot().map(s -> {
             try {
@@ -202,6 +208,7 @@ public class PrintServiceImpl implements PrintService {
         }).orElse(null);
     }
 
+    // Chuyển một mảng JSON (ví dụ danh sách xét nghiệm/thuốc) thành bảng dữ liệu để in, theo danh sách field/tiêu đề chỉ định.
     private PdfPrintRenderer.Table arrayTable(JsonNode array, List<String> fields, List<String> headers) {
         List<List<String>> rows = new ArrayList<>();
         if (array != null && array.isArray()) {

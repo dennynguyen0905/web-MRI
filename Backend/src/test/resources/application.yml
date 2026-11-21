@@ -3,6 +3,8 @@
 # Flyway chay o day (khac voi main application.yml dang tat flyway) de dung dung migration thuc
 # trong database/migrations/, chi toi V6 (KHONG seed V7__seed_demo_data.sql, de test tu seed du
 # lieu toi thieu, giong cach lam cu).
+# Migration SCHEMA dat sau seed (V9+: row_version, daily_sequence) van duoc chay sau target qua
+# support.SchemaMigrationsAfterSeedConfig (bo qua V7/V8 la seed demo).
 server:
   servlet:
     context-path: ""

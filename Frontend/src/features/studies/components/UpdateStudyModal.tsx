@@ -3,10 +3,11 @@ import { useReferenceData } from '@/features/worklist/hooks/useWorklist'
 import { ApiError } from '@/shared/api/http'
 import { can, deniedReason } from '@/shared/lib/auth'
 import { genderLabel } from '@/shared/lib/format'
-import type { AppUser, Gender, PatientClass, WorklistRow } from '@/shared/lib/types'
+import type { AppUser, Gender, WorklistRow } from '@/shared/lib/types'
 import { Button, Input, Modal, Select } from '@/shared/ui/controls'
 import { Download, Warning } from '@/shared/ui/Icon'
 import { updateImagingOrder, updatePatient, updateStudy } from '../api/studiesApi'
+import { type UpdateStudyFormState, buildUpdatePayloads } from '../lib/updatePayloads'
 import { messageFor } from './AddStudyModal'
 
 /** Nhóm dữ liệu quyết định trường được gửi tới endpoint nào khi lưu. */
@@ -18,6 +19,8 @@ interface FieldDef {
   target: Target
   /** Trường định danh bệnh nhân — `CLINICIAN` chỉ xem (`doc/06-rbac-matrix.md` mục 5, D24). */
   identityField?: boolean
+  /** Chỉ ADMIN/TECHNICIAN sửa được (ví dụ `study_instance_uid`). */
+  techOnly?: boolean
   type?: 'text' | 'date' | 'select'
   options?: { value: string; label: string }[]
   /** Hiển thị giá trị cho bảng so sánh (mặc định là chính chuỗi trong form). */
@@ -44,7 +47,8 @@ export function UpdateStudyModal({ open, onClose, row, user, onSaved }: {
   onSaved: () => void
 }) {
   const reference = useReferenceData()
-  const devices = reference.data?.devices ?? []
+  // Ổn định danh tính mảng: `?? []` tạo mảng mới mỗi render làm `fields`/`changed` tính lại liên tục.
+  const devices = useMemo(() => reference.data?.devices ?? [], [reference.data])
 
   // CLINICIAN không có ADMIN/TECHNICIAN: khóa trường định danh, chỉ xem (D24).
   const lockIdentityFields = !user.roles.some(r => r === 'ADMIN' || r === 'TECHNICIAN')
@@ -103,7 +107,8 @@ export function UpdateStudyModal({ open, onClose, row, user, onSaved }: {
       options: devices.map(d => ({ value: String(d.id), label: `${d.name} (${d.modality})` })),
       display: v => (v ? devices.find(d => String(d.id) === v)?.name ?? `Máy #${v}` : '—'),
     },
-    { key: 'studyInstanceUid', label: 'StudyInstanceUID', target: 'study' },
+    // Chỉ ADMIN/TECHNICIAN được đặt UID (backend StudyServiceImpl.update trả 403 cho vai trò khác).
+    { key: 'studyInstanceUid', label: 'StudyInstanceUID', target: 'study', techOnly: true },
   ], [devices])
 
   // Task 11: chỉ những trường thực sự đổi mới vào bảng so sánh.
@@ -115,12 +120,12 @@ export function UpdateStudyModal({ open, onClose, row, user, onSaved }: {
   if (!open || !row) return null
 
   const isLocked = (f: FieldDef) =>
-    (f.identityField && lockIdentityFields) || f.key === 'patientCode' || !allowed
+    ((f.identityField || f.techOnly) && lockIdentityFields) || f.key === 'patientCode' || !allowed
 
   const lockReason = (f: FieldDef) => {
     if (!allowed) return deniedReason('patient.update')
     if (f.key === 'patientCode') return 'Mã bệnh nhân là khóa đối chiếu, không đổi được sau khi tạo'
-    if (f.identityField && lockIdentityFields) return IDENTITY_LOCK_TOOLTIP
+    if ((f.identityField || f.techOnly) && lockIdentityFields) return IDENTITY_LOCK_TOOLTIP
     return undefined
   }
 
@@ -134,38 +139,16 @@ export function UpdateStudyModal({ open, onClose, row, user, onSaved }: {
     setError(null)
     setNotice(null)
     try {
-      const patientChanges = changed.filter(f => f.target === 'patient' && f.key !== 'patientCode')
-      const orderChanges = changed.filter(f => f.target === 'order')
+      // Chỉ gửi trường đã đổi — xem Javadoc `buildUpdatePayloads` (gửi cả form làm CLINICIAN bị 403).
+      const payloads = buildUpdatePayloads(initial, form)
       const studyChanges = changed.filter(f => f.target === 'study')
 
-      if (patientChanges.length) {
-        await updatePatient(row.patient.id, {
-          fullName: form.fullName.trim(),
-          dateOfBirth: form.dateOfBirth || null,
-          gender: form.gender as Gender,
-          socialInsuranceNo: form.socialInsuranceNo.trim() || null,
-          phone: form.phone.trim() || null,
-          address: form.address.trim() || null,
-        })
-      }
+      if (payloads.patient) await updatePatient(row.patient.id, payloads.patient)
+      if (payloads.order) await updateImagingOrder(row.order.id, payloads.order)
 
-      if (orderChanges.length) {
-        await updateImagingOrder(row.order.id, {
-          visitCode: form.visitCode.trim() || null,
-          orderingDoctorName: form.orderingDoctorName.trim(),
-          patientClass: form.patientClass as PatientClass,
-          room: form.room.trim() || null,
-          bed: form.bed.trim() || null,
-          clinicalDiagnosis: form.clinicalDiagnosis.trim() || null,
-        })
-      }
-
-      if (studyChanges.length) {
+      if (payloads.study) {
         try {
-          await updateStudy(row.study.id, {
-            deviceId: form.deviceId ? Number(form.deviceId) : null,
-            studyInstanceUid: form.studyInstanceUid.trim() || null,
-          })
+          await updateStudy(row.study.id, payloads.study)
         } catch (err) {
           // `PATCH /studies/{id}` có trong openapi nhưng backend chưa cài (KAN-34): ở chế độ live
           // sẽ 404/405. Nói rõ phần nào chưa lưu được thay vì im lặng bỏ qua.
@@ -320,23 +303,7 @@ export function UpdateStudyModal({ open, onClose, row, user, onSaved }: {
 
 /* ------------------------------------------------------------------ Nội bộ */
 
-interface FormState {
-  patientCode: string
-  fullName: string
-  dateOfBirth: string
-  gender: string
-  socialInsuranceNo: string
-  phone: string
-  address: string
-  visitCode: string
-  orderingDoctorName: string
-  patientClass: string
-  room: string
-  bed: string
-  clinicalDiagnosis: string
-  deviceId: string
-  studyInstanceUid: string
-}
+type FormState = UpdateStudyFormState
 
 const emptyForm = (): FormState => ({
   patientCode: '', fullName: '', dateOfBirth: '', gender: 'U', socialInsuranceNo: '', phone: '',

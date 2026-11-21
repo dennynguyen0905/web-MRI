@@ -19,11 +19,13 @@ public class DepartmentServiceImpl implements DepartmentService {
     private final DepartmentDao departmentDao;
     private final DepartmentMapper departmentMapper;
 
+    // Khởi tạo service với DAO và mapper của khoa/phòng.
     public DepartmentServiceImpl(DepartmentDao departmentDao, DepartmentMapper departmentMapper) {
         this.departmentDao = departmentDao;
         this.departmentMapper = departmentMapper;
     }
 
+    // Lấy danh sách khoa/phòng đang hoạt động, sắp theo cấu trúc cây (cha trước, rồi theo sortOrder).
     @Override
     @Transactional(readOnly = true)
     public List<DepartmentResponse> listDepartments() {

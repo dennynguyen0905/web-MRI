@@ -58,6 +58,9 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private String adminToken;
     private String technicianToken;
     private String radiologistToken;
@@ -269,6 +272,91 @@ class IdentityConflictControllerTest extends AbstractIntegrationTest {
 
         IdentityConflict unchanged = identityConflictDao.findById(conflict.getId()).orElseThrow();
         assertThat(unchanged.getResolution()).isEqualTo("PENDING");
+    }
+
+    /* ------------------------------- resolve: du lieu xau phai ra 4xx, khong phai 500 */
+
+    @Test
+    void resolve_takeHis_tra_422_khi_his_value_null() throws Exception {
+        IdentityConflict conflict = saveConflict(patientId, "full_name", "Nguyen Van Gia A", null, "PENDING");
+
+        postResolution(conflict.getId(), Map.of("resolution", "TAKE_HIS"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("IDENTITY_CONFLICT_VALUE_INVALID"));
+
+        assertThat(patientDao.findById(patientId).orElseThrow().getFullName()).isEqualTo("Nguyen Van Gia A");
+    }
+
+    @Test
+    void resolve_manualEdit_tra_422_khi_ngay_sinh_khong_ton_tai() throws Exception {
+        IdentityConflict conflict = saveConflict(patientId, "date_of_birth", "1958-03-15", "1952", "PENDING");
+
+        postResolution(conflict.getId(), Map.of("resolution", "MANUAL_EDIT", "manual_value", "2026-13-45"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("IDENTITY_CONFLICT_VALUE_INVALID"));
+    }
+
+    @Test
+    void resolve_manualEdit_tra_422_khi_ngay_sinh_o_tuong_lai() throws Exception {
+        IdentityConflict conflict = saveConflict(patientId, "date_of_birth", "1958-03-15", "1952", "PENDING");
+        String nextYear = String.valueOf(java.time.LocalDate.now().getYear() + 1);
+
+        postResolution(conflict.getId(), Map.of("resolution", "MANUAL_EDIT", "manual_value", nextYear))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("IDENTITY_CONFLICT_VALUE_INVALID"));
+    }
+
+    @Test
+    void resolve_takeHis_tra_409_khi_patient_code_trung_benh_nhan_khac() throws Exception {
+        savePatient("TEST0002", "Nguyen Van Gia C");
+        IdentityConflict conflict = saveConflict(patientId, "patient_code", "TEST0001", "TEST0002", "PENDING");
+
+        postResolution(conflict.getId(), Map.of("resolution", "TAKE_HIS"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PATIENT_DUPLICATE_CODE"));
+    }
+
+    @Test
+    void resolve_manualEdit_tra_409_khi_bhxh_trung_benh_nhan_khac() throws Exception {
+        Patient other = savePatient("TEST0003", "Nguyen Van Gia D");
+        other.setSocialInsuranceNo("GD4790000000999");
+        patientDao.save(other);
+        IdentityConflict conflict = saveConflict(patientId, "social_insurance_no", null, "GD4790000000111", "PENDING");
+
+        postResolution(conflict.getId(), Map.of("resolution", "MANUAL_EDIT", "manual_value", "GD4790000000999"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PATIENT_SUSPECTED_DUPLICATE"));
+    }
+
+    /**
+     * Test lop nay @Transactional nen UPDATE khong tu flush truoc rollback -> rang buoc DB (NOT NULL,
+     * UNIQUE, do dai) khi sua patient KHONG duoc kiem neu khong flush tay. Flush + doc lai bang JDBC
+     * (cung connection cua transaction test) de chac chan cau UPDATE that su hop le voi MySQL.
+     */
+    @Test
+    void resolve_takeHis_flush_xuong_db_thanh_cong_va_ghi_before_null() throws Exception {
+        IdentityConflict conflict = saveConflict(patientId, "phone", null, "0900000999", "PENDING");
+
+        postResolution(conflict.getId(), Map.of("resolution", "TAKE_HIS"))
+                .andExpect(status().isOk());
+        entityManager.flush();
+
+        String phone = jdbcTemplate.queryForObject("SELECT phone FROM patient WHERE id = ?", String.class, patientId);
+        assertThat(phone).isEqualTo("0900000999");
+        String before = jdbcTemplate.queryForObject(
+                "SELECT before_value FROM audit_log WHERE action = 'UPDATE' AND entity_type = 'IDENTITY_CONFLICT' "
+                        + "AND entity_id = ? ORDER BY id DESC LIMIT 1", String.class, conflict.getId());
+        // Gia tri cu null: khong con ghi chuoi "null" gia (String.valueOf(null)) nhu truoc; ObjectMapper
+        // cua app cau hinh non_null nen key "value" bi bo qua.
+        assertThat(before).contains("\"field_name\": \"phone\"").doesNotContain("\"null\"");
+    }
+
+    private org.springframework.test.web.servlet.ResultActions postResolution(Long conflictId, Map<String, Object> body)
+            throws Exception {
+        return mockMvc.perform(post("/identity-conflicts/" + conflictId + "/resolution")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body)));
     }
 
     /* -------------------------------------------------- helpers */

@@ -25,11 +25,13 @@ public class AuditLogServiceImpl implements AuditLogService {
     private final AuditLogDao auditLogDao;
     private final AuditLogMapper auditLogMapper;
 
+    // Khởi tạo service với DAO và mapper của audit_log.
     public AuditLogServiceImpl(AuditLogDao auditLogDao, AuditLogMapper auditLogMapper) {
         this.auditLogDao = auditLogDao;
         this.auditLogMapper = auditLogMapper;
     }
 
+    // Tra cứu audit_log theo nhiều điều kiện lọc (bệnh nhân, người thực hiện, hành động, loại entity, khoảng thời gian), có phân trang.
     @Override
     @Transactional(readOnly = true)
     @Audited(action = AuditAction.READ, entityType = "AUDIT_LOG")

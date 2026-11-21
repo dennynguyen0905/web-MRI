@@ -31,29 +31,36 @@ final class ServiceSupport {
     record SortSpec(String field, boolean ascending) {
     }
 
+    // Không cho khởi tạo instance — class chỉ chứa hàm tiện ích static.
     private ServiceSupport() {
     }
 
+    // Chuẩn hóa số trang: null hoặc nhỏ hơn 1 thì trả về trang 1.
     static int safePage(Integer page) {
         return (page == null || page < 1) ? 1 : page;
     }
 
+    // Chuẩn hóa kích thước trang theo mặc định và giới hạn tối đa dùng chung toàn hệ thống.
     static int safePageSize(Integer pageSize) {
         return safePageSize(pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
     }
 
+    // Chuẩn hóa kích thước trang: null hoặc nhỏ hơn 1 thì dùng giá trị mặc định, lớn hơn giới hạn thì cắt về giới hạn.
     static int safePageSize(Integer pageSize, int defaultSize, int maxSize) {
         return (pageSize == null || pageSize < 1) ? defaultSize : Math.min(pageSize, maxSize);
     }
 
+    // Chuyển chuỗi rỗng/blank thành null, có trim nếu còn giá trị.
     static String blankToNull(String value) {
         return (value == null || value.isBlank()) ? null : value.trim();
     }
 
+    // Chuẩn hóa chuỗi về dạng viết thường không khoảng trắng dư, trả null nếu rỗng.
     static String normalizeLower(String value) {
         return (value == null || value.isBlank()) ? null : value.trim().toLowerCase(Locale.ROOT);
     }
 
+    // Parse tham số "sort" dạng "truong,chieu" thành SortSpec; báo lỗi 400 nếu trường hoặc chiều không hợp lệ.
     static SortSpec parseSort(String sort, Map<String, String> sortableFields,
                               String defaultField, boolean defaultAscending) {
         if (sort == null || sort.isBlank()) {
@@ -74,6 +81,7 @@ final class ServiceSupport {
         return new SortSpec(entityField, direction.equals("asc"));
     }
 
+    // Parse chuỗi thành tên hằng số enum hợp lệ, trả null nếu rỗng, báo lỗi 400 nếu giá trị không thuộc enum.
     static <E extends Enum<E>> String parseEnumOrNull(String raw, Class<E> enumType, String paramName) {
         if (raw == null || raw.isBlank()) {
             return null;
@@ -86,15 +94,18 @@ final class ServiceSupport {
         }
     }
 
+    // Lấy Authentication hiện tại từ SecurityContext.
     static Authentication currentAuth() {
         return SecurityContextHolder.getContext().getAuthentication();
     }
 
+    // Lấy username của người đang đăng nhập; trả "system" nếu chưa xác thực.
     static String currentUsername() {
         Authentication auth = currentAuth();
         return (auth == null || auth.getPrincipal() == null) ? "system" : String.valueOf(auth.getPrincipal());
     }
 
+    // Lấy entity AppUser của người đang đăng nhập từ DAO, trả Optional.empty() nếu chưa xác thực.
     static Optional<AppUser> currentUser(AppUserDao appUserDao) {
         Authentication auth = currentAuth();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
@@ -103,11 +114,13 @@ final class ServiceSupport {
         return appUserDao.findByUsername(auth.getName());
     }
 
+    // Kiểm tra Authentication có chứa một quyền (authority) cụ thể hay không.
     static boolean hasAuthority(Authentication auth, String authority) {
         return auth != null && auth.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals(authority));
     }
 
+    // Kiểm tra Authentication có chứa bất kỳ quyền nào trong danh sách truyền vào hay không.
     static boolean hasAnyAuthority(Authentication auth, String... authorities) {
         if (auth == null) {
             return false;
@@ -120,6 +133,7 @@ final class ServiceSupport {
         return false;
     }
 
+    // Chuyển entity Patient sang DTO PatientResponse và tính kèm tuổi dựa trên ngày sinh/độ chính xác.
     static PatientResponse toPatientResponseWithAge(Patient patient, PatientMapper patientMapper) {
         PatientResponse base = patientMapper.toResponse(patient);
         if (patient.getDateOfBirth() == null) {

@@ -18,11 +18,13 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     private final ServiceItemDao serviceItemDao;
     private final ServiceItemMapper serviceItemMapper;
 
+    // Khởi tạo service với DAO và mapper của danh mục dịch vụ chụp.
     public ServiceItemServiceImpl(ServiceItemDao serviceItemDao, ServiceItemMapper serviceItemMapper) {
         this.serviceItemDao = serviceItemDao;
         this.serviceItemMapper = serviceItemMapper;
     }
 
+    // Lấy danh sách dịch vụ chụp, có thể lọc theo modality.
     @Override
     @Transactional(readOnly = true)
     public List<ServiceItemResponse> listServiceItems(String modality) {
