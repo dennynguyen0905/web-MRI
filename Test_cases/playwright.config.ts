@@ -38,12 +38,17 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
-    command: `npm run dev -- --port ${PORT} --strictPort`,
+    // `--host 127.0.0.1` LA BAT BUOC: Vite mac dinh bind vao `localhost`, tren runner CI thuong
+    // phan giai ra IPv6 (::1), trong khi Playwright do `url` o IPv4 (127.0.0.1) -> cho mai khong
+    // thay va bao "Timed out waiting ... from config.webServer". Da gap that tren GitHub Actions.
+    command: `npm run dev -- --port ${PORT} --strictPort --host 127.0.0.1`,
     cwd: '../Frontend',
     url: `http://127.0.0.1:${PORT}`,
-    reuseExistingServer: true,
+    // Tren CI luon dung server moi; o may ca nhan thi dung lai cho nhanh.
+    reuseExistingServer: !process.env.CI,
     timeout: 180_000,
-    stdout: 'ignore',
+    // 'pipe' de khi server khong len thi log cua Vite hien ra trong CI, khong bi nuot.
+    stdout: 'pipe',
     stderr: 'pipe',
   },
 })
