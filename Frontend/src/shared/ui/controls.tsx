@@ -1,6 +1,6 @@
 import {
   type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref,
-  type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect, useRef, useState,
+  type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect, useId, useRef, useState,
 } from 'react'
 import { ChevronDown, Search, X } from './Icon'
 
@@ -297,9 +297,29 @@ export function Modal({ open, onClose, title, icon, width = 520, children, foote
   footer?: ReactNode
   bodyClass?: string
 }) {
+  const titleId = useId()
+  const panelRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      // Bẫy focus: Tab không được đi ra ngoài hộp thoại (A11Y-01). Không có bước này, người dùng
+      // bàn phím Tab ra sau lớp nền và không biết mình đang ở đâu.
+      if (e.key !== 'Tab') return
+      const panel = panelRef.current
+      if (!panel) return
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (!e.shiftKey && active === last) { e.preventDefault(); first.focus() }
+      else if (e.shiftKey && active === first) { e.preventDefault(); last.focus() }
+      else if (!panel.contains(active)) { e.preventDefault(); first.focus() }
+    }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [open, onClose])
@@ -308,14 +328,23 @@ export function Modal({ open, onClose, title, icon, width = 520, children, foote
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(16,24,40,.45)] p-4 desktop:p-6" onMouseDown={onClose}>
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         onMouseDown={e => e.stopPropagation()}
         style={{ width, maxWidth: '100%' }}
         className="flex max-h-full flex-col overflow-hidden rounded-lg bg-white shadow-[0_20px_60px_rgba(16,24,40,.3)]"
       >
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 desktop:h-12">
           {icon}
-          <div className="flex-1 text-[13px] font-semibold text-ink">{title}</div>
-          <button onClick={onClose} className="focus-ring rounded p-1 text-ink-4 transition-colors hover:bg-line-soft hover:text-ink">
+          <div id={titleId} className="flex-1 text-[13px] font-semibold text-ink">{title}</div>
+          <button
+            onClick={onClose}
+            aria-label="Đóng hộp thoại"
+            title="Đóng hộp thoại"
+            className="focus-ring rounded p-1 text-ink-4 transition-colors hover:bg-line-soft hover:text-ink"
+          >
             <X size={15} />
           </button>
         </div>

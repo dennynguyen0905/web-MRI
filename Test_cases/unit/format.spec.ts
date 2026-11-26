@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   calcAge, dash, formatAge, formatDate, formatDob, formatThousands, genderLabel, toDateInput,
+  todayInput,
 } from '@/shared/lib/format'
 
 /**
@@ -84,5 +85,20 @@ describe('cac ham dinh dang khac', () => {
     expect(dash(null)).toBe('—')
     expect(dash('')).toBe('—')
     expect(dash('CT-01')).toBe('CT-01')
+  })
+})
+
+/** Lop phong ve dau tien cua loi L1: `max` cua o ngay sinh. */
+describe('todayInput (chan ngay sinh tuong lai, loi L1)', () => {
+  it('tra ve dung dang YYYY-MM-DD', () => {
+    expect(todayInput(new Date(2026, 10, 26))).toBe('2026-11-26')
+  })
+
+  it('dem so 0 cho thang va ngay mot chu so', () => {
+    expect(todayInput(new Date(2026, 0, 5))).toBe('2026-01-05')
+  })
+
+  it('khong bao gio tra chuoi rong (neu rong thi `max` mat tac dung)', () => {
+    expect(todayInput()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 })

@@ -280,6 +280,8 @@ export function WorklistTable({
               return (
                 <tr
                   key={row.study.id}
+                  // Hàng đang chọn trước đây chỉ khác màu nền (lỗi A11Y-03).
+                  aria-selected={selected}
                   onClick={() => onSelect(row)}
                   onDoubleClick={() => onOpen?.(row)}
                   className={cx(

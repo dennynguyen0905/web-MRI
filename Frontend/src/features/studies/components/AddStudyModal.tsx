@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useReferenceData } from '@/features/worklist/hooks/useWorklist'
 import { ApiError } from '@/shared/api/http'
 import { can, deniedReason } from '@/shared/lib/auth'
-import { formatDob } from '@/shared/lib/format'
+import { formatDob, todayInput } from '@/shared/lib/format'
 import type { AppUser, DobPrecision, Gender, Patient, PatientClass } from '@/shared/lib/types'
 import { Button, Checkbox, Input, Modal, Radio, Select, cx } from '@/shared/ui/controls'
 import { Plus, Search, Warning } from '@/shared/ui/Icon'
@@ -187,7 +187,13 @@ export function AddStudyModal({ open, onClose, user, onCreated }: {
 
           <Row>
             <Field label="Ngày sinh">
-              <Input type="date" value={form.dateOfBirth} onChange={e => set('dateOfBirth', e.target.value)} />
+              {/* `max` chặn ngày sinh ở tương lai ngay tại trình duyệt (lỗi L1). */}
+              <Input
+                type="date"
+                max={todayInput()}
+                value={form.dateOfBirth}
+                onChange={e => set('dateOfBirth', e.target.value)}
+              />
             </Field>
             <Field label="Độ chính xác ngày sinh">
               <Select

@@ -32,14 +32,34 @@ test.describe('TC-09: cot Tuoi tren worklist', () => {
     await shot(page, 'tc09-cot-tuoi')
   })
 
-  test('tuoi xap xi co tien to ~ va co tooltip giai thich', async ({ page }) => {
+  test('tuoi xap xi co tien to ~ va tooltip giai thich (qua panel)', async ({ page }) => {
+    // Cot "Tuổi" chi co o tab "Cho", nhung 3 ca SCHEDULED cua seed deu thuoc benh nhan co ngay
+    // sinh DAY. Cac benh nhan xap xi (TEST0002/TEST0003 = YEAR/MONTH, TEST0008 = YEAR) nam o tab
+    // "Da thuc hien". Panel ben phai cung dung `formatAge` nen kiem o day la kiem dung ham do.
     await login(page, 'ktv')
+    await page.getByRole('tab', { name: 'Đã thực hiện', exact: true }).click()
+
+    // Tim benh nhan TEST0008 (dob_precision = YEAR) bang o tim kiem tren thanh tren.
+    await page.getByPlaceholder('Mã bệnh nhân').first().fill('TEST0008')
+    await page.keyboard.press('Enter')
     await expect(mainTable(page).locator('tbody tr').first()).toBeVisible()
-    const approx = mainTable(page).getByTitle('Tuổi xấp xỉ vì ngày sinh chỉ có năm hoặc tháng')
-    const count = await approx.count()
-    test.skip(count === 0, 'seed hien khong co benh nhan dob_precision != DAY o tab Cho')
-    for (let i = 0; i < count; i++) {
-      expect((await approx.nth(i).innerText()).trim()).toMatch(/^~\d+$/)
-    }
+    await mainTable(page).locator('tbody tr').first().click()
+
+    // Panel hien Tuoi dang "~NN" kem tooltip giai thich vi sao xap xi.
+    const approx = page.getByTitle('Xấp xỉ vì ngày sinh chỉ có năm hoặc tháng').first()
+    await expect(approx).toBeVisible()
+    expect((await approx.innerText()).trim()).toMatch(/^~\d+$/)
+    await shot(page, 'tc09-tuoi-xap-xi-panel')
+  })
+
+  test('benh nhan ngay sinh du (DAY) khong co tien to ~', async ({ page }) => {
+    await login(page, 'ktv')
+    await page.getByRole('tab', { name: 'Đã thực hiện', exact: true }).click()
+    await page.getByPlaceholder('Mã bệnh nhân').first().fill('TEST0001')
+    await page.keyboard.press('Enter')
+    await expect(mainTable(page).locator('tbody tr').first()).toBeVisible()
+    await mainTable(page).locator('tbody tr').first().click()
+    // Khong duoc co tooltip xap xi cho benh nhan co ngay sinh day du.
+    await expect(page.getByTitle('Xấp xỉ vì ngày sinh chỉ có năm hoặc tháng')).toHaveCount(0)
   })
 })

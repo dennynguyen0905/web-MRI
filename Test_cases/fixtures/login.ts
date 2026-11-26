@@ -47,9 +47,9 @@ export function column(page: Page, name: string) {
  */
 export async function selectRowWithStatus(page: Page, statusLabel: string): Promise<boolean> {
   if (statusLabel === 'Chờ thực hiện') {
-    await page.getByRole('button', { name: /^Chờ \(/ }).click()
+    await page.getByRole('tab', { name: /^Chờ \(/ }).click()
   } else {
-    await page.getByRole('button', { name: 'Đã thực hiện', exact: true }).click()
+    await page.getByRole('tab', { name: 'Đã thực hiện', exact: true }).click()
     // Tick dung mot trang thai: bo cac checkbox khac de danh sach chi con trang thai can kiem.
     for (const other of ['Chưa đọc', 'Đang đọc', 'Đọc xong', 'Đang duyệt', 'Duyệt xong', 'Đã hủy']) {
       const cb = page.getByRole('checkbox', { name: new RegExp(`^${other}`) })
