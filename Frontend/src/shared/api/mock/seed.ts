@@ -5,8 +5,12 @@
  * Trả về DTO snake_case y như backend để đường đi dto → mapper → kiểu miền được chạy thật,
  * đổi sang API thật thì không còn gì phải sửa.
  *
- * Ca `CANCELLED` (study id = 10 của V8) **không** có ở đây: `CANCELLED` còn ❓, chưa nằm trong
- * `enu.StudyStatus` của backend lẫn `shared/lib/types.ts` (ghi nợ kỹ thuật, `doc/12` TC-16).
+ * Ca `CANCELLED`: V8 đặt ở `study.id = 10`, nhưng id 10 và 11 ở đây đã dùng cho hai ca gắn ảnh
+ * thật trong Orthanc, nên ca hủy nằm ở `id = 12`. Trước 2026-11-26 mock **không có** ca
+ * `CANCELLED` nào với lý do "`CANCELLED` còn ❓" — lý do đó đã lỗi thời (trạng thái này nay có đủ
+ * trong `enu.StudyStatus`, `shared/lib/types.ts`, `shared/lib/status.ts` và bước chuyển T10), và
+ * việc thiếu nó làm bộ lọc "Đã hủy" luôn rỗng, `doc/12` TC-16 không kiểm chứng được đủ 7 nhóm
+ * trạng thái (lỗi DATA-01).
  * R-03: toàn bộ là dữ liệu giả.
  */
 import type {
@@ -101,6 +105,12 @@ export const STUDIES: StudyDto[] = [
   /** study_instance_uid trỏ tới ảnh thật đã nạp vào Orthanc cục bộ (xem chú thích ở PATIENTS id 9/10) — accession_number khớp đúng tag (0008,0050) trong file DICOM đã nạp. */
   { id: 10, accession_number: '2026110800001', order_id: 9, service_item_id: 5, device_id: 3, status: 'UNREAD', study_instance_uid: '1.2.826.0.1.3680043.8.498.10000007', scheduled_at: '2026-11-08T01:10:00Z', started_at: '2026-11-08T01:15:00Z', completed_at: '2026-11-08T01:40:00Z', due_at: null, performed_by: userRef(3), reading_user: null, approving_user: null },
   { id: 11, accession_number: '2026110800002', order_id: 10, service_item_id: 5, device_id: 3, status: 'UNREAD', study_instance_uid: '1.2.826.0.1.3680043.8.498.10000008', scheduled_at: '2026-11-08T01:40:00Z', started_at: '2026-11-08T01:45:00Z', completed_at: '2026-11-08T02:10:00Z', due_at: null, performed_by: userRef(3), reading_user: null, approving_user: null },
+  /**
+   * Ca đã hủy (T10) — tương ứng `study.id = 10` của `V8__rbac_and_demo_extras.sql`, đổi sang
+   * `id = 12` vì 10/11 đã dùng. `study_instance_uid` phải là NULL: chỉ hủy được ca chưa có ảnh
+   * trong PACS (RBAC-12, `doc/03-state-machine.md` mục 2.3).
+   */
+  { id: 12, accession_number: '2026103100005', order_id: 8, service_item_id: 2, device_id: 1, status: 'CANCELLED', study_instance_uid: null, scheduled_at: '2026-10-31T08:00:00Z', started_at: null, completed_at: null, due_at: null, performed_by: null, reading_user: null, approving_user: null },
 ]
 
 export const REPORTS: ReportDto[] = [
@@ -121,6 +131,9 @@ export const STATUS_HISTORY: StatusHistoryEntryDto[] = [
   { id: 8, study_id: 2, from_status: 'SCHEDULED', to_status: 'UNREAD', changed_by: userRef(3), changed_at: '2026-10-29T02:55:00Z', reason: null, note: null },
   { id: 9, study_id: 2, from_status: 'UNREAD', to_status: 'READING', changed_by: userRef(4), changed_at: '2026-10-29T05:00:00Z', reason: null, note: null },
   { id: 10, study_id: 2, from_status: 'READING', to_status: 'READ', changed_by: userRef(4), changed_at: '2026-10-29T05:20:00Z', reason: null, note: null },
+  /** Ca 12: tạo rồi hủy — `reason` bắt buộc ở T10 (SM-11). */
+  { id: 11, study_id: 12, from_status: null, to_status: 'SCHEDULED', changed_by: userRef(2), changed_at: '2026-10-31T07:30:00Z', reason: null, note: null },
+  { id: 12, study_id: 12, from_status: 'SCHEDULED', to_status: 'CANCELLED', changed_by: userRef(3), changed_at: '2026-10-31T08:30:00Z', reason: 'Bệnh nhân đã xuất viện, không còn nhu cầu chụp (dữ liệu giả).', note: null },
 ]
 
 /**

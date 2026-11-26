@@ -27,15 +27,15 @@ Ký hiệu trạng thái:
 | TC-13 | Xử lý `identity_conflict` 3 lựa chọn | `patient_id=3` hoặc `7` | — | ⬜ chưa phủ — chưa có UI (xem TC-08) |
 | TC-14 | Mất kết nối HIS khi trả kết quả | — | — | 🚫 bị chặn — tài liệu tự ghi `[HOÃN] H-03`, không chạy được trong 8 tuần |
 | TC-15 | Ca chưa có UID → nút "Xem ảnh" ẩn/disable | `study.id ∈ {7,8,9}` | `e2e/05-view-image-gate.spec.ts` | ✅ tự động — **nhưng** ❓ `P-10` chưa chốt là ẩn HAY disable; test khóa hành vi code đang chạy |
-| TC-16 | Đếm đủ 7 nhóm trạng thái, kể cả `CANCELLED` | `study.id=1..10` | `unit/status.spec.ts` (10 case), `e2e/06-status-counts.spec.ts` | ✅ 6/7 trạng thái — **lỗi `DATA-01`**: mock seed thiếu ca `CANCELLED`, 6 test bị skip. **nợ tài liệu `N-01`**: `doc/12` ghi TC-16 bị chặn vì frontend thiếu `CANCELLED`; điều này **đã lỗi thời** từ 2026-11-12 |
-| TC-17 | Lọc theo Modality (CT/MR/CR/US) | 4 máy, 6 dịch vụ | — | ⬜ chưa phủ — cần viết `e2e/07-filters.spec.ts` |
+| TC-16 | Đếm đủ 7 nhóm trạng thái, kể cả `CANCELLED` | `study.id=1..12` | `unit/status.spec.ts`, `e2e/06-status-counts.spec.ts` | ✅ **đủ 7/7** sau khi sửa `DATA-01` (thêm ca `CANCELLED` id=12 vào mock seed). **nợ tài liệu `N-01`**: `doc/12` ghi TC-16 bị chặn vì frontend thiếu `CANCELLED`; điều này **đã lỗi thời** từ 2026-11-12 |
+| TC-17 | Lọc theo Modality (CT/MR/CR/US) | 4 máy, 6 dịch vụ | `e2e/07-filters.spec.ts` | ✅ tự động |
 | TC-18 | Lọc theo khoảng thời gian | mọi `scheduled_at` | — | 🖐 thủ công — rủi ro `D12-02`: seed dùng ngày cố định ⇒ "Hôm nay"/"Hôm qua" **sẽ rỗng**, không phải lỗi code |
-| TC-19 | Lọc theo loại bệnh nhân (Nội/Ngoại trú) | `patient_class` | — | ⬜ chưa phủ — cần viết `e2e/07-filters.spec.ts` |
+| TC-19 | Lọc theo loại bệnh nhân (Nội/Ngoại trú) | `patient_class` | `e2e/07-filters.spec.ts` | ✅ tự động |
 | TC-20 | `CLINICIAN` chỉ thấy chỉ định của mình (D34) | `imaging_order.id=4` | — | 🚫 bị chặn — backend chưa lọc row-level cho các `GET` còn lại; thêm `D10`: seed không khớp tên |
 | TC-21 | `JsonFileHisGateway.findOrder()` 7 trường hợp | `his-orders.json` | backend, ngoài phạm vi | — ngoài phạm vi (không phải frontend) |
 | TC-22 | Khóa mềm + người duyệt ≠ người đọc | `bscdha2`, `bsduyet2` | `Frontend/.../studiesApi.test.ts`, backend `RbacIntegrationTest` RBAC-09/10 | ✅ tự động — **nợ tài liệu `N-02`**: `doc/12` ghi "chưa có code chạy", **đã lỗi thời** |
 
-**Tổng kết TC (22):** ✅ tự động 10 · 🖐 thủ công 2 · ⬜ chưa phủ 5 · 🚫 bị chặn 4 · ngoài phạm vi 1
+**Tổng kết TC (22):** ✅ tự động 12 · 🖐 thủ công 2 · ⬜ chưa phủ 3 · 🚫 bị chặn 4 · ngoài phạm vi 1
 
 ---
 
@@ -87,7 +87,7 @@ ghi `study.reopen` là *đề xuất* (❓ D16) và **frontend hiện chỉ cho 
 
 | Story | Mã chuyển | Mã lỗi trong tiêu chí | Test phủ | Trạng thái story |
 |---|---|---|---|---|
-| US-KTV-01 Tạo bệnh nhân | — | 201, 409 | `e2e/04-create-study.spec.ts` | 🐞 `L1` — chấp ngày sinh tương lai |
+| US-KTV-01 Tạo bệnh nhân | — | 201, 409 | `e2e/04-create-study.spec.ts`, `e2e/09-a11y.spec.ts` | 🟡 `L1` — form đã chặn (`max`), **backend còn mở** |
 | US-KTV-02 Tìm bệnh nhân tránh trùng | — | *(không có ca lỗi)* | `e2e/04-create-study.spec.ts` | ✅ tự động |
 | US-KTV-03 Sửa chỉ định | — | 403 | `Frontend/.../updatePayloads.test.ts` | ✅ tự động |
 | US-KTV-04 Thêm ca chụp (T1) | T1 | 422 | `e2e/04-create-study.spec.ts` | ✅ tự động |
@@ -96,7 +96,7 @@ ghi `study.reopen` là *đề xuất* (❓ D16) và **frontend hiện chỉ cho 
 | US-KTV-07 Xử lý lệch HIS/RIS | — | 403 (RBAC-11) | — | ⬜ chưa có UI |
 | US-KTV-08 Hủy ca chưa chụp (T10) | T10 | 422 ×2 (RBAC-12, SM-11) | `e2e/03-transitions.spec.ts` | ✅ tự động |
 | US-KTV-09 Đăng nhập | — | 401 | `e2e/01-auth.spec.ts` | ✅ tự động |
-| US-KTV-10 Worklist tab "Chờ" + lọc | — | *(không có ca lỗi)* | `e2e/06-status-counts.spec.ts` | ✅ một phần — bộ đếm đã phủ, bộ lọc chưa |
+| US-KTV-10 Worklist tab "Chờ" + lọc | — | *(không có ca lỗi)* | `e2e/06-status-counts.spec.ts`, `e2e/07-filters.spec.ts` | ✅ tự động |
 | US-KTV-11 Xuất CSV + in danh sách | — | 200, 401, 400 | `Frontend` chưa có test; backend `ExportServiceUnitTest` | ⬜ phần UI chưa phủ — **story duy nhất đã `Done`** |
 | US-BSLS-01 Tạo chỉ định | — | 422 | `e2e/04-create-study.spec.ts` | ✅ tự động |
 | US-BSLS-02 Xem thông tin lâm sàng | — | *(không có)* | — | ⬜ chưa phủ (`ClinicalModal`) |
@@ -111,7 +111,7 @@ ghi `study.reopen` là *đề xuất* (❓ D16) và **frontend hiện chỉ cho 
 | US-BSDUYET-01 Mở ca để duyệt (T6) | T6 | 403/422 ❓ (SM-14) | `e2e/03-transitions.spec.ts`, `studiesApi.test.ts` | ✅ tự động |
 | US-BSDUYET-02 Duyệt (T7) | T7 | 403 (RBAC-06, SM-09) | `e2e/03-transitions.spec.ts`, `e2e/08-rbac-ui.spec.ts` | ✅ tự động |
 | US-BSDUYET-03 Trả lại để sửa (T8) | T8 | 422 (SM-11) | `e2e/03-transitions.spec.ts` | ✅ tự động |
-| US-BSDUYET-04 Tab "Đã thực hiện" + lọc | — | *(không có)* | `e2e/06-status-counts.spec.ts` | ✅ một phần — bộ đếm đã phủ, bộ lọc chưa |
+| US-BSDUYET-04 Tab "Đã thực hiện" + lọc | — | *(không có)* | `e2e/06-status-counts.spec.ts`, `e2e/07-filters.spec.ts` | ✅ tự động |
 | US-ADMIN-01 Mở lại ca đã duyệt (T9) | T9 | 403 (SM-15), 422 | `e2e/03-transitions.spec.ts` | ✅ tự động |
 | US-ADMIN-02 Danh sách lệch HIS/RIS | — | 403 | — | ⬜ chưa có UI |
 | US-ADMIN-03 Xử lý lệch (Admin) | — | 422 | — | ⬜ chưa có UI |
@@ -144,3 +144,19 @@ Ngoài ra `doc/13` mục 6 ghi "**30 story**" trong khi mục 3 có **31** — l
 | `N-05` | `doc/13` mục 5.1 | Ghi `AddStudyModal`/`UpdateStudyModal` "chỉ là giao diện tĩnh, nút xác nhận chỉ đóng modal" — đã nối API thật từ 2026-11-12 |
 | `N-06` | `doc/13` mục 5.1 | Ghi `LoginPage` "5 tài khoản demo nằm cứng trong `data/mock.ts`, chưa gọi API thật" — nay có 7 tài khoản và gọi `/auth/login` thật |
 | `N-07` | `doc/12` mục 3.2.1 | Đếm tài khoản không nhất quán: TC-01 ghi 7, tổng sau V8 ghi 9 |
+
+---
+
+## 6. Vòng QA 2 (2026-11-26) — bổ sung phủ sóng
+
+| Hạng mục mới được phủ | Test |
+|---|---|
+| Hộp thoại có `role="dialog"`, `aria-modal`, `aria-labelledby`, bẫy focus Tab, Esc | `e2e/09-a11y.spec.ts` (4 test) |
+| Tab và hàng đang chọn có `aria-selected` | `e2e/09-a11y.spec.ts` (2 test) |
+| Bắt buộc lý do có thông báo lỗi dạng chữ + `aria-invalid`/`aria-describedby` | `e2e/09-a11y.spec.ts` (1 test) |
+| Ô ngày sinh có `max` = hôm nay (lớp phòng vệ đầu của `L1`) | `e2e/09-a11y.spec.ts` + `unit/format.spec.ts` (3 test) |
+| TC-17 lọc Modality, TC-19 lọc loại bệnh nhân | `e2e/07-filters.spec.ts` (6 test) |
+| Tuổi xấp xỉ `~` qua panel (vì cột Tuổi ở tab Chờ không có bệnh nhân xấp xỉ — `DATA-02`) | `e2e/02-age-display.spec.ts` (2 test) |
+
+**Tổng test tự động toàn dự án:** 41 (`Test_cases/unit`) + 92 (`Test_cases/e2e`) + 80
+(`Frontend`) + 152 (Backend unit, không cần Docker) = **365**, 0 skip.

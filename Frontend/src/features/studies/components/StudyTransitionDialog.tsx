@@ -9,6 +9,9 @@ import { Button, Modal, Textarea } from '@/shared/ui/controls'
 import { Check, Warning } from '@/shared/ui/Icon'
 import { type TransitionResult, transitionStudy } from '../api/studiesApi'
 
+const REASON_HINT_ID = 'transition-reason-hint'
+const REASON_ERROR_ID = 'transition-reason-error'
+
 const REASON_PLACEHOLDERS: Record<string, string> = {
   T4: 'Ví dụ: ảnh nhiễu, thiếu chuỗi xung hoặc bàn giao ca trực cho bác sĩ khác…',
   T8: 'Ví dụ: cần bổ sung mô tả nhu mô não và đối chiếu lâm sàng…',
@@ -31,6 +34,7 @@ export function StudyTransitionDialog({ open, onClose, row, transition, onDone }
   onDone: (result: TransitionResult) => void
 }) {
   const [reason, setReason] = useState('')
+  const [reasonTouched, setReasonTouched] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,12 +43,16 @@ export function StudyTransitionDialog({ open, onClose, row, transition, onDone }
     setReason('')
     setError(null)
     setBusy(false)
+    setReasonTouched(false)
   }, [open, row?.study.id, transition?.code])
 
   if (!open || !row || !transition) return null
 
   const needsReason = Boolean(transition.exceptional)
   const reasonMissing = needsReason && reason.trim() === ''
+  // Chỉ báo lỗi sau khi người dùng đã chạm vào ô rồi để trống, hoặc đã bấm nút xác nhận —
+  // không bật đỏ ngay lúc hộp thoại vừa mở (lỗi UX-01).
+  const showReasonError = reasonMissing && reasonTouched
 
   const confirm = async () => {
     setBusy(true)
@@ -209,13 +217,22 @@ export function StudyTransitionDialog({ open, onClose, row, transition, onDone }
             rows={3}
             autoFocus
             disabled={busy}
+            aria-invalid={showReasonError || undefined}
+            aria-describedby={showReasonError ? REASON_ERROR_ID : REASON_HINT_ID}
             placeholder={REASON_PLACEHOLDERS[transition.code] ?? 'Nhập lý do chuyển trạng thái…'}
             value={reason}
             onChange={e => setReason(e.target.value)}
+            onBlur={() => setReasonTouched(true)}
           />
-          <div className="mt-1 text-[10.5px] text-ink-4">
-            Lý do được ghi vào lịch sử trạng thái của ca chụp (IN-06).
-          </div>
+          {showReasonError ? (
+            <div id={REASON_ERROR_ID} role="alert" className="mt-1 text-[10.5px] font-medium text-[#c81e1e]">
+              Thao tác này bắt buộc nhập lý do.
+            </div>
+          ) : (
+            <div id={REASON_HINT_ID} className="mt-1 text-[10.5px] text-ink-4">
+              Lý do được ghi vào lịch sử trạng thái của ca chụp (IN-06).
+            </div>
+          )}
         </label>
       )}
 

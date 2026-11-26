@@ -369,7 +369,7 @@ export function WorklistPage() {
 
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-app p-2 desktop:p-3">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-white">
-            <div className="flex min-h-[38px] shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5">
+            <div className="flex min-h-[38px] shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5" role="tablist" aria-label="Chế độ xem worklist">
               <TabButton
                 active={tab === 'PENDING'}
                 onClick={() => { setTab('PENDING'); setPage(1) }}
@@ -620,6 +620,10 @@ function TopStatusFilterBar({
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
+      role="tab"
+      // Trước đây tab đang chọn chỉ khác nhau ở màu nền, nên trình đọc màn hình và người mù màu
+      // không biết tab nào đang mở (lỗi A11Y-03).
+      aria-selected={active}
       onClick={onClick}
       className={cx(
         'focus-ring h-7 rounded-md px-3.5 text-[12px] font-semibold transition-colors',
