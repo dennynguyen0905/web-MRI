@@ -1,13 +1,19 @@
 name: Frontend CI
 
 on:
+  # `Test_cases/**` phai co trong danh sach: job `test-cases` o duoi chay bo kiem thu nam trong
+  # thu muc do, nen neu thieu thi sua test ma CI khong chay lai — ai lam do ca bo test van thay
+  # CI xanh. Da gap that: commit chi sua `Test_cases/playwright.config.ts` khong kich hoat
+  # workflow nao.
   push:
     paths:
       - "Frontend/**"
+      - "Test_cases/**"
       - ".github/workflows/frontend-ci.yml"
   pull_request:
     paths:
       - "Frontend/**"
+      - "Test_cases/**"
       - ".github/workflows/frontend-ci.yml"
 
 # doc/14-devops-trien-khai.md muc 7: chua chay that tren GitHub (Backend/ va Frontend/ chua
