@@ -699,12 +699,21 @@ function listImagingOrders(query: Record<string, QueryValue>) {
 
 function listPatients(query: Record<string, QueryValue>) {
   const text = (v: QueryValue) => (v == null ? '' : String(v).trim().toLowerCase())
+  const q = text(query.q)
   const code = text(query.patient_code)
   const name = text(query.full_name)
   const bhxh = text(query.social_insurance_no)
 
   const matched = patients
     .filter(p => {
+      // `q` tim CHUNG: khop ma HOAC ho ten HOAC BHXH — giong `PatientDaoImpl` cua backend
+      // (cb.or tren patientCode / fullName / socialInsuranceNo).
+      if (q) {
+        const hit = p.patient_code.toLowerCase().includes(q)
+          || p.full_name.toLowerCase().includes(q)
+          || (p.social_insurance_no ?? '').toLowerCase().includes(q)
+        if (!hit) return false
+      }
       if (code && !p.patient_code.toLowerCase().includes(code)) return false
       if (name && !p.full_name.toLowerCase().includes(name)) return false
       if (bhxh && !(p.social_insurance_no ?? '').toLowerCase().includes(bhxh)) return false

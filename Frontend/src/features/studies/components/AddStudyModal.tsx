@@ -72,7 +72,11 @@ export function AddStudyModal({ open, onClose, user, onCreated }: {
     setSearching(true)
     setError(null)
     try {
-      const page = await searchPatients({ patientCode: form.searchCode.trim() || undefined })
+      // Dung `q` (khop ma HOAC ho ten HOAC BHXH) thay vi chi `patientCode`. Truoc day o nay chi
+      // tim duoc theo ma, nen KTV tiep nhan lai mot benh nhan khong nho ma thi khong tim ra ho so
+      // cu va buoc phai tao moi -> sinh ho so trung nguoi (loi DUP-02 keo theo DUP-01).
+      // `doc/13` US-KTV-02 von yeu cau tim duoc theo ho ten.
+      const page = await searchPatients({ q: form.searchCode.trim() || undefined })
       setSearchResults(page.items)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không tìm được bệnh nhân.')
@@ -238,7 +242,7 @@ export function AddStudyModal({ open, onClose, user, onCreated }: {
           <div className="flex gap-2">
             <Input
               withSearchIcon
-              placeholder="Nhập mã bệnh nhân"
+              placeholder="Nhập mã bệnh nhân, họ tên hoặc mã BHXH"
               value={form.searchCode}
               onChange={e => set('searchCode', e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') void runSearch() }}
@@ -250,7 +254,7 @@ export function AddStudyModal({ open, onClose, user, onCreated }: {
 
           <div className="mt-2 space-y-1">
             {searchResults?.length === 0 && (
-              <p className="text-[11.5px] text-ink-4">Không tìm thấy bệnh nhân nào khớp mã đã nhập.</p>
+              <p className="text-[11.5px] text-ink-4">Không tìm thấy bệnh nhân nào khớp từ khóa đã nhập.</p>
             )}
             {searchResults?.map(p => (
               <label

@@ -52,13 +52,14 @@ export async function updatePatient(patientId: number, input: PatientUpdateInput
 }
 
 export async function searchPatients(
-  query: { patientCode?: string; fullName?: string; socialInsuranceNo?: string },
+  query: { q?: string; patientCode?: string; fullName?: string; socialInsuranceNo?: string },
   signal?: AbortSignal,
 ): Promise<Page<Patient>> {
   const dto = await api.request<PageDto<PatientDto>>({
     method: 'GET',
     path: '/patients',
     query: {
+      q: query.q,
       patient_code: query.patientCode,
       full_name: query.fullName,
       social_insurance_no: query.socialInsuranceNo,
