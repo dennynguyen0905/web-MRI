@@ -74,6 +74,7 @@ export function LoginPage() {
                 <User size={13} className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink-4" />
                 <Input
                   autoFocus
+                  name="username"
                   autoComplete="username"
                   placeholder="Nhập tên đăng nhập"
                   value={username}
@@ -89,6 +90,7 @@ export function LoginPage() {
                 <Lock size={13} className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink-4" />
                 <Input
                   type="password"
+                  name="password"
                   autoComplete="current-password"
                   placeholder="Nhập mật khẩu"
                   value={password}
