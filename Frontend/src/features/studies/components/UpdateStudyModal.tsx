@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useReferenceData } from '@/features/worklist/hooks/useWorklist'
 import { ApiError } from '@/shared/api/http'
 import { can, deniedReason } from '@/shared/lib/auth'
-import { genderLabel } from '@/shared/lib/format'
+import { genderLabel, todayInput } from '@/shared/lib/format'
 import type { AppUser, Gender, WorklistRow } from '@/shared/lib/types'
 import { Button, Input, Modal, Select } from '@/shared/ui/controls'
 import { Download, Warning } from '@/shared/ui/Icon'
@@ -234,6 +234,7 @@ export function UpdateStudyModal({ open, onClose, row, user, onSaved }: {
                   ) : (
                     <Input
                       type={f.type === 'date' ? 'date' : 'text'}
+                      max={f.key === 'dateOfBirth' ? todayInput() : undefined}
                       value={form[f.key]}
                       disabled={locked}
                       title={lockReason(f) ?? (f.target === 'study' ? STUDY_FIELD_TOOLTIP : undefined)}

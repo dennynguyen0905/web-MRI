@@ -1,13 +1,19 @@
 name: Frontend CI
 
 on:
+  # `Test_cases/**` phai co trong danh sach: job `test-cases` o duoi chay bo kiem thu nam trong
+  # thu muc do, nen neu thieu thi sua test ma CI khong chay lai — ai lam do ca bo test van thay
+  # CI xanh. Da gap that: commit chi sua `Test_cases/playwright.config.ts` khong kich hoat
+  # workflow nao.
   push:
     paths:
       - "Frontend/**"
+      - "Test_cases/**"
       - ".github/workflows/frontend-ci.yml"
   pull_request:
     paths:
       - "Frontend/**"
+      - "Test_cases/**"
       - ".github/workflows/frontend-ci.yml"
 
 # doc/14-devops-trien-khai.md muc 7: chua chay that tren GitHub (Backend/ va Frontend/ chua
@@ -36,5 +42,49 @@ jobs:
       - name: Lint (ESLint)
         run: npx eslint .
 
+      - name: Test (Vitest)
+        run: npm run test
+
       - name: Type-check + build (tsc -b && vite build)
         run: npm run build
+
+  # Bo kiem thu chot cuoi (Test_cases/). E2E chay tren mock mode cua Frontend nen KHONG can
+  # backend, MySQL hay Docker — chay duoc tren runner tieu chuan.
+  test-cases:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Test_cases
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Test_cases/package-lock.json
+
+      - name: npm ci (Test_cases)
+        run: npm ci
+
+      - name: npm ci (Frontend - can cho dev server cua E2E)
+        working-directory: Frontend
+        run: npm ci
+
+      - name: Unit test (Vitest)
+        run: npm run test:unit
+
+      - name: Cai Chromium cho Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E test (Playwright, mock mode)
+        run: npm run test:e2e
+
+      - name: Luu bao cao khi that bai
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: Test_cases/reports/playwright-report/
+          retention-days: 7

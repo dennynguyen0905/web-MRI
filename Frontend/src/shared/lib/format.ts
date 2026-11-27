@@ -20,6 +20,18 @@ export function formatTimeShort(iso: string | null | undefined): string {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+/**
+ * Hôm nay dạng `YYYY-MM-DD`, dùng cho thuộc tính `max` của `input[type=date]`.
+ *
+ * Lỗi L1: không có `max`, form nhận được ngày sinh ở tương lai (ví dụ 2030-01-01). Backend
+ * hiện cũng chưa chặn (`PatientCreateRequest.dateOfBirth` thiếu `@PastOrPresent`) và
+ * `rule/AgeCalculator` ném lỗi khi đọc lại bản ghi đó. Chặn ở form là lớp phòng vệ đầu tiên —
+ * backend vẫn phải tự kiểm lại (AGENTS.md mục 4: "Frontend không phải lớp bảo vệ").
+ */
+export function todayInput(now = new Date()): string {
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
 /** `2026-08-09T…` → `2026-08-09`, dạng mà input[type=date] và query `date_from`/`date_to` dùng. */
 export function toDateInput(iso: string | null | undefined): string {
   if (!iso) return ''

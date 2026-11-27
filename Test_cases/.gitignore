@@ -1,0 +1,12 @@
+# Bao cao loi va anh chup man hinh: tai lieu lam viec, KHONG commit (theo yeu cau nhom test).
+# CANH BAO: thu muc nay khong duoc git theo doi nen se mat khi container bi thu hoi.
+# Hay tai ve may sau moi phien lam viec.
+reports/
+
+# Phu thuoc va ket qua chay test
+node_modules/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+coverage/
