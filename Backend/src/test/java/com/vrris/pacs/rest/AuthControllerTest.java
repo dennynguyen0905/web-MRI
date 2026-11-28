@@ -5,6 +5,7 @@ import com.vrris.pacs.dao.AppUserDao;
 import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.RoleDao;
 import com.vrris.pacs.dto.request.LoginRequest;
+import com.vrris.pacs.enu.DepartmentType;
 import com.vrris.pacs.model.AppUser;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.Role;
@@ -62,7 +63,7 @@ class AuthControllerTest extends AbstractIntegrationTest {
         Department dept = new Department();
         dept.setCode("K01_AUTH");
         dept.setName("Khoa CDHA Auth");
-        dept.setType("KHOA");
+        dept.setType(DepartmentType.KHOA);
         dept.setSortOrder(1);
         dept.setIsActive(true);
         departmentId = departmentDao.save(dept).getId();

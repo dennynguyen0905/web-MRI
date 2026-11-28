@@ -17,6 +17,7 @@ import com.vrris.pacs.dto.response.ImagingOrderPageResponse;
 import com.vrris.pacs.dto.response.ImagingOrderResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.enu.OrderSource;
 import com.vrris.pacs.enu.SyncStatus;
 import com.vrris.pacs.enu.UserRole;
@@ -85,7 +86,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
     // Tra cứu danh sách chỉ định chụp theo bệnh nhân/mã phiếu/mã LSVV, có phân trang và sắp xếp.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "IMAGING_ORDER")
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.IMAGING_ORDER)
     public ImagingOrderPageResponse search(Long patientId, String orderCode, String visitCode,
                                             Integer page, Integer pageSize, String sort) {
         int resolvedPage = safePage(page);
@@ -104,7 +105,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
     // Lấy chi tiết một chỉ định chụp theo id, kèm danh sách ca chụp con.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "IMAGING_ORDER")
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.IMAGING_ORDER)
     public ImagingOrderResponse getById(Long id) {
         return toResponseWithStudies(findOrThrow(id));
     }
@@ -112,7 +113,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
     // Tạo chỉ định chụp mới (sinh order_code nguyên tử qua daily_sequence), đồng thời tạo các ca chụp con kèm theo.
     @Override
     @Transactional
-    @Audited(action = AuditAction.CREATE, entityType = "IMAGING_ORDER")
+    @Audited(action = AuditAction.CREATE, entityType = AuditEntityType.IMAGING_ORDER)
     public ImagingOrderResponse create(ImagingOrderCreateRequest request) {
         if (patientDao.findById(request.patientId()).isEmpty()) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "IMAGING_ORDER_PATIENT_NOT_FOUND",
@@ -124,8 +125,8 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
 
         ImagingOrder entity = imagingOrderMapper.toEntity(request);
         entity.setOrderCode(nextOrderCode(now.toLocalDate()));
-        entity.setSource(OrderSource.MANUAL.name());
-        entity.setSyncStatus(SyncStatus.NOT_SYNCED.name());
+        entity.setSource(OrderSource.MANUAL);
+        entity.setSyncStatus(SyncStatus.NOT_SYNCED);
         entity.setOrderedAt(request.orderedAt() != null ? request.orderedAt() : now);
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
@@ -140,7 +141,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
     // Cập nhật thông tin chỉ định chụp (khoa chỉ định, bác sĩ, chẩn đoán lâm sàng...).
     @Override
     @Transactional
-    @Audited(action = AuditAction.UPDATE, entityType = "IMAGING_ORDER")
+    @Audited(action = AuditAction.UPDATE, entityType = AuditEntityType.IMAGING_ORDER)
     public ImagingOrderResponse update(Long id, ImagingOrderUpdateRequest request) {
         ImagingOrder order = findOrThrow(id);
         if (request.orderingDepartmentId() != null) {
@@ -155,7 +156,7 @@ public class ImagingOrderServiceImpl implements ImagingOrderService {
     // Lấy dữ liệu lâm sàng (clinical_snapshot) của một chỉ định chụp; chặn CLINICIAN xem chỉ định không phải của mình.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "CLINICAL_SNAPSHOT", entityIdArg = 0)
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.CLINICAL_SNAPSHOT, entityIdArg = 0)
     public ClinicalSnapshotResponse getClinicalSnapshot(Long orderId) {
         ImagingOrder order = findOrThrow(orderId);
         enforceClinicianScope(order);

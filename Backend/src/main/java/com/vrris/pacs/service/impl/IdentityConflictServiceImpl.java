@@ -10,6 +10,7 @@ import com.vrris.pacs.dto.response.IdentityConflictPageResponse;
 import com.vrris.pacs.dto.response.IdentityConflictResponse;
 import com.vrris.pacs.dto.response.UserRef;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.enu.ConflictResolution;
 import com.vrris.pacs.enu.ConflictSource;
 import com.vrris.pacs.enu.DobPrecision;
@@ -66,7 +67,7 @@ public class IdentityConflictServiceImpl implements IdentityConflictService {
     // Tra cứu danh sách lệch dữ liệu HIS/RIS theo điều kiện lọc (trạng thái, nguồn, trường, bệnh nhân, thời gian), có phân trang và sắp xếp.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "IDENTITY_CONFLICT")
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.IDENTITY_CONFLICT)
     public IdentityConflictPageResponse search(ConflictResolution resolution, ConflictSource source, String fieldName,
                                                 Long patientId, LocalDateTime detectedFrom, LocalDateTime detectedTo,
                                                 Integer page, Integer pageSize, String sort) {
@@ -75,8 +76,8 @@ public class IdentityConflictServiceImpl implements IdentityConflictService {
         SortSpec sortSpec = parseSort(sort, SORTABLE_FIELDS, "detectedAt", true);
 
         IdentityConflictDao.SearchCriteria criteria = new IdentityConflictDao.SearchCriteria(
-                resolution == null ? null : resolution.name(),
-                source == null ? null : source.name(),
+                resolution,
+                source,
                 blankToNull(fieldName), patientId, detectedFrom, detectedTo,
                 resolvedPage, resolvedPageSize, sortSpec.field(), sortSpec.ascending());
         IdentityConflictDao.SearchResult result = identityConflictDao.search(criteria);
@@ -88,7 +89,7 @@ public class IdentityConflictServiceImpl implements IdentityConflictService {
     // Lấy chi tiết một bản ghi lệch dữ liệu theo id.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "IDENTITY_CONFLICT", entityIdArg = 0)
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.IDENTITY_CONFLICT, entityIdArg = 0)
     public IdentityConflictResponse getById(Long id) {
         IdentityConflict conflict = findOrThrow(id);
         AuditContext.recordPatientId(conflict.getPatientId());
@@ -98,12 +99,12 @@ public class IdentityConflictServiceImpl implements IdentityConflictService {
     // Giải quyết một bản ghi lệch dữ liệu đang PENDING: áp giá trị từ HIS hoặc giá trị nhập tay vào bệnh nhân, hoặc giữ nguyên RIS; chặn nếu HIS không có giá trị.
     @Override
     @Transactional
-    @Audited(action = AuditAction.UPDATE, entityType = "IDENTITY_CONFLICT", entityIdArg = 0)
+    @Audited(action = AuditAction.UPDATE, entityType = AuditEntityType.IDENTITY_CONFLICT, entityIdArg = 0)
     public IdentityConflictResponse resolve(Long id, ConflictResolutionRequest request) {
         IdentityConflict conflict = findOrThrow(id);
         AuditContext.recordPatientId(conflict.getPatientId());
 
-        if (!ConflictResolution.PENDING.name().equals(conflict.getResolution())) {
+        if (ConflictResolution.PENDING != conflict.getResolution()) {
             throw new ApiException(HttpStatus.CONFLICT, "IDENTITY_CONFLICT_ALREADY_RESOLVED",
                     "Lech du lieu id=" + id + " khong con o trang thai PENDING");
         }
@@ -129,7 +130,7 @@ public class IdentityConflictServiceImpl implements IdentityConflictService {
             applyToPatient(conflict, newValue.trim());
         }
 
-        conflict.setResolution(request.resolution().name());
+        conflict.setResolution(request.resolution());
         conflict.setResolvedByUserId(appUserDao.findByUsername(currentUsername()).map(AppUser::getId).orElse(null));
         conflict.setResolvedAt(LocalDateTime.now());
         return toResponse(identityConflictDao.save(conflict));
@@ -220,9 +221,9 @@ public class IdentityConflictServiceImpl implements IdentityConflictService {
     }
 
     // Parse chuỗi giới tính thành giá trị enum Gender hợp lệ, báo lỗi 422 nếu không parse được.
-    private String parseGender(String rawValue) {
+    private Gender parseGender(String rawValue) {
         try {
-            return Gender.valueOf(rawValue.toUpperCase(Locale.ROOT)).name();
+            return Gender.valueOf(rawValue.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "IDENTITY_CONFLICT_VALUE_INVALID",
                     "Gia tri gioi tinh '" + rawValue + "' khong hop le (M/F/O/U)");
@@ -272,7 +273,7 @@ public class IdentityConflictServiceImpl implements IdentityConflictService {
                     "Ngay sinh '" + rawValue + "' nam ngoai khoang hop le (" + MIN_BIRTH_YEAR + " den hom nay)");
         }
         patient.setDateOfBirth(dob);
-        patient.setDobPrecision(precision.name());
+        patient.setDobPrecision(precision);
     }
 
     // Tạo exception báo trường dữ liệu chưa được hỗ trợ áp dụng tự động.

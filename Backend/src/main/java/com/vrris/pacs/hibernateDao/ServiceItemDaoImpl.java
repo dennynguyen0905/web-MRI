@@ -1,6 +1,7 @@
 package com.vrris.pacs.hibernateDao;
 
 import com.vrris.pacs.dao.ServiceItemDao;
+import com.vrris.pacs.enu.Modality;
 import com.vrris.pacs.model.ServiceItem;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -20,7 +21,7 @@ public class ServiceItemDaoImpl extends AbstractHibernateDao<ServiceItem, Long> 
     }
 
     @Override
-    public List<ServiceItem> search(String modality) {
+    public List<ServiceItem> search(Modality modality) {
         CriteriaBuilder cb = criteriaBuilder();
         CriteriaQuery<ServiceItem> query = cb.createQuery(ServiceItem.class);
         Root<ServiceItem> root = query.from(ServiceItem.class);

@@ -2,6 +2,8 @@ package com.vrris.pacs.rest;
 
 import com.vrris.pacs.dao.DepartmentDao;
 import com.vrris.pacs.dao.DeviceDao;
+import com.vrris.pacs.enu.DepartmentType;
+import com.vrris.pacs.enu.Modality;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.Device;
 import com.vrris.pacs.security.JwtService;
@@ -42,10 +44,10 @@ class DeviceControllerTest extends AbstractIntegrationTest {
         khoaCdhaId = saveDepartment("K01", "Khoa CDHA").getId();
         Long khoaNoiId = saveDepartment("K02", "Khoa Noi").getId();
 
-        saveDevice("CT01", "May CT so 64 lat", "CT", khoaCdhaId, true);
-        saveDevice("MR01", "May MRI 1.5T", "MR", khoaCdhaId, true);
-        saveDevice("CR01", "May X-quang", "CR", khoaNoiId, true);
-        saveDevice("CT02", "May CT cu (ngung dung)", "CT", khoaCdhaId, false);
+        saveDevice("CT01", "May CT so 64 lat", Modality.CT, khoaCdhaId, true);
+        saveDevice("MR01", "May MRI 1.5T", Modality.MR, khoaCdhaId, true);
+        saveDevice("CR01", "May X-quang", Modality.CR, khoaNoiId, true);
+        saveDevice("CT02", "May CT cu (ngung dung)", Modality.CT, khoaCdhaId, false);
 
         token = jwtService.generateToken("ktv.01", List.of("TECHNICIAN"));
     }
@@ -80,13 +82,13 @@ class DeviceControllerTest extends AbstractIntegrationTest {
         d.setCode(code);
         d.setName(name);
         d.setParentId(null);
-        d.setType("KHOA");
+        d.setType(DepartmentType.KHOA);
         d.setSortOrder(1);
         d.setIsActive(true);
         return departmentDao.save(d);
     }
 
-    private void saveDevice(String code, String name, String modality, Long departmentId, boolean active) {
+    private void saveDevice(String code, String name, Modality modality, Long departmentId, boolean active) {
         Device d = new Device();
         d.setCode(code);
         d.setName(name);

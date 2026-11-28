@@ -1,5 +1,7 @@
 package com.vrris.pacs.dto.response;
 
+import com.vrris.pacs.enu.StudyStatus;
+
 import java.time.LocalDateTime;
 
 /**
@@ -10,8 +12,8 @@ import java.time.LocalDateTime;
 public record StatusHistoryEntry(
         Long id,
         Long studyId,
-        String fromStatus,
-        String toStatus,
+        StudyStatus fromStatus,
+        StudyStatus toStatus,
         String transitionCode,
         Long changedByUserId,
         String changedByUsername,
@@ -23,8 +25,8 @@ public record StatusHistoryEntry(
     public StatusHistoryEntry(
             Long id,
             Long studyId,
-            String fromStatus,
-            String toStatus,
+            StudyStatus fromStatus,
+            StudyStatus toStatus,
             Long changedByUserId,
             String changedByUsername,
             LocalDateTime changedAt,

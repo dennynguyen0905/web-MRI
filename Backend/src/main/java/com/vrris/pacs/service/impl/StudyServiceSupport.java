@@ -50,18 +50,16 @@ final class StudyServiceSupport {
     }
 
     /**
-     * study.status doc tu DB (String) -> enum. Gia tri la (du lieu lech) tra loi co kiem soat thay vi
-     * IllegalArgumentException roi vao handler chung.
+     * Trang thai hien tai cua ca chup. Model da map cot study.status sang enu.StudyStatus
+     * (@Enumerated) nen chi con phai chan truong hop NULL (du lieu lech, cot NOT NULL trong DB).
      */
-    // Parse trạng thái lưu trong DB (dạng chuỗi) của ca chụp thành enum StudyStatus, báo lỗi 500 có kiểm soát nếu dữ liệu lệch.
     static StudyStatus parseStoredStatus(Study study) {
-        String raw = study.getStatus();
-        try {
-            return StudyStatus.valueOf(Objects.requireNonNull(raw));
-        } catch (IllegalArgumentException | NullPointerException ex) {
+        StudyStatus status = study.getStatus();
+        if (status == null) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "STUDY_STATUS_INVALID",
-                    "Ca chup id=" + study.getId() + " co trang thai khong hop le trong CSDL: '" + raw + "'");
+                    "Ca chup id=" + study.getId() + " khong co trang thai trong CSDL");
         }
+        return status;
     }
 
     /** Cac vai tro (enu.UserRole) cua nguoi dang dang nhap; rong neu chua dang nhap. */

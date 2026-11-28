@@ -1,5 +1,9 @@
 package com.vrris.pacs.dao;
 
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.StudyStatus;
+import com.vrris.pacs.enu.WorklistTimeField;
 import com.vrris.pacs.model.Study;
 
 import java.time.LocalDateTime;
@@ -27,7 +31,7 @@ public interface StudyDao extends BaseDao<Study, Long> {
      * cac truong do). Key cua map tra ve la gia tri status thuc co trong DB (co the rong neu khong
      * co ca nao khop) - service chiu trach nhiem dien du 0 cho cac gia tri enu.StudyStatus con thieu.
      */
-    Map<String, Long> countByStatus(StatusCountCriteria criteria);
+    Map<StudyStatus, Long> countByStatus(StatusCountCriteria criteria);
 
     /**
      * Worklist IN-07 (GET /studies ruc gon): mot phan kha day du cua doc/api/openapi.yaml -
@@ -44,17 +48,17 @@ public interface StudyDao extends BaseDao<Study, Long> {
      * sortField la ten field CUA ENTITY (vi du "scheduledAt", "patientCode") - service da doi ten
      * truoc khi goi xuong day (giong quy uoc dao.PatientDao.SearchCriteria).
      *
-     * timeField la ten field entity dung de so sanh dateFrom/dateTo: "scheduledAt"/"completedAt"
-     * (tren Study) hoac "orderedAt" (tren ImagingOrder) - khop 3 lua chon TimeField cua FE
+     * timeField (enu.WorklistTimeField) chon cot so sanh dateFrom/dateTo: SCHEDULED/COMPLETED (tren
+     * Study) hoac ORDERED (tren ImagingOrder) - khop 3 lua chon TimeField cua FE
      * (Frontend/src/shared/lib/types.ts: SCHEDULED/ORDERED/COMPLETED).
      *
      * Loc theo department: khop ca nhanh ordering_department_id (cua imaging_order) VA nhanh
      * device.department_id (cua may thuc hien, neu co) - khop mo ta openapi "Khoa hoac nhom trong
      * cay khoa -> nhom -> may".
      */
-    record SearchCriteria(List<String> statuses, Set<Long> departmentIds, List<Long> deviceIds,
-                           String modality, String patientClass, String patientCode, String fullName,
-                           String visitCode, String orderCode, String timeField, LocalDateTime dateFrom,
+    record SearchCriteria(List<StudyStatus> statuses, Set<Long> departmentIds, List<Long> deviceIds,
+                           Modality modality, PatientClass patientClass, String patientCode, String fullName,
+                           String visitCode, String orderCode, WorklistTimeField timeField, LocalDateTime dateFrom,
                            LocalDateTime dateTo, int page, int pageSize, String sortField, boolean ascending) {
     }
 
@@ -62,8 +66,8 @@ public interface StudyDao extends BaseDao<Study, Long> {
     }
 
     /** Cac truong loc dung chung voi SearchCriteria, tru statuses/page/pageSize/sortField/ascending (IN-09). */
-    record StatusCountCriteria(Set<Long> departmentIds, List<Long> deviceIds, String modality, String patientClass,
+    record StatusCountCriteria(Set<Long> departmentIds, List<Long> deviceIds, Modality modality, PatientClass patientClass,
                                 String patientCode, String fullName, String visitCode, String orderCode,
-                                String timeField, LocalDateTime dateFrom, LocalDateTime dateTo) {
+                                WorklistTimeField timeField, LocalDateTime dateFrom, LocalDateTime dateTo) {
     }
 }

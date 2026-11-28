@@ -1,6 +1,10 @@
 package com.vrris.pacs.rule;
 
 import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.StudyStatus;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -32,7 +36,7 @@ public final class PatientListCsvExporter {
             String fullName,
             LocalDate dateOfBirth,
             DobPrecision dobPrecision,
-            String gender,
+            Gender gender,
             String socialInsuranceNo,
             String phone,
             String address,
@@ -42,18 +46,18 @@ public final class PatientListCsvExporter {
 
     public record StudyWorklistRow(
             String accessionNumber,
-            String status,
+            StudyStatus status,
             String orderCode,
             String visitCode,
-            String patientClass,
+            PatientClass patientClass,
             String patientCode,
             String fullName,
             LocalDate dateOfBirth,
             DobPrecision dobPrecision,
-            String gender,
+            Gender gender,
             String socialInsuranceNo,
             String serviceName,
-            String modality,
+            Modality modality,
             String bodyPart,
             String deviceName,
             String orderingDoctorName,
@@ -99,7 +103,7 @@ public final class PatientListCsvExporter {
                     orEmpty(r.hisPatientId()),
                     orEmpty(r.fullName()),
                     formatDob(r.dateOfBirth(), r.dobPrecision()),
-                    r.dobPrecision() == null ? "DAY" : r.dobPrecision().name(),
+                    (r.dobPrecision() == null ? DobPrecision.DAY : r.dobPrecision()).name(),
                     ageText,
                     orEmpty(r.gender()),
                     orEmpty(r.socialInsuranceNo()),
@@ -195,6 +199,10 @@ public final class PatientListCsvExporter {
 
     private static String orEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private static String orEmpty(Enum<?> value) {
+        return value == null ? "" : value.name();
     }
 
     private static void appendRow(StringBuilder sb, List<String> cells) {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vrris.pacs.dao.AuditLogDao;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.model.AuditLog;
 import jakarta.servlet.http.HttpServletRequest;
@@ -154,10 +155,10 @@ public class AuditLogAspect {
         return null;
     }
 
-    private AuditLog baseEntry(AuditAction action, String entityType) {
+    private AuditLog baseEntry(AuditAction action, AuditEntityType entityType) {
         AuditLog entry = new AuditLog();
         entry.setActorUsername(truncate(currentUsername(), MAX_USERNAME_LENGTH));
-        entry.setAction(action.name());
+        entry.setAction(action);
         entry.setEntityType(entityType);
         entry.setIpAddress(truncate(currentIpAddress(), MAX_IP_LENGTH));
         entry.setOccurredAt(LocalDateTime.now());

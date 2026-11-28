@@ -28,7 +28,7 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     @Override
     @Transactional(readOnly = true)
     public List<ServiceItemResponse> listServiceItems(String modality) {
-        String normalizedModality = parseEnumOrNull(modality, Modality.class, "modality");
+        Modality normalizedModality = parseEnumOrNull(modality, Modality.class, "modality");
         return serviceItemMapper.toResponseList(serviceItemDao.search(normalizedModality));
     }
 }

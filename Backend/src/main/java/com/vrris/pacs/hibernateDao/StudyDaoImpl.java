@@ -1,6 +1,10 @@
 package com.vrris.pacs.hibernateDao;
 
 import com.vrris.pacs.dao.StudyDao;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.StudyStatus;
+import com.vrris.pacs.enu.WorklistTimeField;
 import com.vrris.pacs.model.Device;
 import com.vrris.pacs.model.ImagingOrder;
 import com.vrris.pacs.model.Patient;
@@ -17,6 +21,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,7 +101,7 @@ public class StudyDaoImpl extends AbstractHibernateDao<Study, Long> implements S
 
     /** IN-09: group by status, cung dieu kien loc voi search() tru statuses/page/sort (xem Javadoc dao.StudyDao). */
     @Override
-    public Map<String, Long> countByStatus(StatusCountCriteria criteria) {
+    public Map<StudyStatus, Long> countByStatus(StatusCountCriteria criteria) {
         CriteriaBuilder cb = criteriaBuilder();
 
         CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
@@ -108,9 +113,9 @@ public class StudyDaoImpl extends AbstractHibernateDao<Study, Long> implements S
                 .where(predicates(cb, query, studyRoot, orderRoot, patientRoot, serviceItemRoot, criteria))
                 .groupBy(studyRoot.get("status"));
 
-        Map<String, Long> result = new LinkedHashMap<>();
+        Map<StudyStatus, Long> result = new EnumMap<>(StudyStatus.class);
         for (Object[] row : entityManager.createQuery(query).getResultList()) {
-            result.put((String) row[0], (Long) row[1]);
+            result.put((StudyStatus) row[0], (Long) row[1]);
         }
         return result;
     }
@@ -145,9 +150,9 @@ public class StudyDaoImpl extends AbstractHibernateDao<Study, Long> implements S
     private List<Predicate> commonPredicates(CriteriaBuilder cb, CriteriaQuery<?> query, Root<Study> studyRoot,
                                                Root<ImagingOrder> orderRoot, Root<Patient> patientRoot,
                                                Root<ServiceItem> serviceItemRoot, Set<Long> departmentIds,
-                                               List<Long> deviceIds, String modality, String patientClass,
+                                               List<Long> deviceIds, Modality modality, PatientClass patientClass,
                                                String patientCode, String fullName, String visitCode,
-                                               String orderCode, String timeField, LocalDateTime dateFrom,
+                                               String orderCode, WorklistTimeField timeField, LocalDateTime dateFrom,
                                                LocalDateTime dateTo) {
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(cb.equal(studyRoot.get("orderId"), orderRoot.get("id")));
@@ -157,10 +162,10 @@ public class StudyDaoImpl extends AbstractHibernateDao<Study, Long> implements S
         if (deviceIds != null && !deviceIds.isEmpty()) {
             predicates.add(studyRoot.get("deviceId").in(deviceIds));
         }
-        if (modality != null && !modality.isBlank()) {
+        if (modality != null) {
             predicates.add(cb.equal(serviceItemRoot.get("modality"), modality));
         }
-        if (patientClass != null && !patientClass.isBlank()) {
+        if (patientClass != null) {
             predicates.add(cb.equal(orderRoot.get("patientClass"), patientClass));
         }
         if (patientCode != null && !patientCode.isBlank()) {
@@ -190,11 +195,13 @@ public class StudyDaoImpl extends AbstractHibernateDao<Study, Long> implements S
         return predicates;
     }
 
-    private Path<LocalDateTime> timeFieldPath(Root<Study> studyRoot, Root<ImagingOrder> orderRoot, String timeField) {
-        if ("orderedAt".equals(timeField)) {
-            return orderRoot.get("orderedAt");
-        }
-        return studyRoot.get(timeField); // "scheduledAt" hoac "completedAt"
+    private Path<LocalDateTime> timeFieldPath(Root<Study> studyRoot, Root<ImagingOrder> orderRoot,
+                                              WorklistTimeField timeField) {
+        return switch (timeField == null ? WorklistTimeField.SCHEDULED : timeField) {
+            case SCHEDULED -> studyRoot.get("scheduledAt");
+            case ORDERED -> orderRoot.get("orderedAt");
+            case COMPLETED -> studyRoot.get("completedAt");
+        };
     }
 
     /**

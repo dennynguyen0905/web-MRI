@@ -1,5 +1,6 @@
 package com.vrris.pacs.security;
 
+import com.vrris.pacs.enu.UserRole;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -53,7 +54,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         @SuppressWarnings("unchecked")
         List<String> roles = claims.get("roles", List.class);
         Collection<GrantedAuthority> authorities = (roles == null ? List.<String>of() : roles).stream()
-                .<GrantedAuthority>map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+                .<GrantedAuthority>map(role -> new SimpleGrantedAuthority(UserRole.AUTHORITY_PREFIX + role))
                 .toList();
         return new UsernamePasswordAuthenticationToken(username, null, authorities);
     }

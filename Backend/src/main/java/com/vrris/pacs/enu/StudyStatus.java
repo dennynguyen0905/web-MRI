@@ -9,5 +9,11 @@ package com.vrris.pacs.enu;
  * chot khac thi sua o rule.TransitionPolicy. CANCELLED la trang thai cuoi, khong co buoc chuyen di.
  */
 public enum StudyStatus {
-    SCHEDULED, UNREAD, READING, READ, APPROVING, APPROVED, CANCELLED
+    SCHEDULED,  // 0
+    UNREAD,     // 1
+    READING,    // 2
+    READ,       // 3
+    APPROVING,  // 4
+    APPROVED,   // 5
+    CANCELLED   // 6
 }

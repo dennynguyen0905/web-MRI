@@ -1,6 +1,7 @@
 package com.vrris.pacs.dto.response;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.vrris.pacs.enu.SnapshotSource;
 
 import java.time.LocalDateTime;
 
@@ -12,7 +13,7 @@ import java.time.LocalDateTime;
  */
 public record ClinicalSnapshotResponse(
         Long orderId,
-        String source,
+        SnapshotSource source,
         LocalDateTime fetchedAt,
         JsonNode payload
 ) {

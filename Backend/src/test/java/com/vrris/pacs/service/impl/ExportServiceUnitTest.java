@@ -8,6 +8,13 @@ import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dao.StudyLookupDao;
 import com.vrris.pacs.dto.request.ListExportEventRequest;
 import com.vrris.pacs.dto.response.ExportDocumentResponse;
+import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
+import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.StudyStatus;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.mapper.PatientMapper;
 import com.vrris.pacs.model.AuditLog;
@@ -99,8 +106,8 @@ class ExportServiceUnitTest {
 
     @Test
     void export_danh_sach_nhieu_benh_nhan_ghi_audit_EXPORT_voi_patient_id_null() {
-        Patient p1 = fakePatient(101L, "BN-FAKE-201", "Nguyễn Văn Giả Một", LocalDate.of(1958, 1, 1), "YEAR");
-        Patient p2 = fakePatient(102L, "BN-FAKE-202", "Trần Thị Giả Hai", null, "DAY");
+        Patient p1 = fakePatient(101L, "BN-FAKE-201", "Nguyễn Văn Giả Một", LocalDate.of(1958, 1, 1), DobPrecision.YEAR);
+        Patient p2 = fakePatient(102L, "BN-FAKE-202", "Trần Thị Giả Hai", null, DobPrecision.DAY);
         when(patientDao.search(any())).thenReturn(new PatientDao.SearchResult(List.of(p1, p2), 2));
 
         ResponseEntity<org.springframework.core.io.Resource> response = patientController.exportPatients(null, null, null, null);
@@ -119,15 +126,15 @@ class ExportServiceUnitTest {
         ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
         verify(auditLogDao).save(captor.capture());
         AuditLog log = captor.getValue();
-        assertThat(log.getAction()).isEqualTo("EXPORT");
-        assertThat(log.getEntityType()).isEqualTo("PATIENT");
+        assertThat(log.getAction()).isEqualTo(AuditAction.EXPORT);
+        assertThat(log.getEntityType()).isEqualTo(AuditEntityType.PATIENT);
         assertThat(log.getActorUsername()).isEqualTo("ktv_test");
         assertThat(log.getPatientId()).isNull();
     }
 
     @Test
     void export_danh_sach_1_benh_nhan_ghi_audit_EXPORT_kem_patient_id() {
-        Patient p1 = fakePatient(101L, "BN-FAKE-201", "Nguyễn Văn Giả Một", LocalDate.of(1980, 5, 10), "DAY");
+        Patient p1 = fakePatient(101L, "BN-FAKE-201", "Nguyễn Văn Giả Một", LocalDate.of(1980, 5, 10), DobPrecision.DAY);
         when(patientDao.search(any())).thenReturn(new PatientDao.SearchResult(List.of(p1), 1));
 
         ExportDocumentResponse doc = proxiedPatientService.exportCsv(null, "BN-FAKE-201", null, null);
@@ -137,7 +144,7 @@ class ExportServiceUnitTest {
         ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
         verify(auditLogDao).save(captor.capture());
         AuditLog log = captor.getValue();
-        assertThat(log.getAction()).isEqualTo("EXPORT");
+        assertThat(log.getAction()).isEqualTo(AuditAction.EXPORT);
         assertThat(log.getPatientId()).isEqualTo(101L);
     }
 
@@ -149,7 +156,7 @@ class ExportServiceUnitTest {
         ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
         verify(auditLogDao).save(captor.capture());
         AuditLog log = captor.getValue();
-        assertThat(log.getAction()).isEqualTo("EXPORT");
+        assertThat(log.getAction()).isEqualTo(AuditAction.EXPORT);
         assertThat(log.getPatientId()).isNull();
     }
 
@@ -161,7 +168,7 @@ class ExportServiceUnitTest {
         s1.setServiceItemId(10L);
         s1.setDeviceId(20L);
         s1.setAccessionNumber("ACC-20261107-0001");
-        s1.setStatus("SCHEDULED");
+        s1.setStatus(StudyStatus.SCHEDULED);
         s1.setScheduledAt(LocalDateTime.of(2026, 11, 7, 9, 0));
 
         ImagingOrder order = new ImagingOrder();
@@ -169,16 +176,16 @@ class ExportServiceUnitTest {
         order.setPatientId(101L);
         order.setOrderCode("ORD-20261107-0001");
         order.setVisitCode("LSVV-FAKE-01");
-        order.setPatientClass("OUTPATIENT");
+        order.setPatientClass(PatientClass.OUTPATIENT);
         order.setOrderingDoctorName("BS. Lê Anh Tuấn");
         order.setClinicalDiagnosis("Đau đầu kéo dài");
 
-        Patient patient = fakePatient(101L, "BN-FAKE-201", "Nguyễn Văn Giả Một", LocalDate.of(1958, 1, 1), "YEAR");
+        Patient patient = fakePatient(101L, "BN-FAKE-201", "Nguyễn Văn Giả Một", LocalDate.of(1958, 1, 1), DobPrecision.YEAR);
 
         ServiceItem service = new ServiceItem();
         service.setId(10L);
         service.setName("Chụp cộng hưởng từ sọ não");
-        service.setModality("MR");
+        service.setModality(Modality.MR);
         service.setBodyPart("Sọ não");
 
         Device device = new Device();
@@ -210,8 +217,8 @@ class ExportServiceUnitTest {
         ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
         verify(auditLogDao).save(captor.capture());
         AuditLog log = captor.getValue();
-        assertThat(log.getAction()).isEqualTo("EXPORT");
-        assertThat(log.getEntityType()).isEqualTo("STUDY");
+        assertThat(log.getAction()).isEqualTo(AuditAction.EXPORT);
+        assertThat(log.getEntityType()).isEqualTo(AuditEntityType.STUDY);
         assertThat(log.getPatientId()).isEqualTo(101L);
     }
 
@@ -235,13 +242,13 @@ class ExportServiceUnitTest {
         s1.setOrderId(401L);
         s1.setServiceItemId(10L);
         s1.setAccessionNumber("2026110700001");
-        s1.setStatus("UNREAD");
+        s1.setStatus(StudyStatus.UNREAD);
         Study s2 = new Study();
         s2.setId(602L);
         s2.setOrderId(401L);
         s2.setServiceItemId(10L);
         s2.setAccessionNumber("2026110700002");
-        s2.setStatus("SCHEDULED");
+        s2.setStatus(StudyStatus.SCHEDULED);
         when(studyDao.findByOrderId(401L)).thenReturn(List.of(s1, s2));
 
         ResponseEntity<org.springframework.core.io.Resource> response = studyController.exportStudies(
@@ -253,14 +260,14 @@ class ExportServiceUnitTest {
         verify(studyDao, never()).search(any());
     }
 
-    private Patient fakePatient(Long id, String code, String name, LocalDate dob, String precision) {
+    private Patient fakePatient(Long id, String code, String name, LocalDate dob, DobPrecision precision) {
         Patient p = new Patient();
         p.setId(id);
         p.setPatientCode(code);
         p.setFullName(name);
         p.setDateOfBirth(dob);
         p.setDobPrecision(precision);
-        p.setGender("M");
+        p.setGender(Gender.M);
         p.setSocialInsuranceNo("DN4010000001234");
         return p;
     }

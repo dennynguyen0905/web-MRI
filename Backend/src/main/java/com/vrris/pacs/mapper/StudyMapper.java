@@ -7,8 +7,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 /**
- * model.Study.status la String trong DB; enu.StudyStatus o dto - MapStruct tu sinh valueOf()/name()
- * vi cung ten field va kieu dich la enum (giong cach mapper.PatientMapper dang lam voi dob_precision).
+ * status o model va dto deu la enu.StudyStatus - MapStruct map enum -> enum theo ten.
  */
 @Mapper(componentModel = "spring")
 public interface StudyMapper {

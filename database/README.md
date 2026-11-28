@@ -71,6 +71,7 @@ Bệnh nhân mẫu mã `TEST0001`…`TEST0008`, tên có hậu tố "Giả", là
 | `V7__seed_demo_data.sql` | chỉ có dữ liệu giả, không tạo bảng |
 | `V8__rbac_and_demo_extras.sql` | chỉ bổ sung dữ liệu giả còn thiếu (tài khoản demo thứ hai, `his_order_id` khớp `his-mock/orders.json`, một ca `CANCELLED`) — không tạo bảng. Xem `doc/12-seed-data-va-kich-ban-demo.md` mục 3.2 |
 | `V9__optimistic_lock_and_daily_sequence.sql` | thêm cột `row_version` (khóa lạc quan) cho `study`, `report`, `imaging_order`; tạo bảng `daily_sequence` sinh `accession_number`/`order_code` nguyên tử, khởi tạo từ dữ liệu đang có. Xem `doc/02-erd.md` mục 4.12. 🟡 Mới chạy trên MySQL 8.0.36 (Testcontainers), **chưa chạy trên MySQL 8.4.9 của `docker compose`** |
+| `V10__normalize_audit_entity_type.sql` | chỉ `UPDATE`: đổi `audit_log.entity_type`/`action` viết thường cũ (ví dụ `'study'` do bản cũ của `PrintServiceImpl` ghi) thành chữ hoa, vì model nay map hai cột này sang enum Java (phân biệt hoa/thường). Không tạo bảng/cột. 🟡 Mới chạy trên MySQL 8.0.36 (Testcontainers) |
 
 Ngoài 14 bảng trên, Flyway tự tạo thêm bảng `flyway_schema_history` để ghi nhớ đã chạy file nào. Đừng sửa bảng này.
 

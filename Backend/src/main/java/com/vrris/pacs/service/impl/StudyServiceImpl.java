@@ -19,10 +19,13 @@ import com.vrris.pacs.dto.response.StudyPageResponse;
 import com.vrris.pacs.dto.response.StudyResponse;
 import com.vrris.pacs.dto.response.ViewerLinkResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.enu.Modality;
 import com.vrris.pacs.enu.PatientClass;
 import com.vrris.pacs.enu.StudyStatus;
 import com.vrris.pacs.enu.UserRole;
+import com.vrris.pacs.enu.WorklistTab;
+import com.vrris.pacs.enu.WorklistTimeField;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.mapper.DeviceMapper;
 import com.vrris.pacs.mapper.ImagingOrderMapper;
@@ -48,9 +51,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -86,14 +88,7 @@ public class StudyServiceImpl implements StudyService {
             Map.entry("order_code", "orderCode"),
             Map.entry("ordered_at", "orderedAt")
     );
-    private static final Map<String, String> TIME_FIELDS = Map.of(
-            "SCHEDULED", "scheduledAt",
-            "ORDERED", "orderedAt",
-            "COMPLETED", "completedAt"
-    );
-    private static final String DEFAULT_TIME_FIELD = "SCHEDULED";
-    private static final String TAB_PENDING = "PENDING";
-    private static final String TAB_DONE = "DONE";
+    private static final WorklistTimeField DEFAULT_TIME_FIELD = WorklistTimeField.SCHEDULED;
     /** ❓ doc/03, doc/05 chua chot trang thai nao duoc PATCH - tam chan trang thai cuoi / da duyet. */
     private static final Set<StudyStatus> NON_EDITABLE_STATUSES = Set.of(StudyStatus.APPROVED, StudyStatus.CANCELLED);
     private static final String DEFAULT_OHIF_BASE_URL = "http://localhost:8043";
@@ -144,7 +139,7 @@ public class StudyServiceImpl implements StudyService {
     // Tra cứu danh sách ca chụp (worklist) theo nhiều điều kiện lọc (tab, trạng thái, khoa, máy, thời gian, bệnh nhân...), có phân trang và sắp xếp.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "STUDY")
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.STUDY)
     public StudyPageResponse search(String tab, List<String> status, List<Long> departmentId, List<Long> deviceId,
                                      String modality, String patientClass, String timeField, LocalDate dateFrom,
                                      LocalDate dateTo, String patientCode, String fullName, String visitCode,
@@ -156,7 +151,7 @@ public class StudyServiceImpl implements StudyService {
                 departmentId, deviceId, modality, patientClass, timeField,
                 dateFrom, dateTo, patientCode, fullName, visitCode, orderCode);
 
-        List<String> statuses = resolveStatuses(parseTab(tab), parseStatuses(status));
+        List<StudyStatus> statuses = resolveStatuses(parseEnumOrNull(tab, WorklistTab.class, "tab"), parseStatuses(status));
         if (statuses != null && statuses.isEmpty()) {
             // tab va status giao nhau rong (vi du tab=PENDING&status=READ): khong ca nao khop.
             return new StudyPageResponse(resolvedPage, resolvedPageSize, 0, List.of());
@@ -177,7 +172,7 @@ public class StudyServiceImpl implements StudyService {
     // Đếm số ca chụp theo từng trạng thái, dùng cùng bộ điều kiện lọc như search.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "STUDY")
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.STUDY)
     public StatusCountsResponse getStatusCounts(List<Long> departmentId, List<Long> deviceId, String modality,
                                                  String patientClass, String timeField, LocalDate dateFrom,
                                                  LocalDate dateTo, String patientCode, String fullName,
@@ -191,10 +186,10 @@ public class StudyServiceImpl implements StudyService {
                 f.patientCode(), f.fullName(), f.visitCode(), f.orderCode(),
                 f.timeField(), f.fromDateTime(), f.toDateTime());
 
-        Map<String, Long> countsByStatus = studyDao.countByStatus(criteria);
+        Map<StudyStatus, Long> countsByStatus = studyDao.countByStatus(criteria);
         Map<String, Long> byStatus = new LinkedHashMap<>();
         for (StudyStatus s : StudyStatus.values()) {
-            byStatus.put(s.name(), countsByStatus.getOrDefault(s.name(), 0L));
+            byStatus.put(s.name(), countsByStatus.getOrDefault(s, 0L));
         }
         long total = countsByStatus.values().stream().mapToLong(Long::longValue).sum();
         return new StatusCountsResponse(total, byStatus);
@@ -203,7 +198,7 @@ public class StudyServiceImpl implements StudyService {
     // Lấy chi tiết đầy đủ một ca chụp (kèm bệnh nhân, chỉ định, dịch vụ, máy, báo cáo hiện hành).
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "STUDY", entityIdArg = 0)
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.STUDY, entityIdArg = 0)
     public StudyDetailResponse getDetailById(Long id) {
         Study study = findStudyOrThrow(studyDao, id);
         ImagingOrder order = findOrderOrThrow(imagingOrderDao, study.getOrderId());
@@ -234,7 +229,7 @@ public class StudyServiceImpl implements StudyService {
     // Dựng deep-link mở ảnh ca chụp trên OHIF Viewer; báo lỗi 422 nếu ca chưa có ảnh trong PACS.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.VIEW_IMAGE, entityType = "STUDY", entityIdArg = 0)
+    @Audited(action = AuditAction.VIEW_IMAGE, entityType = AuditEntityType.STUDY, entityIdArg = 0)
     public ViewerLinkResponse getViewerLink(Long id) {
         Study study = findStudyOrThrow(studyDao, id);
         if (study.getStudyInstanceUid() == null || study.getStudyInstanceUid().isBlank()) {
@@ -261,7 +256,7 @@ public class StudyServiceImpl implements StudyService {
     // Tạo ca chụp mới gắn vào một chỉ định chụp (sinh accession_number nguyên tử qua daily_sequence).
     @Override
     @Transactional
-    @Audited(action = AuditAction.CREATE, entityType = "STUDY")
+    @Audited(action = AuditAction.CREATE, entityType = AuditEntityType.STUDY)
     public StudyResponse addToOrder(Long orderId, StudyCreateRequest request) {
         findOrderOrThrow(imagingOrderDao, orderId);
         validateServiceItemAndDevice(request.serviceItemId(), request.deviceId());
@@ -270,7 +265,7 @@ public class StudyServiceImpl implements StudyService {
         Study entity = studyMapper.toEntity(request);
         entity.setOrderId(orderId);
         entity.setAccessionNumber(nextAccessionNumber(now.toLocalDate()));
-        entity.setStatus(StudyStatus.SCHEDULED.name());
+        entity.setStatus(StudyStatus.SCHEDULED);
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
 
@@ -280,7 +275,7 @@ public class StudyServiceImpl implements StudyService {
     // Cập nhật ca chụp (dịch vụ, máy, lịch chụp, study_instance_uid...); chặn sửa ca ở trạng thái không cho sửa (APPROVED/CANCELLED) và chặn gán study_instance_uid trùng.
     @Override
     @Transactional
-    @Audited(action = AuditAction.UPDATE, entityType = "STUDY", entityIdArg = 0)
+    @Audited(action = AuditAction.UPDATE, entityType = AuditEntityType.STUDY, entityIdArg = 0)
     public StudyResponse update(Long id, StudyUpdateRequest request) {
         Study study = findStudyOrThrow(studyDao, id);
         AuditContext.recordPatientId(resolvePatientId(imagingOrderDao, study));
@@ -339,9 +334,9 @@ public class StudyServiceImpl implements StudyService {
     private record NormalizedFilter(
             Set<Long> departmentIds,
             List<Long> deviceIds,
-            String modality,
-            String patientClass,
-            String timeField,
+            Modality modality,
+            PatientClass patientClass,
+            WorklistTimeField timeField,
             LocalDateTime fromDateTime,
             LocalDateTime toDateTime,
             String patientCode,
@@ -361,7 +356,8 @@ public class StudyServiceImpl implements StudyService {
                 deviceId,
                 parseEnumOrNull(modality, Modality.class, "modality"),
                 parseEnumOrNull(patientClass, PatientClass.class, "patient_class"),
-                parseTimeField(timeField),
+                timeField == null || timeField.isBlank()
+                        ? DEFAULT_TIME_FIELD : parseEnumOrNull(timeField, WorklistTimeField.class, "time_field"),
                 dateFrom == null ? null : dateFrom.atStartOfDay(),
                 dateTo == null ? null : dateTo.atTime(23, 59, 59),
                 blankToNull(patientCode),
@@ -382,20 +378,11 @@ public class StudyServiceImpl implements StudyService {
         }
     }
 
-    // Kiểm tra giá trị tham số 'tab' hợp lệ (chỉ PENDING hoặc DONE), báo lỗi 400 nếu sai.
-    private String parseTab(String tab) {
-        if (tab == null || tab.isBlank()) return null;
-        if (!tab.equals(TAB_PENDING) && !tab.equals(TAB_DONE)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "Gia tri khong hop le cho tham so 'tab'");
-        }
-        return tab;
-    }
 
-    // Parse danh sách trạng thái truyền vào thành danh sách tên enum StudyStatus hợp lệ.
-    private List<String> parseStatuses(List<String> rawStatuses) {
+    // Parse danh sách trạng thái truyền vào thành danh sách enum StudyStatus hợp lệ.
+    private List<StudyStatus> parseStatuses(List<String> rawStatuses) {
         if (rawStatuses == null || rawStatuses.isEmpty()) return List.of();
-        List<String> parsed = new ArrayList<>();
+        List<StudyStatus> parsed = new ArrayList<>();
         for (String raw : rawStatuses) {
             if (raw != null && !raw.isBlank()) {
                 parsed.add(parseEnumOrNull(raw, StudyStatus.class, "status"));
@@ -406,16 +393,12 @@ public class StudyServiceImpl implements StudyService {
 
     /** null = khong loc theo trang thai; danh sach rong = khong trang thai nao khop (giao rong). */
     // Kết hợp bộ trạng thái theo tab (PENDING/DONE) với danh sách trạng thái người dùng chọn thêm; trả về phần giao.
-    private List<String> resolveStatuses(String tab, List<String> requestedStatuses) {
-        Set<String> tabStatuses = null;
-        if (TAB_PENDING.equals(tab)) {
-            tabStatuses = Set.of(StudyStatus.SCHEDULED.name());
-        } else if (TAB_DONE.equals(tab)) {
-            Set<String> doneStatuses = new LinkedHashSet<>();
-            Arrays.stream(StudyStatus.values())
-                    .filter(s -> s != StudyStatus.SCHEDULED)
-                    .forEach(s -> doneStatuses.add(s.name()));
-            tabStatuses = doneStatuses;
+    private List<StudyStatus> resolveStatuses(WorklistTab tab, List<StudyStatus> requestedStatuses) {
+        Set<StudyStatus> tabStatuses = null;
+        if (tab == WorklistTab.PENDING) {
+            tabStatuses = EnumSet.of(StudyStatus.SCHEDULED);
+        } else if (tab == WorklistTab.DONE) {
+            tabStatuses = EnumSet.complementOf(EnumSet.of(StudyStatus.SCHEDULED));
         }
 
         if (requestedStatuses.isEmpty()) {
@@ -424,7 +407,7 @@ public class StudyServiceImpl implements StudyService {
         if (tabStatuses == null) {
             return requestedStatuses;
         }
-        List<String> intersection = new ArrayList<>(requestedStatuses);
+        List<StudyStatus> intersection = new ArrayList<>(requestedStatuses);
         intersection.retainAll(tabStatuses);
         return intersection;
     }
@@ -438,14 +421,4 @@ public class StudyServiceImpl implements StudyService {
         return DepartmentTreeExpander.expand(nodes, departmentId);
     }
 
-    // Kiểm tra và chuyển tham số 'time_field' thành tên trường thời gian thực tế dùng để lọc/sắp xếp, báo lỗi 400 nếu sai.
-    private String parseTimeField(String timeField) {
-        String key = (timeField == null || timeField.isBlank()) ? DEFAULT_TIME_FIELD : timeField;
-        String resolved = TIME_FIELDS.get(key);
-        if (resolved == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "Gia tri khong hop le cho tham so 'time_field'");
-        }
-        return resolved;
-    }
 }

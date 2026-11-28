@@ -1,5 +1,6 @@
 package com.vrris.pacs.dto.response;
 
+import com.vrris.pacs.enu.DepartmentType;
 /**
  * Khop dung schema "Department" trong doc/api/openapi.yaml (khong co is_active).
  * JSON dung snake_case qua spring.jackson.property-naming-strategy=SNAKE_CASE.
@@ -11,7 +12,7 @@ public record DepartmentResponse(
         String code,
         String name,
         Long parentId,
-        String type,
+        DepartmentType type,
         Integer sortOrder
 ) {
 }

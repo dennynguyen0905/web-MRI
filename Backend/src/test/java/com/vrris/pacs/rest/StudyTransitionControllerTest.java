@@ -9,7 +9,16 @@ import com.vrris.pacs.dao.ReportDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dto.request.TransitionRequest;
+import com.vrris.pacs.enu.DepartmentType;
+import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.OrderSource;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.ReportOrigin;
+import com.vrris.pacs.enu.ReportStatus;
 import com.vrris.pacs.enu.StudyStatus;
+import com.vrris.pacs.enu.SyncStatus;
 import com.vrris.pacs.model.AppUser;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.ImagingOrder;
@@ -19,6 +28,8 @@ import com.vrris.pacs.model.ServiceItem;
 import com.vrris.pacs.model.Study;
 import com.vrris.pacs.security.JwtService;
 import com.vrris.pacs.support.AbstractIntegrationTest;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,6 +81,8 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
     private AppUserDao appUserDao;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private AppUser admin;
     private AppUser tech;
@@ -87,7 +100,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
         Department dept = new Department();
         dept.setCode("K_TRANS");
         dept.setName("Khoa CDHA");
-        dept.setType("KHOA");
+        dept.setType(DepartmentType.KHOA);
         dept.setSortOrder(1);
         dept.setIsActive(true);
         departmentDao.save(dept);
@@ -102,8 +115,8 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
         Patient patient = new Patient();
         patient.setPatientCode("BN_TRANS_01");
         patient.setFullName("Benh nhan gia lap");
-        patient.setDobPrecision("DAY");
-        patient.setGender("U");
+        patient.setDobPrecision(DobPrecision.DAY);
+        patient.setGender(Gender.U);
         patient.setCreatedAt(LocalDateTime.now());
         patient.setUpdatedAt(LocalDateTime.now());
         patientId = patientDao.save(patient).getId();
@@ -111,7 +124,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
         ServiceItem serviceItem = new ServiceItem();
         serviceItem.setCode("CT_TRANS");
         serviceItem.setName("CT so nao");
-        serviceItem.setModality("CT");
+        serviceItem.setModality(Modality.CT);
         serviceItem.setIsActive(true);
         serviceItemId = serviceItemDao.save(serviceItem).getId();
 
@@ -120,9 +133,9 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
         order.setPatientId(patientId);
         order.setOrderingDepartmentId(dept.getId());
         order.setOrderingDoctorName("BS Lam Sang");
-        order.setPatientClass("OUTPATIENT");
-        order.setSource("MANUAL");
-        order.setSyncStatus("NOT_SYNCED");
+        order.setPatientClass(PatientClass.OUTPATIENT);
+        order.setSource(OrderSource.MANUAL);
+        order.setSyncStatus(SyncStatus.NOT_SYNCED);
         order.setOrderedAt(LocalDateTime.now());
         order.setCreatedAt(LocalDateTime.now());
         order.setUpdatedAt(LocalDateTime.now());
@@ -133,7 +146,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t2_dat_completed_at_ket_thuc_chup() throws Exception {
-        Study study = createStudy("SCHEDULED", UID, null, null);
+        Study study = createStudy(StudyStatus.SCHEDULED, UID, null, null);
 
         transition(study, tech, StudyStatus.UNREAD, null)
                 .andExpect(status().isOk())
@@ -144,7 +157,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t3_tao_ban_nhap_v1_dat_nguoi_doc_va_khong_dat_started_at() throws Exception {
-        Study study = createStudy("UNREAD", UID, null, null);
+        Study study = createStudy(StudyStatus.UNREAD, UID, null, null);
 
         transition(study, rad1, StudyStatus.READING, null)
                 .andExpect(status().isOk())
@@ -157,7 +170,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t3_ca_dang_bi_bac_si_khac_khoa_tra_409() throws Exception {
-        Study study = createStudy("UNREAD", UID, rad1.getId(), null);
+        Study study = createStudy(StudyStatus.UNREAD, UID, rad1.getId(), null);
 
         transition(study, rad2, StudyStatus.READING, null)
                 .andExpect(status().isConflict())
@@ -168,8 +181,8 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t4_nguoi_dang_doc_bo_do_nha_khoa_va_giu_ban_nhap() throws Exception {
-        Study study = createStudy("READING", UID, rad1.getId(), null);
-        createReport(study.getId(), 1, "DRAFT", "Ky thuat", null, rad1.getId());
+        Study study = createStudy(StudyStatus.READING, UID, rad1.getId(), null);
+        createReport(study.getId(), 1, ReportStatus.DRAFT, "Ky thuat", null, rad1.getId());
 
         transition(study, rad1, StudyStatus.UNREAD, "Can hoi chan them")
                 .andExpect(status().isOk())
@@ -183,7 +196,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t4_admin_giai_phong_khoa_ca_bac_si_khac() throws Exception {
-        Study study = createStudy("READING", UID, rad1.getId(), null);
+        Study study = createStudy(StudyStatus.READING, UID, rad1.getId(), null);
 
         transition(study, admin, StudyStatus.UNREAD, "Bac si vang mat")
                 .andExpect(status().isOk())
@@ -192,7 +205,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t4_ly_do_toan_khoang_trang_tra_422() throws Exception {
-        Study study = createStudy("READING", UID, rad1.getId(), null);
+        Study study = createStudy(StudyStatus.READING, UID, rad1.getId(), null);
 
         transition(study, rad1, StudyStatus.UNREAD, "   ")
                 .andExpect(status().isUnprocessableEntity())
@@ -203,8 +216,8 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t5_bao_cao_thieu_ket_luan_tra_422() throws Exception {
-        Study study = createStudy("READING", UID, rad1.getId(), null);
-        createReport(study.getId(), 1, "DRAFT", "Ky thuat", "   ", rad1.getId());
+        Study study = createStudy(StudyStatus.READING, UID, rad1.getId(), null);
+        createReport(study.getId(), 1, ReportStatus.DRAFT, "Ky thuat", "   ", rad1.getId());
 
         transition(study, rad1, StudyStatus.READ, null)
                 .andExpect(status().isUnprocessableEntity())
@@ -215,7 +228,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t7_khong_co_bao_cao_tra_422() throws Exception {
-        Study study = createStudy("APPROVING", UID, rad1.getId(), approver1.getId());
+        Study study = createStudy(StudyStatus.APPROVING, UID, rad1.getId(), approver1.getId());
 
         transition(study, approver1, StudyStatus.APPROVED, null)
                 .andExpect(status().isUnprocessableEntity())
@@ -225,10 +238,10 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
     @Test
     void t7_duyet_bao_cao_va_khong_ghi_de_completed_at() throws Exception {
         LocalDateTime imagedAt = LocalDateTime.of(2026, 11, 1, 9, 30);
-        Study study = createStudy("APPROVING", UID, rad1.getId(), approver1.getId());
+        Study study = createStudy(StudyStatus.APPROVING, UID, rad1.getId(), approver1.getId());
         study.setCompletedAt(imagedAt);
         studyDao.save(study);
-        createReport(study.getId(), 1, "FINAL", "Ky thuat", "Ket luan", rad1.getId());
+        createReport(study.getId(), 1, ReportStatus.FINAL, "Ky thuat", "Ket luan", rad1.getId());
 
         transition(study, approver1, StudyStatus.APPROVED, null)
                 .andExpect(status().isOk())
@@ -242,8 +255,8 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t8_nguoi_dang_duyet_tra_lai_bao_cao_RETURNED() throws Exception {
-        Study study = createStudy("APPROVING", UID, rad1.getId(), approver1.getId());
-        createReport(study.getId(), 1, "FINAL", "Ky thuat", "Ket luan", rad1.getId());
+        Study study = createStudy(StudyStatus.APPROVING, UID, rad1.getId(), approver1.getId());
+        createReport(study.getId(), 1, ReportStatus.FINAL, "Ky thuat", "Ket luan", rad1.getId());
 
         transition(study, approver1, StudyStatus.READING, "Thieu mo ta ton thuong")
                 .andExpect(status().isOk())
@@ -255,8 +268,8 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t8_approver_khac_khong_giu_duyet_tra_403() throws Exception {
-        Study study = createStudy("APPROVING", UID, rad1.getId(), approver1.getId());
-        createReport(study.getId(), 1, "FINAL", "Ky thuat", "Ket luan", rad1.getId());
+        Study study = createStudy(StudyStatus.APPROVING, UID, rad1.getId(), approver1.getId());
+        createReport(study.getId(), 1, ReportStatus.FINAL, "Ky thuat", "Ket luan", rad1.getId());
 
         transition(study, approver2, StudyStatus.READING, "Tra lai")
                 .andExpect(status().isForbidden())
@@ -268,10 +281,10 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
     @Test
     void t9_mo_lai_tao_version_moi_copy_noi_dung_giu_ban_APPROVED_va_completed_at() throws Exception {
         LocalDateTime imagedAt = LocalDateTime.of(2026, 11, 2, 10, 0);
-        Study study = createStudy("APPROVED", UID, rad1.getId(), approver1.getId());
+        Study study = createStudy(StudyStatus.APPROVED, UID, rad1.getId(), approver1.getId());
         study.setCompletedAt(imagedAt);
         studyDao.save(study);
-        Report approved = createReport(study.getId(), 1, "APPROVED", "Ky thuat v1", "Ket luan v1", rad1.getId());
+        Report approved = createReport(study.getId(), 1, ReportStatus.APPROVED, "Ky thuat v1", "Ket luan v1", rad1.getId());
         approved.setApprovedByUserId(approver1.getId());
         approved.setApprovedAt(LocalDateTime.now());
         reportDao.save(approved);
@@ -296,7 +309,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t9_thieu_ly_do_tra_422() throws Exception {
-        Study study = createStudy("APPROVED", UID, rad1.getId(), null);
+        Study study = createStudy(StudyStatus.APPROVED, UID, rad1.getId(), null);
 
         transition(study, approver1, StudyStatus.READING, null)
                 .andExpect(status().isUnprocessableEntity())
@@ -307,7 +320,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void t10_huy_ca_ghi_audit_STATUS_CHANGE_va_lich_su_dung_noi_dung() throws Exception {
-        Study study = createStudy("SCHEDULED", null, null, null);
+        Study study = createStudy(StudyStatus.SCHEDULED, null, null, null);
 
         transition(study, tech, StudyStatus.CANCELLED, "Benh nhan khong den")
                 .andExpect(status().isOk())
@@ -333,7 +346,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void cancelled_la_trang_thai_cuoi_moi_buoc_chuyen_tra_409() throws Exception {
-        Study study = createStudy("CANCELLED", null, null, null);
+        Study study = createStudy(StudyStatus.CANCELLED, null, null, null);
 
         for (StudyStatus to : StudyStatus.values()) {
             transition(study, admin, to, "thu")
@@ -344,7 +357,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void cap_trang_thai_khong_hop_le_tra_409_INVALID_TRANSITION() throws Exception {
-        Study study = createStudy("SCHEDULED", UID, null, null);
+        Study study = createStudy(StudyStatus.SCHEDULED, UID, null, null);
 
         transition(study, tech, StudyStatus.READ, null)
                 .andExpect(status().isConflict())
@@ -353,16 +366,21 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
 
     @Test
     void trang_thai_luu_sai_trong_csdl_tra_loi_co_kiem_soat() throws Exception {
-        Study study = createStudy("KHONG_HOP_LE", UID, null, null);
+        // Model map study.status sang enum (@Enumerated) nen ung dung khong ghi duoc gia tri la; chi du
+        // lieu sua tay trong CSDL moi lech. Ghi thang bang JDBC roi bo cache cap 1 de Hibernate doc lai.
+        Study study = createStudy(StudyStatus.SCHEDULED, UID, null, null);
+        jdbcTemplate.update("UPDATE study SET status = 'KHONG_HOP_LE' WHERE id = ?", study.getId());
+        entityManager.flush();
+        entityManager.clear();
 
         transition(study, tech, StudyStatus.UNREAD, null)
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.code").value("STUDY_STATUS_INVALID"));
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
     }
 
     @Test
     void loi_dieu_kien_khong_ghi_audit_va_khong_ghi_lich_su() throws Exception {
-        Study study = createStudy("SCHEDULED", null, null, null);
+        Study study = createStudy(StudyStatus.SCHEDULED, null, null, null);
 
         transition(study, tech, StudyStatus.UNREAD, null)
                 .andExpect(status().isUnprocessableEntity())
@@ -408,7 +426,7 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
         return appUserDao.save(user);
     }
 
-    private Study createStudy(String status, String uid, Long readingUserId, Long approvingUserId) {
+    private Study createStudy(StudyStatus status, String uid, Long readingUserId, Long approvingUserId) {
         Study study = new Study();
         study.setAccessionNumber("ACC_TRANS_" + (++accSeq));
         study.setOrderId(orderId);
@@ -423,13 +441,13 @@ class StudyTransitionControllerTest extends AbstractIntegrationTest {
         return studyDao.save(study);
     }
 
-    private Report createReport(Long studyId, int version, String status, String technique, String conclusion,
+    private Report createReport(Long studyId, int version, ReportStatus status, String technique, String conclusion,
                                 Long createdBy) {
         Report r = new Report();
         r.setStudyId(studyId);
         r.setVersion(version);
         r.setStatus(status);
-        r.setOrigin("MANUAL");
+        r.setOrigin(ReportOrigin.MANUAL);
         r.setTechnique(technique);
         r.setConclusion(conclusion);
         r.setCreatedByUserId(createdBy);

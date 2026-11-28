@@ -5,5 +5,6 @@ package com.vrris.pacs.enu;
  * database/migrations/V5__audit_and_conflict.sql).
  */
 public enum ConflictSource {
-    HIS, MANUAL
+    HIS,     // 0
+    MANUAL   // 1
 }

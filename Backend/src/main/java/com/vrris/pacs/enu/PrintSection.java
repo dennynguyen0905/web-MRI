@@ -8,9 +8,9 @@ package com.vrris.pacs.enu;
  * cho tich hop HIS (doc/01-scope.md muc 3.3). In ra van tao file, nhung ghi ro la chua co du lieu.
  */
 public enum PrintSection {
-    OVERVIEW,
-    LABS,
-    FUNCTIONAL,
-    DRUGS,
-    SURGERY
+    OVERVIEW,    // 0
+    LABS,        // 1
+    FUNCTIONAL,  // 2
+    DRUGS,       // 3
+    SURGERY      // 4
 }

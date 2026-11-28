@@ -10,7 +10,9 @@ import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.dto.response.PatientPageResponse;
 import com.vrris.pacs.dto.response.PatientResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.UserRole;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.mapper.PatientMapper;
 import com.vrris.pacs.model.Patient;
@@ -58,7 +60,7 @@ public class PatientServiceImpl implements PatientService {
     // Tra cứu danh sách bệnh nhân theo từ khóa/mã/tên, có phân trang và sắp xếp, kèm tính tuổi.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "PATIENT")
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.PATIENT)
     public PatientPageResponse search(String q, String patientCode, String fullName,
                                        Integer page, Integer pageSize, String sort) {
         int resolvedPage = safePage(page);
@@ -79,7 +81,7 @@ public class PatientServiceImpl implements PatientService {
     // Lấy chi tiết một bệnh nhân theo id, kèm tính tuổi.
     @Override
     @Transactional(readOnly = true)
-    @Audited(action = AuditAction.READ, entityType = "PATIENT", patientIdArg = 0, entityIdArg = 0)
+    @Audited(action = AuditAction.READ, entityType = AuditEntityType.PATIENT, patientIdArg = 0, entityIdArg = 0)
     public PatientResponse getById(Long id) {
         return toPatientResponseWithAge(findOrThrow(id), patientMapper);
     }
@@ -87,7 +89,7 @@ public class PatientServiceImpl implements PatientService {
     // Tạo bệnh nhân mới; chặn trùng mã bệnh nhân và nghi trùng người qua số BHXH.
     @Override
     @Transactional
-    @Audited(action = AuditAction.CREATE, entityType = "PATIENT")
+    @Audited(action = AuditAction.CREATE, entityType = AuditEntityType.PATIENT)
     public PatientResponse create(PatientCreateRequest request) {
         if (patientDao.findByPatientCode(request.patientCode()).isPresent()) {
             throw new ApiException(HttpStatus.CONFLICT, "PATIENT_DUPLICATE_CODE",
@@ -111,11 +113,11 @@ public class PatientServiceImpl implements PatientService {
     // Cập nhật thông tin bệnh nhân; chặn CLINICIAN sửa trường định danh thực sự thay đổi (D24) và chặn nghi trùng BHXH.
     @Override
     @Transactional
-    @Audited(action = AuditAction.UPDATE, entityType = "PATIENT", patientIdArg = 0, entityIdArg = 0)
+    @Audited(action = AuditAction.UPDATE, entityType = AuditEntityType.PATIENT, patientIdArg = 0, entityIdArg = 0)
     public PatientResponse update(Long id, PatientUpdateRequest request) {
         Patient patient = findOrThrow(id);
 
-        if (!hasAnyAuthority(currentAuth(), "ROLE_ADMIN", "ROLE_TECHNICIAN") && hasIdentityFieldChange(patient, request)) {
+        if (!hasAnyAuthority(currentAuth(), UserRole.ADMIN.authority(), UserRole.TECHNICIAN.authority()) && hasIdentityFieldChange(patient, request)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
                     "CLINICIAN khong duoc sua cac truong dinh danh benh nhan (D24)");
         }
@@ -132,7 +134,7 @@ public class PatientServiceImpl implements PatientService {
     // Xuất danh sách bệnh nhân (theo điều kiện lọc hiện tại) ra file CSV.
     @Override
     @Transactional
-    @Audited(action = AuditAction.EXPORT, entityType = "PATIENT")
+    @Audited(action = AuditAction.EXPORT, entityType = AuditEntityType.PATIENT)
     public ExportDocumentResponse exportCsv(String q, String patientCode, String fullName, String sort) {
         SortSpec sortSpec = parseSort(sort, SORTABLE_FIELDS, "fullName", true);
         PatientDao.SearchCriteria criteria = new PatientDao.SearchCriteria(
@@ -146,7 +148,7 @@ public class PatientServiceImpl implements PatientService {
                         p.getHisPatientId(),
                         p.getFullName(),
                         p.getDateOfBirth(),
-                        p.getDobPrecision() == null ? DobPrecision.DAY : DobPrecision.valueOf(p.getDobPrecision()),
+                        p.getDobPrecision() == null ? DobPrecision.DAY : p.getDobPrecision(),
                         p.getGender(),
                         p.getSocialInsuranceNo(),
                         p.getPhone(),
@@ -168,7 +170,7 @@ public class PatientServiceImpl implements PatientService {
     // Ghi nhận sự kiện đã xuất danh sách bệnh nhân (phục vụ audit_log), không trả dữ liệu.
     @Override
     @Transactional
-    @Audited(action = AuditAction.EXPORT, entityType = "PATIENT")
+    @Audited(action = AuditAction.EXPORT, entityType = AuditEntityType.PATIENT)
     public void recordExportEvent(ListExportEventRequest request) {
         if (request.patientId() != null) {
             findOrThrow(request.patientId());
@@ -183,8 +185,8 @@ public class PatientServiceImpl implements PatientService {
     private boolean hasIdentityFieldChange(Patient patient, PatientUpdateRequest request) {
         return changed(request.fullName(), patient.getFullName())
                 || changed(request.dateOfBirth(), patient.getDateOfBirth())
-                || changed(request.dobPrecision() == null ? null : request.dobPrecision().name(), patient.getDobPrecision())
-                || changed(request.gender() == null ? null : request.gender().name(), patient.getGender())
+                || changed(request.dobPrecision(), patient.getDobPrecision())
+                || changed(request.gender(), patient.getGender())
                 || changed(request.socialInsuranceNo(), patient.getSocialInsuranceNo());
     }
 

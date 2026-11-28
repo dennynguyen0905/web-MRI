@@ -1,6 +1,7 @@
 package com.vrris.pacs.rest;
 
 import com.vrris.pacs.dao.DepartmentDao;
+import com.vrris.pacs.enu.DepartmentType;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.security.JwtService;
 import com.vrris.pacs.support.AbstractIntegrationTest;
@@ -38,9 +39,9 @@ class DepartmentControllerTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void seed() {
-        khoaCdhaId = save("K01", "Khoa CDHA", null, "KHOA", 1).getId();
-        save("N01", "May CT", khoaCdhaId, "NHOM", 1);
-        save("K02", "Khoa Noi", null, "KHOA", 2);
+        khoaCdhaId = save("K01", "Khoa CDHA", null, DepartmentType.KHOA, 1).getId();
+        save("N01", "May CT", khoaCdhaId, DepartmentType.NHOM, 1);
+        save("K02", "Khoa Noi", null, DepartmentType.KHOA, 2);
     }
 
     @Test
@@ -71,7 +72,7 @@ class DepartmentControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
-    private Department save(String code, String name, Long parentId, String type, int sortOrder) {
+    private Department save(String code, String name, Long parentId, DepartmentType type, int sortOrder) {
         Department d = new Department();
         d.setCode(code);
         d.setName(name);

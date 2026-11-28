@@ -50,10 +50,10 @@ public class AuditLogDaoImpl extends AbstractHibernateDao<AuditLog, Long> implem
         if (criteria.actorUserId() != null) {
             predicates.add(cb.equal(root.get("actorUserId"), criteria.actorUserId()));
         }
-        if (criteria.action() != null && !criteria.action().isBlank()) {
+        if (criteria.action() != null) {
             predicates.add(cb.equal(root.get("action"), criteria.action()));
         }
-        if (criteria.entityType() != null && !criteria.entityType().isBlank()) {
+        if (criteria.entityType() != null) {
             predicates.add(cb.equal(root.get("entityType"), criteria.entityType()));
         }
         if (criteria.entityId() != null) {

@@ -8,6 +8,16 @@ import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dao.ReportDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
+import com.vrris.pacs.enu.DepartmentType;
+import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.OrderSource;
+import com.vrris.pacs.enu.PatientClass;
+import com.vrris.pacs.enu.ReportOrigin;
+import com.vrris.pacs.enu.ReportStatus;
+import com.vrris.pacs.enu.StudyStatus;
+import com.vrris.pacs.enu.SyncStatus;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.Device;
 import com.vrris.pacs.model.ImagingOrder;
@@ -101,10 +111,10 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
         patientId = savePatient("TEST0001", "Benh nhan TEST0001").getId();
         departmentId = saveDepartment("K01", null).getId();
-        serviceItemId = saveServiceItem("CT_SO_NAO", "CT").getId();
-        deviceId = saveDevice("CT01", departmentId, "CT").getId();
-        orderId = saveOrder("PH20261031001", patientId, departmentId, "OUTPATIENT", null).getId();
-        studyId = saveStudy("2026103100001", orderId, serviceItemId, deviceId, "SCHEDULED", null, null).getId();
+        serviceItemId = saveServiceItem("CT_SO_NAO", Modality.CT).getId();
+        deviceId = saveDevice("CT01", departmentId, Modality.CT).getId();
+        orderId = saveOrder("PH20261031001", patientId, departmentId, PatientClass.OUTPATIENT, null).getId();
+        studyId = saveStudy("2026103100001", orderId, serviceItemId, deviceId, StudyStatus.SCHEDULED, null, null).getId();
     }
 
     @Test
@@ -131,7 +141,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void get_tra_device_null_khi_ca_chup_chua_gan_may() throws Exception {
-        Study study = saveStudy("2026103100002", orderId, serviceItemId, null, "SCHEDULED", null, null);
+        Study study = saveStudy("2026103100002", orderId, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies/" + study.getId())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -141,8 +151,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void get_tra_current_report_la_ban_co_version_lon_nhat() throws Exception {
-        saveReport(studyId, 1, "DRAFT", "Ky thuat v1", "Ket luan v1");
-        saveReport(studyId, 2, "FINAL", "Ky thuat v2", "Ket luan v2");
+        saveReport(studyId, 1, ReportStatus.DRAFT, "Ky thuat v1", "Ket luan v1");
+        saveReport(studyId, 2, ReportStatus.FINAL, "Ky thuat v2", "Ket luan v2");
 
         mockMvc.perform(get("/studies/" + studyId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -178,8 +188,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_loc_theo_nhieu_status() throws Exception {
-        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
-        saveStudy("2026103100003", orderId, serviceItemId, deviceId, "READING", null, null);
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, StudyStatus.UNREAD, null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, deviceId, StudyStatus.READING, null, null);
 
         mockMvc.perform(get("/studies").param("status", "UNREAD", "READING")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -245,7 +255,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_tab_PENDING_chi_tra_SCHEDULED() throws Exception {
-        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, StudyStatus.UNREAD, null, null);
 
         mockMvc.perform(get("/studies").param("tab", "PENDING")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -256,8 +266,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_tab_DONE_tra_cac_trang_thai_con_lai_theo_state_machine() throws Exception {
-        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
-        saveStudy("2026103100003", orderId, serviceItemId, deviceId, "READ", null, null);
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, StudyStatus.UNREAD, null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, deviceId, StudyStatus.READ, null, null);
 
         mockMvc.perform(get("/studies").param("tab", "DONE")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -267,8 +277,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_tab_DONE_ket_hop_voi_status_bang_AND() throws Exception {
-        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
-        saveStudy("2026103100003", orderId, serviceItemId, deviceId, "READ", null, null);
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, StudyStatus.UNREAD, null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, deviceId, StudyStatus.READ, null, null);
 
         mockMvc.perform(get("/studies").param("tab", "DONE").param("status", "UNREAD")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -287,9 +297,9 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_loc_theo_nhieu_device_id() throws Exception {
-        Long device2Id = saveDevice("CT02", departmentId, "CT").getId();
-        saveStudy("2026103100002", orderId, serviceItemId, device2Id, "SCHEDULED", null, null);
-        saveStudy("2026103100003", orderId, serviceItemId, null, "SCHEDULED", null, null);
+        Long device2Id = saveDevice("CT02", departmentId, Modality.CT).getId();
+        saveStudy("2026103100002", orderId, serviceItemId, device2Id, StudyStatus.SCHEDULED, null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies").param("device_id", deviceId.toString(), device2Id.toString())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -299,8 +309,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_loc_theo_modality_qua_join_service_item() throws Exception {
-        Long mrServiceItemId = saveServiceItem("MR_SO_NAO", "MR").getId();
-        saveStudy("2026103100002", orderId, mrServiceItemId, null, "SCHEDULED", null, null);
+        Long mrServiceItemId = saveServiceItem("MR_SO_NAO", Modality.MR).getId();
+        saveStudy("2026103100002", orderId, mrServiceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies").param("modality", "MR")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -319,8 +329,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_loc_theo_patient_class_qua_join_order() throws Exception {
-        Long inpatientOrderId = saveOrder("PH20261031002", patientId, departmentId, "INPATIENT", null).getId();
-        saveStudy("2026103100002", inpatientOrderId, serviceItemId, null, "SCHEDULED", null, null);
+        Long inpatientOrderId = saveOrder("PH20261031002", patientId, departmentId, PatientClass.INPATIENT, null).getId();
+        saveStudy("2026103100002", inpatientOrderId, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies").param("patient_class", "INPATIENT")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -340,8 +350,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
     @Test
     void list_tim_theo_full_name_khong_phan_biet_hoa_thuong_qua_join_patient() throws Exception {
         Long patient2Id = savePatient("TEST0002", "Nguyen Van An").getId();
-        Long order2Id = saveOrder("PH20261031003", patient2Id, departmentId, "OUTPATIENT", null).getId();
-        saveStudy("2026103100002", order2Id, serviceItemId, null, "SCHEDULED", null, null);
+        Long order2Id = saveOrder("PH20261031003", patient2Id, departmentId, PatientClass.OUTPATIENT, null).getId();
+        saveStudy("2026103100002", order2Id, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies").param("full_name", "nguyen van")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -352,8 +362,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_loc_theo_visit_code_qua_join_order() throws Exception {
-        Long order2Id = saveOrder("PH20261031004", patientId, departmentId, "OUTPATIENT", "LSVV0099").getId();
-        saveStudy("2026103100002", order2Id, serviceItemId, null, "SCHEDULED", null, null);
+        Long order2Id = saveOrder("PH20261031004", patientId, departmentId, PatientClass.OUTPATIENT, "LSVV0099").getId();
+        saveStudy("2026103100002", order2Id, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies").param("visit_code", "0099")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -378,8 +388,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
     @Test
     void list_loc_theo_department_id_gom_ca_nhanh_con() throws Exception {
         Long nhomId = saveDepartment("N01", departmentId).getId();
-        Long orderDuoiNhomId = saveOrder("PH20261031005", patientId, nhomId, "OUTPATIENT", null).getId();
-        saveStudy("2026103100002", orderDuoiNhomId, serviceItemId, null, "SCHEDULED", null, null);
+        Long orderDuoiNhomId = saveOrder("PH20261031005", patientId, nhomId, PatientClass.OUTPATIENT, null).getId();
+        saveStudy("2026103100002", orderDuoiNhomId, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         // Loc theo khoa cha (K01) phai lay luon ca chi dinh o nhom con (N01).
         mockMvc.perform(get("/studies").param("department_id", departmentId.toString())
@@ -391,10 +401,10 @@ class StudyControllerTest extends AbstractIntegrationTest {
     @Test
     void list_loc_theo_department_id_khop_qua_may_thuc_hien() throws Exception {
         Long khoaKhacId = saveDepartment("K02", null).getId();
-        Long deviceKhacId = saveDevice("CT02", khoaKhacId, "CT").getId();
-        Long orderKhoaK01Id = saveOrder("PH20261031006", patientId, departmentId, "OUTPATIENT", null).getId();
+        Long deviceKhacId = saveDevice("CT02", khoaKhacId, Modality.CT).getId();
+        Long orderKhoaK01Id = saveOrder("PH20261031006", patientId, departmentId, PatientClass.OUTPATIENT, null).getId();
         // Chi dinh o K01 nhung may thuc hien lai thuoc K02.
-        saveStudy("2026103100002", orderKhoaK01Id, serviceItemId, deviceKhacId, "SCHEDULED", null, null);
+        saveStudy("2026103100002", orderKhoaK01Id, serviceItemId, deviceKhacId, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies").param("department_id", khoaKhacId.toString())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -409,7 +419,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
         // LocalDateTime.now() (seed() dat scheduled_at = now) vi "hom nay" thay doi theo ngay chay test.
         jdbcTemplate.update("UPDATE study SET scheduled_at = ? WHERE id = ?",
                 LocalDateTime.of(2026, 10, 15, 8, 0), studyId);
-        saveStudy("2026103100002", orderId, serviceItemId, null, "SCHEDULED",
+        saveStudy("2026103100002", orderId, serviceItemId, null, StudyStatus.SCHEDULED,
                 LocalDateTime.of(2026, 1, 1, 8, 0), null);
 
         mockMvc.perform(get("/studies")
@@ -422,10 +432,10 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_loc_theo_khoang_thoi_gian_voi_time_field_ORDERED() throws Exception {
-        Long order2Id = saveOrder("PH20270101001", patientId, departmentId, "OUTPATIENT", null).getId();
+        Long order2Id = saveOrder("PH20270101001", patientId, departmentId, PatientClass.OUTPATIENT, null).getId();
         jdbcTemplate.update("UPDATE imaging_order SET ordered_at = ? WHERE id = ?",
                 LocalDateTime.of(2027, 1, 1, 8, 0), order2Id);
-        saveStudy("2026103100002", order2Id, serviceItemId, null, "SCHEDULED", null, null);
+        saveStudy("2026103100002", order2Id, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies").param("time_field", "ORDERED")
                         .param("date_from", "2027-01-01").param("date_to", "2027-01-31")
@@ -446,8 +456,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
     @Test
     void list_sap_xep_theo_full_name_qua_join_patient() throws Exception {
         Long patientBId = savePatient("TEST0002", "An Nguyen").getId();
-        Long orderBId = saveOrder("PH20261031007", patientBId, departmentId, "OUTPATIENT", null).getId();
-        saveStudy("2026103100002", orderBId, serviceItemId, null, "SCHEDULED", null, null);
+        Long orderBId = saveOrder("PH20261031007", patientBId, departmentId, PatientClass.OUTPATIENT, null).getId();
+        saveStudy("2026103100002", orderBId, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies").param("sort", "full_name,asc")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -458,8 +468,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_phan_trang_dung_page_size() throws Exception {
-        saveStudy("2026103100002", orderId, serviceItemId, null, "SCHEDULED", null, null);
-        saveStudy("2026103100003", orderId, serviceItemId, null, "SCHEDULED", null, null);
+        saveStudy("2026103100002", orderId, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, null, StudyStatus.SCHEDULED, null, null);
 
         mockMvc.perform(get("/studies").param("page", "2").param("page_size", "2")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -471,8 +481,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void statusCounts_dem_dung_va_dien_0_cho_nhom_khong_co_ca() throws Exception {
-        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "UNREAD", null, null);
-        saveStudy("2026103100003", orderId, serviceItemId, deviceId, "UNREAD", null, null);
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, StudyStatus.UNREAD, null, null);
+        saveStudy("2026103100003", orderId, serviceItemId, deviceId, StudyStatus.UNREAD, null, null);
 
         mockMvc.perform(get("/studies/status-counts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -489,8 +499,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void statusCounts_ap_dung_cung_bo_loc_voi_listStudies_theo_device_id() throws Exception {
-        Long device2Id = saveDevice("CT02", departmentId, "CT").getId();
-        saveStudy("2026103100002", orderId, serviceItemId, device2Id, "UNREAD", null, null);
+        Long device2Id = saveDevice("CT02", departmentId, Modality.CT).getId();
+        saveStudy("2026103100002", orderId, serviceItemId, device2Id, StudyStatus.UNREAD, null, null);
 
         mockMvc.perform(get("/studies/status-counts").param("device_id", deviceId.toString())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -503,8 +513,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
     @Test
     void statusCounts_ap_dung_cung_bo_loc_theo_department_id_gom_nhanh_con() throws Exception {
         Long nhomId = saveDepartment("N01", departmentId).getId();
-        Long orderDuoiNhomId = saveOrder("PH20261031005", patientId, nhomId, "OUTPATIENT", null).getId();
-        saveStudy("2026103100002", orderDuoiNhomId, serviceItemId, null, "UNREAD", null, null);
+        Long orderDuoiNhomId = saveOrder("PH20261031005", patientId, nhomId, PatientClass.OUTPATIENT, null).getId();
+        saveStudy("2026103100002", orderDuoiNhomId, serviceItemId, null, StudyStatus.UNREAD, null, null);
 
         mockMvc.perform(get("/studies/status-counts").param("department_id", departmentId.toString())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -536,7 +546,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void getViewerLink_thanh_cong_ghi_audit_log_VIEW_IMAGE() throws Exception {
-        Study study = saveStudyWithUid("2026103100002", orderId, serviceItemId, "READ", "1.2.826.0.1.3680043.8.498.10000001");
+        Study study = saveStudyWithUid("2026103100002", orderId, serviceItemId, StudyStatus.READ, "1.2.826.0.1.3680043.8.498.10000001");
 
         mockMvc.perform(get("/studies/" + study.getId() + "/viewer-link")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -577,7 +587,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void getViewerLink_cac_vai_tro_duoc_phep_deu_mo_duoc_viewer() throws Exception {
-        Study study = saveStudyWithUid("2026103100003", orderId, serviceItemId, "READ", "1.2.826.0.1.3680043.8.498.10000002");
+        Study study = saveStudyWithUid("2026103100003", orderId, serviceItemId, StudyStatus.READ, "1.2.826.0.1.3680043.8.498.10000002");
 
         List<String> allowedRoles = List.of("CLINICIAN", "TECHNICIAN", "RADIOLOGIST", "APPROVER");
         for (String role : allowedRoles) {
@@ -591,7 +601,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void list_tab_va_status_giao_nhau_rong_tra_0_ca_khong_phai_tat_ca() throws Exception {
-        saveStudy("2026103100002", orderId, serviceItemId, deviceId, "READ", null, null);
+        saveStudy("2026103100002", orderId, serviceItemId, deviceId, StudyStatus.READ, null, null);
 
         mockMvc.perform(get("/studies").param("tab", "PENDING").param("status", "READ")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -628,7 +638,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void patch_tra_409_khi_study_instance_uid_da_gan_cho_ca_khac() throws Exception {
-        saveStudyWithUid("2026103100002", orderId, serviceItemId, "UNREAD", "1.2.840.10008.999");
+        saveStudyWithUid("2026103100002", orderId, serviceItemId, StudyStatus.UNREAD, "1.2.840.10008.999");
 
         mockMvc.perform(patch("/studies/" + studyId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
@@ -640,7 +650,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void patch_dat_lai_dung_uid_hien_tai_khong_bao_trung() throws Exception {
-        Study study = saveStudyWithUid("2026103100002", orderId, serviceItemId, "SCHEDULED", "1.2.840.10008.777");
+        Study study = saveStudyWithUid("2026103100002", orderId, serviceItemId, StudyStatus.SCHEDULED, "1.2.840.10008.777");
 
         mockMvc.perform(patch("/studies/" + study.getId())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
@@ -651,8 +661,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
 
     @Test
     void patch_tra_409_khi_ca_da_APPROVED_hoac_CANCELLED() throws Exception {
-        for (String finalStatus : List.of("APPROVED", "CANCELLED")) {
-            Study study = saveStudy("20261031000" + (finalStatus.equals("APPROVED") ? "11" : "12"),
+        for (StudyStatus finalStatus : List.of(StudyStatus.APPROVED, StudyStatus.CANCELLED)) {
+            Study study = saveStudy("20261031000" + (finalStatus == StudyStatus.APPROVED ? "11" : "12"),
                     orderId, serviceItemId, deviceId, finalStatus, null, null);
             mockMvc.perform(patch("/studies/" + study.getId())
                             .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
@@ -667,7 +677,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
     void them_ca_sinh_accession_tuan_tu_va_bo_qua_so_da_dung() throws Exception {
         String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         // Gia lap du lieu da co so 00001 cua hom nay (tao sau khi migration V9 khoi tao daily_sequence).
-        saveStudy(today + "00001", orderId, serviceItemId, deviceId, "SCHEDULED", null, null);
+        saveStudy(today + "00001", orderId, serviceItemId, deviceId, StudyStatus.SCHEDULED, null, null);
         String body = "{\"service_item_id\":" + serviceItemId + ",\"scheduled_at\":\"2026-11-20T08:00:00\"}";
 
         mockMvc.perform(post("/imaging-orders/" + orderId + "/studies")
@@ -686,7 +696,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.accession_number").value(today + "00003"));
     }
 
-    private Study saveStudyWithUid(String accessionNumber, Long orderId, Long serviceItemId, String status, String studyInstanceUid) {
+    private Study saveStudyWithUid(String accessionNumber, Long orderId, Long serviceItemId, StudyStatus status, String studyInstanceUid) {
         Study study = new Study();
         study.setAccessionNumber(accessionNumber);
         study.setOrderId(orderId);
@@ -700,7 +710,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
         return studyDao.save(study);
     }
 
-    private Study saveStudy(String accessionNumber, Long orderId, Long serviceItemId, Long deviceId, String status,
+    private Study saveStudy(String accessionNumber, Long orderId, Long serviceItemId, Long deviceId, StudyStatus status,
                              LocalDateTime scheduledAt, LocalDateTime completedAt) {
         Study study = new Study();
         study.setAccessionNumber(accessionNumber);
@@ -716,13 +726,13 @@ class StudyControllerTest extends AbstractIntegrationTest {
         return studyDao.save(study);
     }
 
-    private ImagingOrder saveOrder(String orderCode, Long patientId, Long departmentId, String patientClass, String visitCode) {
+    private ImagingOrder saveOrder(String orderCode, Long patientId, Long departmentId, PatientClass patientClass, String visitCode) {
         ImagingOrder order = new ImagingOrder();
         order.setOrderCode(orderCode);
         order.setPatientId(patientId);
         order.setVisitCode(visitCode);
-        order.setSource("MANUAL");
-        order.setSyncStatus("NOT_SYNCED");
+        order.setSource(OrderSource.MANUAL);
+        order.setSyncStatus(SyncStatus.NOT_SYNCED);
         order.setOrderingDepartmentId(departmentId);
         order.setOrderingDoctorName("BS Test");
         order.setPatientClass(patientClass);
@@ -737,8 +747,8 @@ class StudyControllerTest extends AbstractIntegrationTest {
         Patient p = new Patient();
         p.setPatientCode(code);
         p.setFullName(fullName);
-        p.setDobPrecision("DAY");
-        p.setGender("U");
+        p.setDobPrecision(DobPrecision.DAY);
+        p.setGender(Gender.U);
         LocalDateTime now = LocalDateTime.now();
         p.setCreatedAt(now);
         p.setUpdatedAt(now);
@@ -750,13 +760,13 @@ class StudyControllerTest extends AbstractIntegrationTest {
         d.setCode(code);
         d.setName("Khoa " + code);
         d.setParentId(parentId);
-        d.setType("KHOA");
+        d.setType(DepartmentType.KHOA);
         d.setSortOrder(1);
         d.setIsActive(true);
         return departmentDao.save(d);
     }
 
-    private ServiceItem saveServiceItem(String code, String modality) {
+    private ServiceItem saveServiceItem(String code, Modality modality) {
         ServiceItem s = new ServiceItem();
         s.setCode(code);
         s.setName("Chup " + code);
@@ -765,12 +775,12 @@ class StudyControllerTest extends AbstractIntegrationTest {
         return serviceItemDao.save(s);
     }
 
-    private Report saveReport(Long studyId, int version, String status, String technique, String conclusion) {
+    private Report saveReport(Long studyId, int version, ReportStatus status, String technique, String conclusion) {
         Report report = new Report();
         report.setStudyId(studyId);
         report.setVersion(version);
         report.setStatus(status);
-        report.setOrigin("MANUAL");
+        report.setOrigin(ReportOrigin.MANUAL);
         report.setTechnique(technique);
         report.setConclusion(conclusion);
         report.setCreatedByUserId(saveAppUser("bscdha_v" + version));
@@ -791,7 +801,7 @@ class StudyControllerTest extends AbstractIntegrationTest {
                 "SELECT id FROM app_user WHERE username = ?", Long.class, username);
     }
 
-    private Device saveDevice(String code, Long departmentId, String modality) {
+    private Device saveDevice(String code, Long departmentId, Modality modality) {
         Device device = new Device();
         device.setCode(code);
         device.setName("May " + code);

@@ -12,6 +12,7 @@ import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dto.response.PrintDocumentResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.enu.DobPrecision;
 import com.vrris.pacs.enu.PrintSection;
 import com.vrris.pacs.exception.ApiException;
@@ -75,7 +76,7 @@ public class PrintServiceImpl implements PrintService {
     // Gom dữ liệu bệnh nhân/ca chụp/báo cáo/clinical_snapshot theo từng phần (FUNCTIONAL/OVERVIEW/LABS/DRUGS/SURGERY) và render ra PDF.
     @Override
     @Transactional
-    @Audited(action = AuditAction.PRINT, entityType = "STUDY", patientIdArg = 0, entityIdArg = 1)
+    @Audited(action = AuditAction.PRINT, entityType = AuditEntityType.STUDY, patientIdArg = 0, entityIdArg = 1)
     public PrintDocumentResponse render(Long patientId, Long studyId, PrintSection section) {
         Context ctx = load(patientId, studyId);
         List<PdfPrintRenderer.Line> patientLines = patientLines(ctx);
@@ -133,7 +134,7 @@ public class PrintServiceImpl implements PrintService {
     // Ghi nhận sự kiện đã in các phần của phiếu (phục vụ audit_log), không trả dữ liệu.
     @Override
     @Transactional
-    @Audited(action = AuditAction.PRINT, entityType = "STUDY", patientIdArg = 0, entityIdArg = 1)
+    @Audited(action = AuditAction.PRINT, entityType = AuditEntityType.STUDY, patientIdArg = 0, entityIdArg = 1)
     public void recordPrintEvent(Long patientId, Long studyId, List<PrintSection> sections) {
         Context ctx = load(patientId, studyId);
         log.info("Ghi su kien in: benh nhan {}, ca chup {}, cac phan {}",
@@ -178,14 +179,14 @@ public class PrintServiceImpl implements PrintService {
         String ageText = p.getDateOfBirth() == null
                 ? "—"
                 : AgeCalculator.calculate(
-                        p.getDateOfBirth(), DobPrecision.valueOf(p.getDobPrecision()), LocalDate.now()).format();
+                        p.getDateOfBirth(), p.getDobPrecision(), LocalDate.now()).format();
 
         return List.of(
                 new PdfPrintRenderer.Line("Ho ten", p.getFullName()),
                 new PdfPrintRenderer.Line("Ma benh nhan", p.getPatientCode()),
                 new PdfPrintRenderer.Line("Ngay sinh", p.getDateOfBirth() == null ? null : p.getDateOfBirth().toString()),
                 new PdfPrintRenderer.Line("Tuoi", ageText),
-                new PdfPrintRenderer.Line("Gioi tinh", p.getGender()),
+                new PdfPrintRenderer.Line("Gioi tinh", p.getGender() == null ? null : p.getGender().name()),
                 new PdfPrintRenderer.Line("Ma BHXH", p.getSocialInsuranceNo()),
                 new PdfPrintRenderer.Line("Ma phieu", ctx.order().getOrderCode()),
                 new PdfPrintRenderer.Line("Ma LSVV", ctx.order().getVisitCode()),

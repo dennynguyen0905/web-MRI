@@ -5,9 +5,8 @@ import com.vrris.pacs.model.Report;
 import org.mapstruct.Mapper;
 
 /**
- * report.status/report.origin la String trong DB (model.Report); enu.ReportStatus/enu.ReportOrigin
- * o dto - MapStruct tu sinh valueOf() vi cung ten field va kieu dich la enum (giong cach
- * mapper.DeviceMapper dang lam voi modality).
+ * status/origin o model va dto deu la enu.ReportStatus/enu.ReportOrigin - MapStruct map enum -> enum
+ * theo ten.
  */
 @Mapper(componentModel = "spring")
 public interface ReportMapper {

@@ -28,7 +28,7 @@ public class DeviceServiceImpl implements DeviceService {
     @Override
     @Transactional(readOnly = true)
     public List<DeviceResponse> listDevices(Long departmentId, String modality) {
-        String normalizedModality = parseEnumOrNull(modality, Modality.class, "modality");
+        Modality normalizedModality = parseEnumOrNull(modality, Modality.class, "modality");
         return deviceMapper.toResponseList(deviceDao.search(departmentId, normalizedModality));
     }
 }

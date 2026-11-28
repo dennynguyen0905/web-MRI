@@ -7,7 +7,14 @@ import com.vrris.pacs.dao.PatientDao;
 import com.vrris.pacs.dao.ServiceItemDao;
 import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dto.request.TransitionRequest;
+import com.vrris.pacs.enu.DepartmentType;
+import com.vrris.pacs.enu.DobPrecision;
+import com.vrris.pacs.enu.Gender;
+import com.vrris.pacs.enu.Modality;
+import com.vrris.pacs.enu.OrderSource;
+import com.vrris.pacs.enu.PatientClass;
 import com.vrris.pacs.enu.StudyStatus;
+import com.vrris.pacs.enu.SyncStatus;
 import com.vrris.pacs.model.AppUser;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.model.ImagingOrder;
@@ -85,7 +92,7 @@ class StudyTransitionConcurrencyTest extends AbstractIntegrationTest {
             Department dept = new Department();
             dept.setCode("K_CONC");
             dept.setName("Khoa CDHA");
-            dept.setType("KHOA");
+            dept.setType(DepartmentType.KHOA);
             dept.setSortOrder(1);
             dept.setIsActive(true);
             departmentId = departmentDao.save(dept).getId();
@@ -96,8 +103,8 @@ class StudyTransitionConcurrencyTest extends AbstractIntegrationTest {
             Patient patient = new Patient();
             patient.setPatientCode("BN_CONC_01");
             patient.setFullName("Benh nhan gia lap");
-            patient.setDobPrecision("DAY");
-            patient.setGender("U");
+            patient.setDobPrecision(DobPrecision.DAY);
+            patient.setGender(Gender.U);
             patient.setCreatedAt(LocalDateTime.now());
             patient.setUpdatedAt(LocalDateTime.now());
             patientId = patientDao.save(patient).getId();
@@ -105,7 +112,7 @@ class StudyTransitionConcurrencyTest extends AbstractIntegrationTest {
             ServiceItem item = new ServiceItem();
             item.setCode("CT_CONC");
             item.setName("CT so nao");
-            item.setModality("CT");
+            item.setModality(Modality.CT);
             item.setIsActive(true);
             serviceItemId = serviceItemDao.save(item).getId();
 
@@ -114,9 +121,9 @@ class StudyTransitionConcurrencyTest extends AbstractIntegrationTest {
             order.setPatientId(patientId);
             order.setOrderingDepartmentId(departmentId);
             order.setOrderingDoctorName("BS Lam Sang");
-            order.setPatientClass("OUTPATIENT");
-            order.setSource("MANUAL");
-            order.setSyncStatus("NOT_SYNCED");
+            order.setPatientClass(PatientClass.OUTPATIENT);
+            order.setSource(OrderSource.MANUAL);
+            order.setSyncStatus(SyncStatus.NOT_SYNCED);
             order.setOrderedAt(LocalDateTime.now());
             order.setCreatedAt(LocalDateTime.now());
             order.setUpdatedAt(LocalDateTime.now());
@@ -126,7 +133,7 @@ class StudyTransitionConcurrencyTest extends AbstractIntegrationTest {
             study.setAccessionNumber("ACC_CONC_1");
             study.setOrderId(orderId);
             study.setServiceItemId(serviceItemId);
-            study.setStatus("UNREAD");
+            study.setStatus(StudyStatus.UNREAD);
             study.setStudyInstanceUid("1.2.840.10008.777.1");
             study.setScheduledAt(LocalDateTime.now());
             study.setCreatedAt(LocalDateTime.now());

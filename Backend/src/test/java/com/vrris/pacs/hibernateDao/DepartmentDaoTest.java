@@ -1,6 +1,7 @@
 package com.vrris.pacs.hibernateDao;
 
 import com.vrris.pacs.dao.DepartmentDao;
+import com.vrris.pacs.enu.DepartmentType;
 import com.vrris.pacs.model.Department;
 import com.vrris.pacs.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,10 +27,10 @@ class DepartmentDaoTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void seed() {
-        khoaCdhaId = save("K01", "Khoa CDHA", null, "KHOA", 1).getId();
-        save("N01", "May CT", khoaCdhaId, "NHOM", 1);
-        save("K02", "Khoa Noi", null, "KHOA", 2);
-        save("K99", "Khoa ngung hoat dong", null, "KHOA", 99, false);
+        khoaCdhaId = save("K01", "Khoa CDHA", null, DepartmentType.KHOA, 1).getId();
+        save("N01", "May CT", khoaCdhaId, DepartmentType.NHOM, 1);
+        save("K02", "Khoa Noi", null, DepartmentType.KHOA, 2);
+        save("K99", "Khoa ngung hoat dong", null, DepartmentType.KHOA, 99, false);
     }
 
     @Test
@@ -48,11 +49,11 @@ class DepartmentDaoTest extends AbstractIntegrationTest {
         assertThat(departmentDao.findById(-1L)).isEmpty();
     }
 
-    private Department save(String code, String name, Long parentId, String type, int sortOrder) {
+    private Department save(String code, String name, Long parentId, DepartmentType type, int sortOrder) {
         return save(code, name, parentId, type, sortOrder, true);
     }
 
-    private Department save(String code, String name, Long parentId, String type, int sortOrder, boolean active) {
+    private Department save(String code, String name, Long parentId, DepartmentType type, int sortOrder, boolean active) {
         Department d = new Department();
         d.setCode(code);
         d.setName(name);

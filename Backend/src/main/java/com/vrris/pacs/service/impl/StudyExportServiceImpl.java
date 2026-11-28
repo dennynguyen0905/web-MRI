@@ -5,8 +5,10 @@ import com.vrris.pacs.dao.StudyDao;
 import com.vrris.pacs.dao.StudyLookupDao;
 import com.vrris.pacs.dto.response.ExportDocumentResponse;
 import com.vrris.pacs.enu.AuditAction;
+import com.vrris.pacs.enu.AuditEntityType;
 import com.vrris.pacs.enu.DobPrecision;
 import com.vrris.pacs.enu.StudyStatus;
+import com.vrris.pacs.enu.WorklistTimeField;
 import com.vrris.pacs.exception.ApiException;
 import com.vrris.pacs.model.Device;
 import com.vrris.pacs.model.ImagingOrder;
@@ -50,7 +52,7 @@ import static com.vrris.pacs.service.impl.ServiceSupport.parseSort;
 @Service
 public class StudyExportServiceImpl implements StudyExportService {
 
-    private static final String DEFAULT_TIME_FIELD = "scheduledAt";
+    private static final WorklistTimeField DEFAULT_TIME_FIELD = WorklistTimeField.SCHEDULED;
 
     private final StudyDao studyDao;
     private final StudyLookupDao studyLookupDao;
@@ -64,11 +66,11 @@ public class StudyExportServiceImpl implements StudyExportService {
     // Xuất danh sách ca chụp (worklist) ra CSV: lấy ca chụp theo điều kiện, nạp theo lô dữ liệu liên quan (chỉ định, bệnh nhân, dịch vụ, máy, báo cáo) để tránh N+1, rồi lọc và dựng từng dòng.
     @Override
     @Transactional
-    @Audited(action = AuditAction.EXPORT, entityType = "STUDY")
+    @Audited(action = AuditAction.EXPORT, entityType = AuditEntityType.STUDY)
     public ExportDocumentResponse exportCsv(Long orderId, String status, Long deviceId,
                                             String q, String patientCode, String fullName, String sort) {
         SortSpec sortSpec = parseSort(sort, StudyServiceImpl.SORTABLE_FIELDS, "scheduledAt", true);
-        String normalizedStatus = parseEnumOrNull(status, StudyStatus.class, "status");
+        StudyStatus normalizedStatus = parseEnumOrNull(status, StudyStatus.class, "status");
 
         List<Study> studies = orderId != null
                 ? findByOrder(orderId, normalizedStatus, deviceId)
@@ -116,15 +118,15 @@ public class StudyExportServiceImpl implements StudyExportService {
 
     /** order_id: lay toan bo ca cua chi dinh (so luong nho) roi loc status/device trong bo nho. */
     // Lấy toàn bộ ca chụp của một chỉ định rồi lọc theo trạng thái/máy trong bộ nhớ.
-    private List<Study> findByOrder(Long orderId, String status, Long deviceId) {
+    private List<Study> findByOrder(Long orderId, StudyStatus status, Long deviceId) {
         return studyDao.findByOrderId(orderId).stream()
-                .filter(s -> status == null || status.equals(s.getStatus()))
+                .filter(s -> status == null || status == s.getStatus())
                 .filter(s -> deviceId == null || deviceId.equals(s.getDeviceId()))
                 .toList();
     }
 
     // Tìm ca chụp theo điều kiện lọc qua DAO; báo lỗi 422 nếu số dòng khớp vượt giới hạn xuất tối đa.
-    private List<Study> searchStudies(String status, Long deviceId, String patientCode, String fullName,
+    private List<Study> searchStudies(StudyStatus status, Long deviceId, String patientCode, String fullName,
                                       SortSpec sortSpec) {
         StudyDao.SearchCriteria criteria = new StudyDao.SearchCriteria(
                 status == null ? null : List.of(status),
@@ -166,7 +168,7 @@ public class StudyExportServiceImpl implements StudyExportService {
                 patient == null ? null : patient.getFullName(),
                 patient == null ? null : patient.getDateOfBirth(),
                 patient == null || patient.getDobPrecision() == null
-                        ? DobPrecision.DAY : DobPrecision.valueOf(patient.getDobPrecision()),
+                        ? DobPrecision.DAY : patient.getDobPrecision(),
                 patient == null ? null : patient.getGender(),
                 patient == null ? null : patient.getSocialInsuranceNo(),
                 service == null ? null : service.getName(),

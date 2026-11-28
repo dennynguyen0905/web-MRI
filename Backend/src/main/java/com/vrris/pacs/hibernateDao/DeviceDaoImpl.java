@@ -1,6 +1,7 @@
 package com.vrris.pacs.hibernateDao;
 
 import com.vrris.pacs.dao.DeviceDao;
+import com.vrris.pacs.enu.Modality;
 import com.vrris.pacs.model.Device;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -20,7 +21,7 @@ public class DeviceDaoImpl extends AbstractHibernateDao<Device, Long> implements
     }
 
     @Override
-    public List<Device> search(Long departmentId, String modality) {
+    public List<Device> search(Long departmentId, Modality modality) {
         CriteriaBuilder cb = criteriaBuilder();
         CriteriaQuery<Device> query = cb.createQuery(Device.class);
         Root<Device> root = query.from(Device.class);
